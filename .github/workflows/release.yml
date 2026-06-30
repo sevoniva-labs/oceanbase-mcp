@@ -107,7 +107,7 @@ jobs:
         with:
           name: npm-package
           path: |
-            "*.tgz"
+            *.tgz
             sbom.cdx.json
           if-no-files-found: error
 
