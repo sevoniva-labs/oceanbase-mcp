@@ -1,0 +1,28 @@
+[Unit]
+Description=OceanBase MCP HTTP gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ob-mcp
+EnvironmentFile=/etc/ob-mcp/ob-mcp.env
+ExecStart=/usr/bin/node /opt/ob-mcp/dist/http.js
+Restart=always
+RestartSec=5
+User=ob-mcp
+Group=ob-mcp
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/ob-mcp
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictRealtime=true
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,258 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "发布版本，例如 v0.3.0"
+        required: true
+        type: string
+      prerelease:
+        description: "是否标记为预发布"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/sevoniva/oceanbase-mcp
+
+jobs:
+  metadata:
+    name: 准备发布信息
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: 解析版本
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.version }}"
+          else
+            TAG="${GITHUB_REF_NAME}"
+          fi
+          if [[ ! "${TAG}" =~ ^v[0-9]+\\.[0-9]+\\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "版本必须是 vX.Y.Z，例如 v0.3.0" >&2
+            exit 1
+          fi
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+  tag:
+    name: 创建 Tag
+    needs: metadata
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 创建并推送 tag
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git rev-parse "${{ needs.metadata.outputs.tag }}" >/dev/null 2>&1; then
+            echo "tag 已存在：${{ needs.metadata.outputs.tag }}"
+          else
+            git tag -a "${{ needs.metadata.outputs.tag }}" -m "Release ${{ needs.metadata.outputs.tag }}"
+            git push origin "${{ needs.metadata.outputs.tag }}"
+          fi
+
+  package:
+    name: 构建 npm 包
+    needs:
+      - metadata
+      - tag
+    if: always() && needs.metadata.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 构建
+        run: npm run build
+
+      - name: 测试
+        run: npm test
+
+      - name: 打包
+        run: npm pack
+
+      - name: 上传 npm 包产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-package
+          path: "*.tgz"
+          if-no-files-found: error
+
+  image:
+    name: 推送多架构镜像
+    needs:
+      - metadata
+      - tag
+      - package
+    if: always() && needs.metadata.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped') && needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并推送镜像
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ needs.metadata.outputs.tag }}
+            ${{ env.IMAGE_NAME }}:${{ needs.metadata.outputs.version }}
+            ${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.title=OceanBase MCP
+            org.opencontainers.image.description=Read-only MCP gateway for OceanBase
+            org.opencontainers.image.source=https://github.com/sevoniva/oceanbase-mcp
+            org.opencontainers.image.version=${{ needs.metadata.outputs.version }}
+
+  offline-images:
+    name: 构建离线镜像
+    needs:
+      - metadata
+      - tag
+      - package
+    if: always() && needs.metadata.result == 'success' && (needs.tag.result == 'success' || needs.tag.result == 'skipped') && needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 设置 QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 构建离线镜像 tar
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          outputs: type=docker,dest=/tmp/oceanbase-mcp-${{ needs.metadata.outputs.version }}-${{ matrix.arch }}.tar
+          tags: oceanbase-mcp:${{ needs.metadata.outputs.version }}-${{ matrix.arch }}
+
+      - name: 压缩离线镜像
+        run: gzip -9 /tmp/oceanbase-mcp-${{ needs.metadata.outputs.version }}-${{ matrix.arch }}.tar
+
+      - name: 上传离线镜像产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-image-${{ matrix.arch }}
+          path: /tmp/oceanbase-mcp-${{ needs.metadata.outputs.version }}-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+
+  github-release:
+    name: 创建 GitHub Release
+    needs:
+      - metadata
+      - package
+      - image
+      - offline-images
+    if: always() && needs.metadata.result == 'success' && needs.package.result == 'success' && needs.image.result == 'success' && needs.offline-images.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载 npm 包
+        uses: actions/download-artifact@v4
+        with:
+          name: npm-package
+          path: dist-release
+
+      - name: 下载 amd64 离线镜像
+        uses: actions/download-artifact@v4
+        with:
+          name: offline-image-amd64
+          path: dist-release
+
+      - name: 下载 arm64 离线镜像
+        uses: actions/download-artifact@v4
+        with:
+          name: offline-image-arm64
+          path: dist-release
+
+      - name: 写入发布说明
+        shell: bash
+        run: |
+          cat > release-notes.md <<'EOF'
+          ## OceanBase MCP
+
+          OceanBase MCP 是面向 OpenCode 和其他 MCP 客户端的 OceanBase 只读网关，支持 HTTP 鉴权、来源 IP 白名单、诊断、指标、Docker/Kubernetes 部署，以及 MySQL/Oracle 兼容模式。
+
+          OceanBase MCP is a read-only MCP gateway for OpenCode and other MCP clients. It supports HTTP authentication, source IP allowlists, diagnostics, metrics, Docker/Kubernetes deployment, and OceanBase MySQL/Oracle compatibility modes.
+
+          镜像 / Images:
+
+          - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.tag }}`
+          - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.version }}`
+          - `ghcr.io/sevoniva/oceanbase-mcp:latest`
+
+          本 Release 附带 `linux/amd64` 和 `linux/arm64` 离线镜像包。
+
+          基础验证 / Basic checks:
+
+          ```bash
+          npm test
+          npm run config:doctor
+          npm run mcp:smoke
+          npm run http:smoke
+          ```
+          EOF
+
+      - name: 创建 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.metadata.outputs.tag }}
+          name: OceanBase MCP ${{ needs.metadata.outputs.tag }}
+          body_path: release-notes.md
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == true }}
+          files: |
+            dist-release/*.tgz
+            dist-release/*.tar.gz

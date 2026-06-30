@@ -1,0 +1,140 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: ob-mcp-secrets
+type: Opaque
+stringData:
+  # 应用到真实集群前必须替换这两个值。
+  ob_password: replace-me
+  ob_mcp_auth_token: replace-me-long-random-token
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ob-mcp-config
+data:
+  # 生产使用前请修改连接、访问策略、Host 和来源 IP 配置。
+  NODE_ENV: production
+  OB_HOST: your-obproxy.example.com
+  OB_PORT: "2883"
+  OB_USER: readonly_user@tenant#cluster
+  OB_COMPATIBILITY: mysql
+  OB_PRODUCTION: "true"
+  OB_MCP_READ_ONLY: "true"
+  OB_DB_USER_READ_ONLY: "true"
+  OB_ALLOWED_SCHEMAS: app_schema
+  OB_ALLOW_SELECT_STAR: "false"
+  OB_ENFORCE_READ_ONLY_TX: "true"
+  OB_MCP_HOST: 0.0.0.0
+  OB_MCP_PORT: "3000"
+  OB_MCP_PATH: /mcp
+  OB_MCP_ALLOWED_HOSTS: your-mcp.example.com
+  # 允许的客户端、VPN、NAT 或反向代理来源 IP/CIDR。
+  OB_MCP_ALLOWED_IPS: 10.0.0.0/8,203.0.113.10
+  # 仅在 Ingress 可信且客户端无法绕过时启用。
+  OB_MCP_TRUST_PROXY: "true"
+  OB_MCP_BODY_LIMIT: 256kb
+  OB_MCP_RATE_LIMIT_WINDOW_MS: "60000"
+  OB_MCP_RATE_LIMIT_MAX: "60"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ob-mcp
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: ob-mcp
+  template:
+    metadata:
+      labels:
+        app: ob-mcp
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: ob-mcp
+          image: ghcr.io/sevoniva/oceanbase-mcp:0.3.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: ob-mcp-config
+          env:
+            - name: OB_PASSWORD_FILE
+              value: /run/secrets/ob_password
+            - name: OB_MCP_AUTH_TOKEN_FILE
+              value: /run/secrets/ob_mcp_auth_token
+          volumeMounts:
+            - name: ob-mcp-secrets
+              mountPath: /run/secrets
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: ob-mcp-secrets
+          secret:
+            secretName: ob-mcp-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ob-mcp
+spec:
+  selector:
+    app: ob-mcp
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ob-mcp
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 256k
+spec:
+  tls:
+    - hosts:
+        - your-mcp.example.com
+      secretName: ob-mcp-tls
+  rules:
+    - host: your-mcp.example.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ob-mcp
+                port:
+                  name: http

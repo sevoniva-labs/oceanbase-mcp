@@ -1,0 +1,51 @@
+services:
+  ob-mcp:
+    build: .
+    image: oceanbase-mcp:0.3.0
+    init: true
+    read_only: true
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # 生产使用前请修改连接、访问策略和安全配置。
+      NODE_ENV: production
+      OB_HOST: your-obproxy.example.com
+      OB_PORT: "2883"
+      OB_USER: readonly_user@tenant#cluster
+      OB_PASSWORD_FILE: /run/secrets/ob_password
+      OB_COMPATIBILITY: mysql
+      OB_PRODUCTION: "true"
+      OB_MCP_READ_ONLY: "true"
+      OB_DB_USER_READ_ONLY: "true"
+      OB_ALLOWED_SCHEMAS: app_schema
+      OB_ALLOW_SELECT_STAR: "false"
+      OB_ENFORCE_READ_ONLY_TX: "true"
+      OB_MCP_HOST: 0.0.0.0
+      OB_MCP_PORT: "3000"
+      OB_MCP_PATH: /mcp
+      OB_MCP_AUTH_TOKEN_FILE: /run/secrets/ob_mcp_auth_token
+      OB_MCP_ALLOWED_HOSTS: localhost,127.0.0.1,your-mcp.example.com
+      # 允许访问 /mcp、/healthz、/metrics 的来源 IP 或 CIDR。
+      OB_MCP_ALLOWED_IPS: 127.0.0.1,10.0.0.0/8,203.0.113.10
+      # 仅在可信反向代理后启用，且代理必须控制转发头。
+      OB_MCP_TRUST_PROXY: "true"
+      OB_MCP_BODY_LIMIT: 256kb
+      OB_MCP_RATE_LIMIT_WINDOW_MS: "60000"
+      OB_MCP_RATE_LIMIT_MAX: "60"
+    secrets:
+      - ob_password
+      - ob_mcp_auth_token
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+secrets:
+  ob_password:
+    # 该文件保存 OceanBase 密码。
+    file: ./secrets/ob_password
+  ob_mcp_auth_token:
+    # 该文件保存足够长的随机 Bearer token。
+    file: ./secrets/ob_mcp_auth_token
