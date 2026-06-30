@@ -7,6 +7,8 @@ const EXPLAIN_TARGET_KEYWORDS = new Set(["select", "with"]);
 const DANGEROUS_READ_PATTERNS = [
   /\binto\s+outfile\b/i,
   /\binto\s+dumpfile\b/i,
+  /\binto\s+@[\w$]+\b/i,
+  /\binto\s+(?:local\s+)?[A-Za-z_][\w$]*(?:\s*,|\s*(?:from|$))/i,
   /\bload_file\s*\(/i,
   /\bfor\s+update\b/i,
   /\bget_lock\s*\(/i,

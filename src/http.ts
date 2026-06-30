@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import "dotenv/config";
 
-import { timingSafeEqual } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
@@ -11,7 +11,7 @@ import {
 import express, { type Request, type Response, type NextFunction } from "express";
 import { rateLimit } from "express-rate-limit";
 
-import { loadGatewayConfig, loadHttpConfig } from "./config.js";
+import { loadGatewayConfig, loadHttpConfig, type AuthPrincipal, type AuthTokenPolicy } from "./config.js";
 import { diagnoseGateway } from "./diagnostics.js";
 import { logAudit, logError } from "./errors.js";
 import { isIpAllowed } from "./ip-policy.js";
@@ -33,6 +33,7 @@ app.use(
 );
 
 app.use((req, res, next) => {
+  attachRequestContext(req, res);
   const finish = metrics.startHttpRequest();
   res.on("finish", finish);
   next();
@@ -40,19 +41,17 @@ app.use((req, res, next) => {
 
 app.use(restrictSourceIp);
 
-app.get("/healthz", (_req, res) => {
+app.get("/healthz", endpointAuth(httpConfig.healthAuthRequired), (_req, res) => {
   const diagnostics = diagnoseGateway(gatewayConfig, httpConfig);
   res.status(diagnostics.ok ? 200 : 503).json({
     ok: diagnostics.ok,
     name: "ob-mcp",
     mode: "http",
-    defaultProfile: gatewayConfig.defaultProfile,
-    profiles: Object.keys(gatewayConfig.profiles),
-    metrics: metrics.snapshot()
+    profileCount: Object.keys(gatewayConfig.profiles).length
   });
 });
 
-app.get("/metrics", (_req, res) => {
+app.get("/metrics", endpointAuth(httpConfig.metricsAuthRequired), (_req, res) => {
   res.type("text/plain; version=0.0.4").send(metrics.prometheus());
 });
 
@@ -70,18 +69,29 @@ app.use(
 );
 
 app.post(httpConfig.path, async (req, res) => {
-  const server = createObMcpServer(runtime, httpConfig);
+  const requestContext = getRequestContext(req);
+  const server = createObMcpServer(runtime, httpConfig, {
+    ...requestContext,
+    transport: "http"
+  });
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined
   });
+  let closed = false;
+  const cleanup = () => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    transport.close();
+    server.close();
+  };
+  res.once("finish", cleanup);
+  res.once("close", cleanup);
 
   try {
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
-    res.on("close", () => {
-      transport.close();
-      server.close();
-    });
   } catch (error) {
     metrics.recordHttpError();
     logError("http_mcp", error);
@@ -95,6 +105,7 @@ app.post(httpConfig.path, async (req, res) => {
         id: null
       });
     }
+    cleanup();
   }
 });
 
@@ -108,9 +119,12 @@ const httpServer = app.listen(httpConfig.port, httpConfig.host, () => {
     host: httpConfig.host,
     port: httpConfig.port,
     path: httpConfig.path,
-    authEnabled: Boolean(httpConfig.authToken),
+    authEnabled: httpConfig.authTokens.length > 0,
+    tokenPolicyCount: httpConfig.authTokens.length,
     ipAllowlistEnabled: httpConfig.allowedIps.length > 0,
-    trustProxy: httpConfig.trustProxy
+    trustProxy: httpConfig.trustProxyDescription,
+    metricsAuthRequired: httpConfig.metricsAuthRequired,
+    healthAuthRequired: httpConfig.healthAuthRequired
   });
 });
 
@@ -118,22 +132,40 @@ process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
 
 function authenticate(req: Request, res: Response, next: NextFunction): void {
-  if (!httpConfig.authToken) {
+  if (httpConfig.authTokens.length === 0) {
     next();
     return;
   }
 
-  if (!isBearerTokenValid(req.header("authorization"), httpConfig.authToken)) {
+  const policy = findBearerTokenPolicy(req.header("authorization"), httpConfig.authTokens);
+  if (!policy) {
     metrics.recordHttpAuthDenied();
     logAudit("http_auth_denied", {
       path: req.path,
-      remoteAddress: req.socket.remoteAddress
+      remoteAddress: req.socket.remoteAddress,
+      requestId: getRequestContext(req).requestId,
+      clientId: getRequestContext(req).clientId
     });
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
+  setAuthPrincipal(req, {
+    name: policy.name,
+    profiles: policy.profiles,
+    tools: policy.tools
+  });
   next();
+}
+
+function endpointAuth(required: boolean) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!required) {
+      next();
+      return;
+    }
+    authenticate(req, res, next);
+  };
 }
 
 function restrictSourceIp(req: Request, res: Response, next: NextFunction): void {
@@ -147,18 +179,33 @@ function restrictSourceIp(req: Request, res: Response, next: NextFunction): void
     path: req.path,
     ip: req.ip,
     remoteAddress: req.socket.remoteAddress,
-    forwardedFor: req.header("x-forwarded-for")
+    forwardedFor: req.header("x-forwarded-for"),
+    requestId: getRequestContext(req).requestId,
+    clientId: getRequestContext(req).clientId
   });
   res.status(403).json({ error: "Forbidden" });
 }
 
-function isBearerTokenValid(header: string | undefined, expectedToken: string): boolean {
+function findBearerTokenPolicy(
+  header: string | undefined,
+  policies: AuthTokenPolicy[]
+): AuthTokenPolicy | undefined {
   const prefix = "Bearer ";
   if (!header?.startsWith(prefix)) {
-    return false;
+    return undefined;
   }
 
   const provided = Buffer.from(header.slice(prefix.length));
+  let matched: AuthTokenPolicy | undefined;
+  for (const policy of policies) {
+    if (isTokenMatch(provided, policy.token)) {
+      matched = policy;
+    }
+  }
+  return matched;
+}
+
+function isTokenMatch(provided: Buffer, expectedToken: string): boolean {
   const expected = Buffer.from(expectedToken);
   const maxLength = Math.max(provided.length, expected.length);
   const paddedProvided = Buffer.alloc(maxLength);
@@ -167,6 +214,46 @@ function isBearerTokenValid(header: string | undefined, expectedToken: string): 
   expected.copy(paddedExpected);
 
   return timingSafeEqual(paddedProvided, paddedExpected) && provided.length === expected.length;
+}
+
+interface RequestContext {
+  requestId: string;
+  clientId?: string;
+  principal?: AuthPrincipal;
+}
+
+type RequestWithContext = Request & {
+  obMcpContext?: RequestContext;
+};
+
+function attachRequestContext(req: Request, res: Response): void {
+  const requestId = sanitizeHeaderValue(req.header("x-request-id")) || randomUUID();
+  const clientId = sanitizeHeaderValue(req.header(httpConfig.clientIdHeader));
+  (req as RequestWithContext).obMcpContext = {
+    requestId,
+    clientId
+  };
+  res.setHeader("x-request-id", requestId);
+}
+
+function getRequestContext(req: Request): RequestContext {
+  return (req as RequestWithContext).obMcpContext ?? { requestId: randomUUID() };
+}
+
+function setAuthPrincipal(req: Request, principal: AuthPrincipal): void {
+  const context = getRequestContext(req);
+  (req as RequestWithContext).obMcpContext = {
+    ...context,
+    principal
+  };
+}
+
+function sanitizeHeaderValue(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  if (!trimmed || /[\r\n]/.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed.slice(0, 256);
 }
 
 function jsonBodyErrorHandler(

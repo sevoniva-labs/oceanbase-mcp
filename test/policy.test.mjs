@@ -32,6 +32,14 @@ test("assertSqlPolicy rejects references outside allowed schemas", () => {
   assert.throws(() => assertSqlPolicy("SELECT id FROM other_schema.orders", context), /not allowed/);
   assert.throws(() => assertSqlPolicy('SELECT id FROM "OTHER_SCHEMA"."ORDERS"', context), /not allowed/);
   assert.throws(() => assertSqlPolicy("SELECT a.id FROM biz_test.ob_sample a, mysql.user u", context), /not allowed/);
+  assert.throws(
+    () => assertSqlPolicy("WITH u AS (SELECT User FROM mysql.user) SELECT User FROM u", context),
+    /not allowed/
+  );
+  assert.throws(
+    () => assertSqlPolicy("SELECT id FROM biz_test.ob_sample UNION ALL SELECT User FROM mysql.user", context),
+    /not allowed/
+  );
 });
 
 test("assertSqlPolicy rejects unqualified tables when schema policy is ambiguous", () => {

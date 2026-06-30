@@ -1,7 +1,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import type { HttpConfig, ObConfig } from "./config.js";
+import type { AuthPrincipal, GatewayConfig, HttpConfig, ObConfig } from "./config.js";
 import { publicConfig } from "./config.js";
 import {
   describeTable,
@@ -14,11 +14,12 @@ import {
   runReadOnlyQuery,
   sampleRows,
   searchCatalog,
+  verifyReadOnlyPermissions,
   type SqlParam
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
 import { logAudit, logError, serializeError } from "./errors.js";
-import { jsonText, type QueryOutput } from "./format.js";
+import { assertJsonByteLimit, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
 import {
   assertOutputAllowed,
@@ -30,7 +31,7 @@ import {
   filterTables,
   isDeniedColumn
 } from "./policy.js";
-import { selectRuntimeProfile, type GatewayRuntime } from "./runtime.js";
+import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "./runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, prepareReadOnlySql } from "./sql.js";
 
 const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -40,11 +41,24 @@ const profileInput = {
 const SENSITIVE_SAMPLE_PATTERN =
   /(password|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|credential|session|cookie|email|phone|mobile|id[_-]?card|ssn)/i;
 
-export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConfig): McpServer {
+export interface McpRequestContext {
+  principal?: AuthPrincipal;
+  requestId?: string;
+  clientId?: string;
+  transport?: "stdio" | "http";
+}
+
+export function createObMcpServer(
+  runtime: GatewayRuntime,
+  httpConfig?: HttpConfig,
+  context: McpRequestContext = { transport: "stdio" }
+): McpServer {
   const server = new McpServer({
     name: "ob-mcp",
     version: "0.3.0"
   });
+  const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) =>
+    safeTool(name, handler, context);
 
   server.registerResource(
     "connection",
@@ -55,8 +69,8 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
       mimeType: "application/json"
     },
     async (uri) => {
-      const selected = selectRuntimeProfile(runtime);
-      return resourceResult(uri.href, publicConfig(selected.config));
+      const selected = selectAuthorizedProfile(runtime, undefined, context);
+      return resourceResult(uri.href, publicConfig(selected.config), selected.config);
     }
   );
 
@@ -70,8 +84,8 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
     },
     async (uri) =>
       resourceResult(uri.href, {
-        defaultProfile: runtime.defaultProfile,
-        profiles: Object.fromEntries(Object.entries(runtime.configs).map(([name, config]) => [name, publicConfig(config)]))
+        defaultProfile: visibleDefaultProfile(runtime, context),
+        profiles: publicProfiles(runtime, context)
       })
   );
 
@@ -84,12 +98,14 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
       mimeType: "application/json"
     },
     async (uri, variables) => {
-      const selected = selectRuntimeProfile(runtime, stringVariable(variables.profile));
+      const selected = selectAuthorizedProfile(runtime, stringVariable(variables.profile), context);
       const schema = stringVariable(variables.schema);
       const table = stringVariable(variables.table);
       assertTableAccess(schema, table, policyContext(selected.config));
-      const rows = await describeTable(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs);
-      return resourceResult(uri.href, filterColumnMetadata(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
+      );
+      return resourceResult(uri.href, filterColumnMetadata(rows, selected.config.policy), selected.config);
     }
   );
 
@@ -100,10 +116,10 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
       description: "List configured OceanBase MCP profiles with redacted settings.",
       inputSchema: {}
     },
-    safeTool("ob_list_profiles", async () =>
+    toolHandler("ob_list_profiles", async () =>
       toResult({
-        defaultProfile: runtime.defaultProfile,
-        profiles: Object.fromEntries(Object.entries(runtime.configs).map(([name, config]) => [name, publicConfig(config)]))
+        defaultProfile: visibleDefaultProfile(runtime, context),
+        profiles: publicProfiles(runtime, context)
       })
     )
   );
@@ -115,17 +131,33 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
       description: "Check profile, policy, TLS, HTTP, and production hardening settings.",
       inputSchema: {}
     },
-    safeTool("ob_config_diagnostics", async () =>
+    toolHandler("ob_config_diagnostics", async () =>
       toResult(
-        diagnoseGateway(
-          {
-            defaultProfile: runtime.defaultProfile,
-            profiles: runtime.configs
-          },
-          httpConfig
-        )
+        diagnoseGateway(authorizedGatewayConfig(runtime, context), httpConfig)
       )
     )
+  );
+
+  server.registerTool(
+    "ob_verify_permissions",
+    {
+      title: "Verify Database Permissions",
+      description: "Inspect current database grants and report whether the account appears read-only.",
+      inputSchema: profileInput
+    },
+    toolHandler("ob_verify_permissions", async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = await withQuerySlot(selected, () =>
+        verifyReadOnlyPermissions(selected.pool, selected.config.compatibility, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(
+        {
+          profile: selected.profile,
+          ...result
+        },
+        selected.config
+      );
+    })
   );
 
   server.registerTool(
@@ -135,9 +167,10 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
       description: "Verify the configured OceanBase connection.",
       inputSchema: profileInput
     },
-    safeTool("ob_ping", async ({ profile }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
-      return toResult(await ping(selected.pool, selected.config));
+    toolHandler("ob_ping", async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = await withQuerySlot(selected, () => ping(selected.pool, selected.config));
+      return toLimitedResult(result, selected.config);
     })
   );
 
@@ -152,20 +185,20 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         params: z.array(sqlParamSchema).optional().default([])
       }
     },
-    safeTool("ob_policy_explain", async ({ profile, sql, params = [] }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_policy_explain", async ({ profile, sql, params = [] }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const sqlParams = params as SqlParam[];
       const checks = [
         runExplainCheck("input_limits", () => assertSqlInputLimits(sql, sqlParams, selected.config)),
         runExplainCheck("read_only_sql", () => assertReadOnlySql(sql))
       ];
       const policy = explainSqlPolicy(sql, policyContext(selected.config));
-      return toResult({
+      return toLimitedResult({
         profile: selected.profile,
         allowed: checks.every((check) => check.ok) && policy.allowed,
         checks,
         policy
-      });
+      }, selected.config);
     })
   );
 
@@ -181,30 +214,37 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         maxRows: z.number().int().positive().max(10_000).optional()
       }
     },
-    safeTool("ob_query", async ({ profile, sql, params = [], maxRows }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_query", async ({ profile, sql, params = [], maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const started = Date.now();
       const sqlParams = params as SqlParam[];
       assertSqlInputLimits(sql, sqlParams, selected.config);
       assertSqlPolicy(sql, policyContext(selected.config));
-      const effectiveMaxRows = maxRows ?? selected.config.maxRows;
+      const effectiveMaxRows = effectiveRowLimit(maxRows, selected.config);
       const limitedSql = prepareReadOnlySql(sql, effectiveMaxRows, selected.config.compatibility);
-      const output = await runReadOnlyQuery(
-        selected.pool,
-        selected.config.compatibility,
-        limitedSql,
-        sqlParams,
-        effectiveMaxRows,
-        selected.config.queryTimeoutMs,
-        selected.config.enforceReadOnlyTransaction
+      const output = await withQuerySlot(selected, () =>
+        runReadOnlyQuery(
+          selected.pool,
+          selected.config.compatibility,
+          limitedSql,
+          sqlParams,
+          effectiveMaxRows,
+          selected.config.queryTimeoutMs,
+          selected.config.enforceReadOnlyTransaction
+        )
       );
       assertOutputAllowed(output, selected.config.policy);
+      assertJsonByteLimit(output, selected.config.maxResultBytes);
       const durationMs = Date.now() - started;
       metrics.recordQueryDuration(durationMs);
       logAudit("ob_query", {
         ok: true,
         tool: "ob_query",
         profile: selected.profile,
+        transport: context.transport ?? "stdio",
+        requestId: context.requestId,
+        clientId: context.clientId,
+        principal: context.principal?.name,
         durationMs,
         rowCount: output.rowCount,
         truncated: output.truncated,
@@ -222,9 +262,12 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
       description: "List schemas/databases visible to the current OceanBase user, filtered by access policy.",
       inputSchema: profileInput
     },
-    safeTool("ob_list_schemas", async ({ profile }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
-      return toResult(filterSchemas(await listSchemas(selected.pool, selected.config.compatibility, selected.config.queryTimeoutMs), selected.config.policy));
+    toolHandler("ob_list_schemas", async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const rows = await withQuerySlot(selected, () =>
+        listSchemas(selected.pool, selected.config.compatibility, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(filterSchemas(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -239,13 +282,21 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         limit: z.number().int().positive().max(10_000).optional()
       }
     },
-    safeTool("ob_list_tables", async ({ profile, schema, limit }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_list_tables", async ({ profile, schema, limit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       if (schema) {
         assertTableAccess(schema, "*", policyContext(selected.config));
       }
-      const rows = await listTables(selected.pool, selected.config.compatibility, schema, limit ?? selected.config.maxRows, selected.config.queryTimeoutMs);
-      return toResult(filterTables(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        listTables(
+          selected.pool,
+          selected.config.compatibility,
+          schema,
+          effectiveRowLimit(limit, selected.config),
+          selected.config.queryTimeoutMs
+        )
+      );
+      return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -260,12 +311,14 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         schema: z.string().optional()
       }
     },
-    safeTool("ob_describe_table", async ({ profile, table, schema }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_describe_table", async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const rows = await describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs);
-      return toResult(filterColumnMetadata(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -281,25 +334,27 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         maxRows: z.number().int().positive().max(10_000).optional()
       }
     },
-    safeTool("ob_explain", async ({ profile, sql, params = [], maxRows }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_explain", async ({ profile, sql, params = [], maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const sqlParams = params as SqlParam[];
       assertSqlInputLimits(sql, sqlParams, selected.config);
       assertReadOnlySql(sql);
       assertSqlPolicy(sql, policyContext(selected.config));
       const explainSql = buildExplainSql(sql);
       const started = Date.now();
-      const output = await runReadOnlyQuery(
-        selected.pool,
-        selected.config.compatibility,
-        explainSql,
-        sqlParams,
-        maxRows ?? selected.config.maxRows,
-        selected.config.queryTimeoutMs,
-        selected.config.enforceReadOnlyTransaction
+      const output = await withQuerySlot(selected, () =>
+        runReadOnlyQuery(
+          selected.pool,
+          selected.config.compatibility,
+          explainSql,
+          sqlParams,
+          effectiveRowLimit(maxRows, selected.config),
+          selected.config.queryTimeoutMs,
+          selected.config.enforceReadOnlyTransaction
+        )
       );
       metrics.recordQueryDuration(Date.now() - started);
-      return toResult(output);
+      return toLimitedResult(output, selected.config);
     })
   );
 
@@ -315,13 +370,22 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         limit: z.number().int().positive().max(1000).optional()
       }
     },
-    safeTool("ob_search_catalog", async ({ profile, query, schema, limit }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_search_catalog", async ({ profile, query, schema, limit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       if (schema) {
         assertTableAccess(schema, "*", policyContext(selected.config));
       }
-      const rows = await searchCatalog(selected.pool, selected.config.compatibility, query, schema, limit ?? selected.config.maxRows, selected.config.queryTimeoutMs);
-      return toResult(filterColumnMetadata(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        searchCatalog(
+          selected.pool,
+          selected.config.compatibility,
+          query,
+          schema,
+          effectiveRowLimit(limit, selected.config),
+          selected.config.queryTimeoutMs
+        )
+      );
+      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -336,12 +400,14 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         schema: z.string().optional()
       }
     },
-    safeTool("ob_get_table_schema", async ({ profile, table, schema }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_get_table_schema", async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const rows = await describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs);
-      return toResult(filterColumnMetadata(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -356,12 +422,14 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         schema: z.string().optional()
       }
     },
-    safeTool("ob_get_indexes", async ({ profile, table, schema }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_get_indexes", async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const rows = await listIndexes(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs);
-      return toResult(filterTables(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        listIndexes(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -376,12 +444,14 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         schema: z.string().optional()
       }
     },
-    safeTool("ob_get_constraints", async ({ profile, table, schema }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_get_constraints", async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const rows = await listConstraints(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs);
-      return toResult(filterColumnMetadata(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        listConstraints(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -396,12 +466,14 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         schema: z.string().optional()
       }
     },
-    safeTool("ob_get_partitions", async ({ profile, table, schema }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_get_partitions", async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const rows = await listPartitions(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs);
-      return toResult(filterTables(rows, selected.config.policy));
+      const rows = await withQuerySlot(selected, () =>
+        listPartitions(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
     })
   );
 
@@ -417,27 +489,31 @@ export function createObMcpServer(runtime: GatewayRuntime, httpConfig?: HttpConf
         limit: z.number().int().positive().max(100).optional()
       }
     },
-    safeTool("ob_sample_rows", async ({ profile, table, schema, limit }) => {
-      const selected = selectRuntimeProfile(runtime, profile);
+    toolHandler("ob_sample_rows", async ({ profile, table, schema, limit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
       const metadata = filterColumnMetadata(
-        await describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs),
+        await withQuerySlot(selected, () =>
+          describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        ),
         selected.config.policy
       );
       const columns = columnNames(metadata).slice(0, 50);
       const sampleLimit = Math.min(limit ?? Math.min(selected.config.maxRows, 5), selected.config.maxRows, 100);
-      const output = await sampleRows(
-        selected.pool,
-        selected.config.compatibility,
-        effectiveSchema,
-        table,
-        columns,
-        sampleLimit,
-        selected.config.queryTimeoutMs
+      const output = await withQuerySlot(selected, () =>
+        sampleRows(
+          selected.pool,
+          selected.config.compatibility,
+          effectiveSchema,
+          table,
+          columns,
+          sampleLimit,
+          selected.config.queryTimeoutMs
+        )
       );
       assertOutputAllowed(output, selected.config.policy);
-      return toResult(maskOutput(output, selected.config));
+      return toLimitedResult(maskOutput(output, selected.config), selected.config);
     })
   );
 
@@ -454,6 +530,66 @@ function policyContext(config: ObConfig) {
 
 function metadataSchema(config: ObConfig, schema: string | undefined): string | undefined {
   return schema ?? config.database ?? (config.policy.allowedSchemas.length === 1 ? config.policy.allowedSchemas[0] : undefined);
+}
+
+export function effectiveRowLimit(requested: number | undefined, config: ObConfig): number {
+  return Math.min(requested ?? config.maxRows, config.maxRows);
+}
+
+function selectAuthorizedProfile(runtime: GatewayRuntime, profile: string | undefined, context: McpRequestContext) {
+  const selected = selectRuntimeProfile(runtime, profile?.trim() || visibleDefaultProfile(runtime, context));
+  assertProfileAllowed(selected.profile, context.principal);
+  return selected;
+}
+
+function assertProfileAllowed(profile: string, principal: AuthPrincipal | undefined): void {
+  if (!principal?.profiles || principal.profiles.length === 0) {
+    return;
+  }
+  if (!principal.profiles.includes(profile)) {
+    throw new Error(`Profile "${profile}" is not allowed for token "${principal.name}".`);
+  }
+}
+
+function assertToolAllowed(tool: string, principal: AuthPrincipal | undefined): void {
+  if (!principal?.tools || principal.tools.length === 0) {
+    return;
+  }
+  if (!principal.tools.includes(tool)) {
+    throw new Error(`Tool "${tool}" is not allowed for token "${principal.name}".`);
+  }
+}
+
+function visibleDefaultProfile(runtime: GatewayRuntime, context: McpRequestContext): string {
+  if (isProfileVisible(runtime.defaultProfile, context.principal)) {
+    return runtime.defaultProfile;
+  }
+  const firstVisible = Object.keys(runtime.configs).find((profile) => isProfileVisible(profile, context.principal));
+  if (!firstVisible) {
+    throw new Error(`No OceanBase MCP profile is allowed for token "${context.principal?.name ?? "unknown"}".`);
+  }
+  return firstVisible;
+}
+
+function publicProfiles(runtime: GatewayRuntime, context: McpRequestContext) {
+  return Object.fromEntries(
+    Object.entries(runtime.configs)
+      .filter(([name]) => isProfileVisible(name, context.principal))
+      .map(([name, config]) => [name, publicConfig(config)])
+  );
+}
+
+function authorizedGatewayConfig(runtime: GatewayRuntime, context: McpRequestContext): GatewayConfig {
+  return {
+    defaultProfile: visibleDefaultProfile(runtime, context),
+    profiles: Object.fromEntries(
+      Object.entries(runtime.configs).filter(([name]) => isProfileVisible(name, context.principal))
+    )
+  };
+}
+
+function isProfileVisible(profile: string, principal: AuthPrincipal | undefined): boolean {
+  return !principal?.profiles || principal.profiles.length === 0 || principal.profiles.includes(profile);
 }
 
 function columnNames(rows: unknown[]): string[] {
@@ -491,7 +627,10 @@ function stringVariable(value: string | string[] | undefined): string {
   return value ?? "";
 }
 
-function resourceResult(uri: string, data: unknown) {
+function resourceResult(uri: string, data: unknown, config?: ObConfig) {
+  if (config) {
+    assertJsonByteLimit(data, config.maxResultBytes);
+  }
   return {
     contents: [
       {
@@ -501,6 +640,11 @@ function resourceResult(uri: string, data: unknown) {
       }
     ]
   };
+}
+
+function toLimitedResult(data: unknown, config: ObConfig) {
+  assertJsonByteLimit(data, config.maxResultBytes);
+  return toResult(data);
 }
 
 function toResult(data: unknown) {
@@ -538,15 +682,24 @@ function runExplainCheck(name: string, check: () => void) {
   }
 }
 
-function safeTool<Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) {
+function safeTool<Args>(
+  name: string,
+  handler: (args: Args) => Promise<ReturnType<typeof toResult>>,
+  context: McpRequestContext
+) {
   return async (args: Args) => {
     const started = Date.now();
     const finish = metrics.startToolCall();
     try {
+      assertToolAllowed(name, context.principal);
       const result = await handler(args);
       logAudit("tool_call", {
         ok: true,
         tool: name,
+        transport: context.transport ?? "stdio",
+        requestId: context.requestId,
+        clientId: context.clientId,
+        principal: context.principal?.name,
         durationMs: Date.now() - started,
         ...auditArgs(args)
       });
@@ -557,6 +710,10 @@ function safeTool<Args>(name: string, handler: (args: Args) => Promise<ReturnTyp
       logAudit("tool_call", {
         ok: false,
         tool: name,
+        transport: context.transport ?? "stdio",
+        requestId: context.requestId,
+        clientId: context.clientId,
+        principal: context.principal?.name,
         durationMs: Date.now() - started,
         blockedReason: (error as Error).message,
         ...auditArgs(args)

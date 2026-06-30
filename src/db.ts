@@ -16,6 +16,17 @@ export interface ObConnection {
   release(): void;
 }
 
+export interface PermissionVerification {
+  ok: boolean;
+  severity: "pass" | "warn" | "fail";
+  mode: CompatibilityMode;
+  checked: string[];
+  message: string;
+  grants?: string[];
+  privileges?: string[];
+  writablePrivileges: string[];
+}
+
 interface QueryOptions {
   sql: string;
   values?: SqlParam[];
@@ -591,6 +602,126 @@ export async function sampleRows(
       ? `SELECT ${oracleTimeoutHint(timeoutMs)} * FROM (SELECT ${columnList} FROM ${tableName}) WHERE ROWNUM <= ${limit + 1}`
       : `SELECT ${columnList} FROM ${tableName} LIMIT ${limit + 1}`;
   return runQuery(pool, sql, [], limit, timeoutMs);
+}
+
+export async function verifyReadOnlyPermissions(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  timeoutMs: number
+): Promise<PermissionVerification> {
+  if (mode === "oracle") {
+    return verifyOraclePermissions(pool, timeoutMs);
+  }
+  return verifyMysqlPermissions(pool, timeoutMs);
+}
+
+async function verifyMysqlPermissions(pool: ObPool, timeoutMs: number): Promise<PermissionVerification> {
+  const [rows] = await pool.query({ sql: "SHOW GRANTS", timeout: timeoutMs });
+  const grants = Array.isArray(rows)
+    ? rows.flatMap((row) => Object.values(row as Record<string, unknown>)).filter((value): value is string => typeof value === "string")
+    : [];
+  const writablePrivileges = [...new Set(grants.flatMap(extractMysqlWritablePrivileges))].sort();
+
+  return {
+    ok: writablePrivileges.length === 0,
+    severity: writablePrivileges.length === 0 ? "pass" : "fail",
+    mode: "mysql",
+    checked: ["SHOW GRANTS"],
+    message:
+      writablePrivileges.length === 0
+        ? "Current MySQL-compatible user grants appear read-only."
+        : "Current MySQL-compatible user has write, control, or administrative privileges.",
+    grants,
+    writablePrivileges
+  };
+}
+
+async function verifyOraclePermissions(pool: ObPool, timeoutMs: number): Promise<PermissionVerification> {
+  const [rows] = await pool.query({
+    sql: `SELECT ${oracleTimeoutHint(timeoutMs)} privilege FROM session_privs ORDER BY privilege`,
+    timeout: timeoutMs
+  });
+  const privileges = Array.isArray(rows)
+    ? rows
+        .map((row) => {
+          const record = row as Record<string, unknown>;
+          return record.privilege ?? record.PRIVILEGE;
+        })
+        .filter((value): value is string => typeof value === "string")
+    : [];
+  const writablePrivileges = [...new Set(privileges.filter(isOracleWritablePrivilege).map(normalizePrivilege))].sort();
+
+  return {
+    ok: writablePrivileges.length === 0,
+    severity: writablePrivileges.length === 0 ? "pass" : "fail",
+    mode: "oracle",
+    checked: ["SESSION_PRIVS"],
+    message:
+      writablePrivileges.length === 0
+        ? "Current Oracle-compatible session privileges appear read-only."
+        : "Current Oracle-compatible session has write, control, or administrative privileges.",
+    privileges,
+    writablePrivileges
+  };
+}
+
+function extractMysqlWritablePrivileges(grant: string): string[] {
+  const upper = grant.toUpperCase();
+  const output: string[] = [];
+  if (upper.includes("WITH GRANT OPTION")) {
+    output.push("GRANT OPTION");
+  }
+
+  const match = /^\s*GRANT\s+(.+?)\s+ON\s+/i.exec(grant);
+  if (!match?.[1]) {
+    return output;
+  }
+
+  for (const privilege of splitMysqlPrivilegeList(match[1])) {
+    const normalized = normalizePrivilege(privilege);
+    if (!normalized || isMysqlSafePrivilege(normalized)) {
+      continue;
+    }
+    output.push(normalized);
+  }
+  return output;
+}
+
+function splitMysqlPrivilegeList(value: string): string[] {
+  const privileges: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (const char of value) {
+    if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+    }
+    if (char === "," && depth === 0) {
+      privileges.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  privileges.push(current);
+  return privileges;
+}
+
+function isMysqlSafePrivilege(privilege: string): boolean {
+  return ["USAGE", "SELECT", "SHOW VIEW", "SHOW DATABASES"].includes(privilege);
+}
+
+function isOracleWritablePrivilege(privilege: string): boolean {
+  const normalized = normalizePrivilege(privilege);
+  if (normalized === "CREATE SESSION") {
+    return false;
+  }
+  return /^(INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|EXECUTE|MERGE|LOCK|GRANT|DEBUG|FLASHBACK|ANALYZE)\b/.test(normalized);
+}
+
+function normalizePrivilege(value: string): string {
+  return value.toUpperCase().replace(/\s*\(.*/, "").replace(/\s+/g, " ").trim();
 }
 
 async function currentMysqlSchema(pool: ObPool, timeoutMs: number): Promise<string | undefined> {

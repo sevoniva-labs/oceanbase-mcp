@@ -33,6 +33,17 @@ export function jsonText(value: unknown): string {
   return JSON.stringify(normalizeForJson(value), null, 2);
 }
 
+export function jsonByteLength(value: unknown): number {
+  return Buffer.byteLength(jsonText(value), "utf8");
+}
+
+export function assertJsonByteLimit(value: unknown, maxBytes: number): void {
+  const bytes = jsonByteLength(value);
+  if (bytes > maxBytes) {
+    throw new Error(`Result size ${bytes} bytes exceeds configured OB_MAX_RESULT_BYTES=${maxBytes}.`);
+  }
+}
+
 function normalizeForJson(value: unknown): unknown {
   if (value == null) {
     return value;

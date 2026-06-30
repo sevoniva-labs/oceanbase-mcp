@@ -37,12 +37,27 @@ export interface ObConfig {
   connectTimeoutMs: number;
   queryTimeoutMs: number;
   maxRows: number;
+  maxResultBytes: number;
   maxSqlLength: number;
   maxParamCount: number;
+  maxConcurrentQueries: number;
   enforceReadOnlyTransaction: boolean;
   requireTls: boolean;
   policy: AccessPolicy;
   ssl?: ObSslConfig;
+}
+
+export interface AuthTokenPolicy {
+  name: string;
+  token: string;
+  profiles?: string[];
+  tools?: string[];
+}
+
+export interface AuthPrincipal {
+  name: string;
+  profiles?: string[];
+  tools?: string[];
 }
 
 export interface HttpConfig {
@@ -50,12 +65,17 @@ export interface HttpConfig {
   port: number;
   path: string;
   authToken?: string;
+  authTokens: AuthTokenPolicy[];
   allowedHosts?: string[];
   allowedIps: string[];
-  trustProxy: boolean;
+  trustProxy: boolean | number | string;
+  trustProxyDescription: string;
   bodyLimit: string;
   rateLimitWindowMs: number;
   rateLimitMax: number;
+  metricsAuthRequired: boolean;
+  healthAuthRequired: boolean;
+  clientIdHeader: string;
 }
 
 export interface GatewayConfig {
@@ -91,6 +111,8 @@ const DEFAULT_DENIED_COLUMNS = [
   "session",
   "cookie"
 ];
+const TRUST_PROXY_PRESETS = new Set(["loopback", "linklocal", "uniquelocal"]);
+const HEADER_NAME_PATTERN = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAULT_PROFILE): ObConfig {
   const compatibility = parseCompatibility(env.OB_COMPATIBILITY ?? env.OB_MODE);
@@ -103,6 +125,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
   const requireTls = parseBoolean(env.OB_REQUIRE_TLS, false);
   const policy = loadAccessPolicy(env, productionMode);
   const enforceReadOnlyTransaction = parseBoolean(env.OB_ENFORCE_READ_ONLY_TX, true);
+  const connectionLimit = parseInteger(env.OB_CONNECTION_LIMIT, 5, "OB_CONNECTION_LIMIT");
   if (requireTls && !ssl) {
     throw new Error("OB_REQUIRE_TLS=true but no OB_SSL_* certificate material was configured.");
   }
@@ -138,12 +161,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
     productionMode,
     mcpReadOnly,
     dbUserReadOnly,
-    connectionLimit: parseInteger(env.OB_CONNECTION_LIMIT, 5, "OB_CONNECTION_LIMIT"),
+    connectionLimit,
     connectTimeoutMs: parseInteger(env.OB_CONNECT_TIMEOUT_MS, 10_000, "OB_CONNECT_TIMEOUT_MS"),
     queryTimeoutMs: parseInteger(env.OB_QUERY_TIMEOUT_MS, 30_000, "OB_QUERY_TIMEOUT_MS"),
     maxRows: parseInteger(env.OB_MAX_ROWS, 100, "OB_MAX_ROWS"),
+    maxResultBytes: parseInteger(env.OB_MAX_RESULT_BYTES, 1_048_576, "OB_MAX_RESULT_BYTES"),
     maxSqlLength: parseInteger(env.OB_MAX_SQL_LENGTH, 20_000, "OB_MAX_SQL_LENGTH"),
     maxParamCount: parseInteger(env.OB_MAX_PARAM_COUNT, 500, "OB_MAX_PARAM_COUNT"),
+    maxConcurrentQueries: parseInteger(env.OB_MAX_CONCURRENT_QUERIES, Math.max(1, Math.min(connectionLimit, 5)), "OB_MAX_CONCURRENT_QUERIES"),
     enforceReadOnlyTransaction,
     requireTls,
     policy,
@@ -184,35 +209,44 @@ export function publicConfig(config: ObConfig): PublicObConfig {
 export function loadHttpConfig(obConfig: ObConfig, env: NodeJS.ProcessEnv = process.env): HttpConfig {
   const host = env.OB_MCP_HOST?.trim() || "127.0.0.1";
   const authToken = resolveSecret(env, "OB_MCP_AUTH_TOKEN");
+  const authTokens = loadAuthTokenPolicies(env, authToken);
   const allowedHosts = parseList(env.OB_MCP_ALLOWED_HOSTS, []);
   const allowedIps = parseList(env.OB_MCP_ALLOWED_IPS, []);
   validateAllowedIpRules(allowedIps);
-  const trustProxy = parseBoolean(env.OB_MCP_TRUST_PROXY, false);
+  const trustProxy = parseTrustProxy(env.OB_MCP_TRUST_PROXY);
   const nonLocalBind = !isLocalHttpHost(host);
-  if (obConfig.productionMode && !authToken) {
+  const hasAuthToken = authTokens.length > 0;
+  if (obConfig.productionMode && !hasAuthToken) {
     throw new Error("OB_MCP_AUTH_TOKEN must be set when running the remote HTTP MCP server in production mode.");
   }
-  if (nonLocalBind && !authToken) {
+  if (nonLocalBind && !hasAuthToken) {
     throw new Error("OB_MCP_AUTH_TOKEN must be set when binding the HTTP MCP server to a non-local host.");
   }
+  validateAuthTokenStrength(authTokens, obConfig.productionMode || nonLocalBind);
   if (nonLocalBind && allowedHosts.length === 0) {
     throw new Error("OB_MCP_ALLOWED_HOSTS must be set when binding the HTTP MCP server to a non-local host.");
   }
   if (nonLocalBind && allowedIps.length === 0) {
     throw new Error("OB_MCP_ALLOWED_IPS must be set when binding the HTTP MCP server to a non-local host.");
   }
+  const clientIdHeader = validateHeaderName(env.OB_MCP_CLIENT_ID_HEADER?.trim() || "x-ob-mcp-client-id", "OB_MCP_CLIENT_ID_HEADER");
 
   return {
     host,
     port: parseInteger(env.OB_MCP_PORT, 3000, "OB_MCP_PORT"),
     path: env.OB_MCP_PATH?.trim() || "/mcp",
     authToken,
+    authTokens,
     allowedHosts,
     allowedIps,
     trustProxy,
+    trustProxyDescription: describeTrustProxy(trustProxy),
     bodyLimit: env.OB_MCP_BODY_LIMIT?.trim() || "256kb",
     rateLimitWindowMs: parseInteger(env.OB_MCP_RATE_LIMIT_WINDOW_MS, 60_000, "OB_MCP_RATE_LIMIT_WINDOW_MS"),
-    rateLimitMax: parseInteger(env.OB_MCP_RATE_LIMIT_MAX, 60, "OB_MCP_RATE_LIMIT_MAX")
+    rateLimitMax: parseInteger(env.OB_MCP_RATE_LIMIT_MAX, 60, "OB_MCP_RATE_LIMIT_MAX"),
+    metricsAuthRequired: parseBoolean(env.OB_MCP_METRICS_AUTH_REQUIRED, obConfig.productionMode || nonLocalBind),
+    healthAuthRequired: parseBoolean(env.OB_MCP_HEALTH_AUTH_REQUIRED, false),
+    clientIdHeader
   };
 }
 
@@ -265,6 +299,159 @@ function resolveSecret(env: NodeJS.ProcessEnv, name: string): string | undefined
   } catch (error) {
     throw new Error(`Failed to read ${name}_FILE at ${filePath}: ${(error as Error).message}`);
   }
+}
+
+function loadAuthTokenPolicies(env: NodeJS.ProcessEnv, directToken: string | undefined): AuthTokenPolicy[] {
+  const policies: AuthTokenPolicy[] = [];
+  if (directToken) {
+    policies.push({ name: "default", token: directToken });
+  }
+
+  const policiesJson = resolveSecret(env, "OB_MCP_AUTH_TOKENS");
+  if (!policiesJson) {
+    return policies;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(policiesJson);
+  } catch (error) {
+    throw new Error(`OB_MCP_AUTH_TOKENS must be valid JSON: ${(error as Error).message}`);
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error("OB_MCP_AUTH_TOKENS must be a JSON array.");
+  }
+
+  parsed.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw new Error(`OB_MCP_AUTH_TOKENS[${index}] must be an object.`);
+    }
+    const record = entry as Record<string, unknown>;
+    const token = typeof record.token === "string" ? record.token : undefined;
+    const tokenFile = typeof record.tokenFile === "string" ? record.tokenFile.trim() : undefined;
+    const resolvedToken = token ?? (tokenFile ? readFileSync(tokenFile, "utf8").replace(/\r?\n$/, "") : undefined);
+    if (!resolvedToken) {
+      throw new Error(`OB_MCP_AUTH_TOKENS[${index}] requires token or tokenFile.`);
+    }
+    const name =
+      typeof record.name === "string" && record.name.trim()
+        ? validateTokenPolicyName(record.name)
+        : `token-${index + 1}`;
+    policies.push({
+      name,
+      token: resolvedToken,
+      profiles: parseOptionalStringArray(record.profiles, `OB_MCP_AUTH_TOKENS[${index}].profiles`, validateProfileName),
+      tools: parseOptionalStringArray(record.tools, `OB_MCP_AUTH_TOKENS[${index}].tools`, validateToolName)
+    });
+  });
+
+  const seen = new Set<string>();
+  for (const policy of policies) {
+    if (seen.has(policy.token)) {
+      throw new Error(`Duplicate bearer token configured for "${policy.name}".`);
+    }
+    seen.add(policy.token);
+  }
+  return policies;
+}
+
+function validateAuthTokenStrength(policies: AuthTokenPolicy[], strict: boolean): void {
+  if (!strict) {
+    return;
+  }
+
+  const weak = policies.find((policy) => Buffer.byteLength(policy.token, "utf8") < 32);
+  if (weak) {
+    throw new Error(`HTTP bearer token "${weak.name}" must be at least 32 bytes in production or non-local HTTP mode.`);
+  }
+}
+
+function parseTrustProxy(value: string | undefined): boolean | number | string {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return false;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  if (/^\d+$/.test(normalized)) {
+    const hops = Number.parseInt(normalized, 10);
+    if (hops <= 0) {
+      throw new Error("OB_MCP_TRUST_PROXY hop count must be a positive integer.");
+    }
+    return hops;
+  }
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+
+  const entries = parseList(trimmed, []);
+  for (const entry of entries) {
+    const preset = entry.toLowerCase();
+    if (TRUST_PROXY_PRESETS.has(preset)) {
+      continue;
+    }
+    validateAllowedIpRules([entry]);
+  }
+  return entries.join(",");
+}
+
+function describeTrustProxy(value: boolean | number | string): string {
+  if (value === false) {
+    return "disabled";
+  }
+  if (value === true) {
+    return "all proxies";
+  }
+  if (typeof value === "number") {
+    return `${value} trusted hop${value === 1 ? "" : "s"}`;
+  }
+  return value;
+}
+
+function parseOptionalStringArray(
+  value: unknown,
+  name: string,
+  validate: (value: string) => string
+): string[] | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    throw new Error(`${name} must be an array of strings.`);
+  }
+  return value.map((entry, index) => {
+    if (typeof entry !== "string") {
+      throw new Error(`${name}[${index}] must be a string.`);
+    }
+    return validate(entry);
+  });
+}
+
+function validateTokenPolicyName(value: string): string {
+  const name = value.trim();
+  if (!/^[A-Za-z0-9_.-]{1,64}$/.test(name)) {
+    throw new Error(`Invalid auth token policy name "${value}". Use letters, numbers, underscores, dashes, or dots.`);
+  }
+  return name;
+}
+
+function validateToolName(value: string): string {
+  const tool = value.trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(tool)) {
+    throw new Error(`Invalid tool name "${value}".`);
+  }
+  return tool;
+}
+
+function validateHeaderName(value: string, name: string): string {
+  if (!HEADER_NAME_PATTERN.test(value)) {
+    throw new Error(`${name} must be a valid HTTP header name.`);
+  }
+  return value.toLowerCase();
 }
 
 function parseCompatibility(value: string | undefined): CompatibilityMode {

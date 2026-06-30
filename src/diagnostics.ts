@@ -27,9 +27,12 @@ export function diagnoseGateway(config: GatewayConfig, httpConfig?: HttpConfig):
     const nonLocal = !["127.0.0.1", "localhost", "::1", "[::1]"].includes(httpConfig.host.toLowerCase());
     checks.push({
       id: "http.auth_token",
-      severity: httpConfig.authToken ? "pass" : "warn",
-      message: httpConfig.authToken ? "HTTP MCP bearer token is configured." : "HTTP MCP bearer token is not configured.",
-      remediation: "Set OB_MCP_AUTH_TOKEN or OB_MCP_AUTH_TOKEN_FILE for remote HTTP deployments."
+      severity: httpConfig.authTokens.length > 0 ? "pass" : "warn",
+      message:
+        httpConfig.authTokens.length > 0
+          ? `HTTP MCP bearer token policy is configured (${httpConfig.authTokens.length} token${httpConfig.authTokens.length === 1 ? "" : "s"}).`
+          : "HTTP MCP bearer token is not configured.",
+      remediation: "Set OB_MCP_AUTH_TOKEN, OB_MCP_AUTH_TOKEN_FILE, or scoped OB_MCP_AUTH_TOKENS for remote HTTP deployments."
     });
     checks.push({
       id: "http.allowed_hosts",
@@ -53,11 +56,24 @@ export function diagnoseGateway(config: GatewayConfig, httpConfig?: HttpConfig):
     });
     checks.push({
       id: "http.trust_proxy",
-      severity: httpConfig.trustProxy ? "pass" : "warn",
-      message: httpConfig.trustProxy
-        ? "HTTP proxy trust is enabled for forwarded client IPs."
-        : "HTTP proxy trust is disabled; source IP checks use the direct peer address.",
-      remediation: "Set OB_MCP_TRUST_PROXY=true only when the server is behind a trusted reverse proxy or ingress."
+      severity: httpConfig.trustProxy === true && nonLocal ? "warn" : "pass",
+      message:
+        httpConfig.trustProxy === false
+          ? "HTTP proxy trust is disabled; source IP checks use the direct peer address."
+          : `HTTP proxy trust is set to ${httpConfig.trustProxyDescription}.`,
+      remediation: "Prefer OB_MCP_TRUST_PROXY=loopback, a hop count, or explicit trusted proxy CIDR instead of trusting all proxies."
+    });
+    checks.push({
+      id: "http.metrics_auth",
+      severity: httpConfig.metricsAuthRequired || !nonLocal ? "pass" : "warn",
+      message: httpConfig.metricsAuthRequired ? "/metrics requires bearer auth." : "/metrics does not require bearer auth.",
+      remediation: "Set OB_MCP_METRICS_AUTH_REQUIRED=true unless metrics are available only inside a trusted monitoring network."
+    });
+    checks.push({
+      id: "http.health_auth",
+      severity: httpConfig.healthAuthRequired || !nonLocal ? "pass" : "warn",
+      message: httpConfig.healthAuthRequired ? "/healthz requires bearer auth." : "/healthz does not require bearer auth.",
+      remediation: "Set OB_MCP_HEALTH_AUTH_REQUIRED=true if external users can reach /healthz."
     });
     checks.push({
       id: "http.rate_limit",
@@ -123,6 +139,24 @@ function diagnoseProfile(config: ObConfig): DiagnosticCheck[] {
       ? "Read-only transaction enforcement is enabled."
       : "Read-only transaction enforcement is disabled.",
     remediation: "Keep OB_ENFORCE_READ_ONLY_TX=true."
+  });
+  checks.push({
+    id: "profile.max_rows",
+    profile,
+    severity: config.maxRows > 0 ? "pass" : "fail",
+    message: `OB_MAX_ROWS hard cap is ${config.maxRows}.`
+  });
+  checks.push({
+    id: "profile.max_result_bytes",
+    profile,
+    severity: config.maxResultBytes > 0 ? "pass" : "fail",
+    message: `OB_MAX_RESULT_BYTES hard cap is ${config.maxResultBytes}.`
+  });
+  checks.push({
+    id: "profile.max_concurrent_queries",
+    profile,
+    severity: config.maxConcurrentQueries > 0 ? "pass" : "fail",
+    message: `OB_MAX_CONCURRENT_QUERIES is ${config.maxConcurrentQueries}.`
   });
   checks.push({
     id: "profile.select_star",

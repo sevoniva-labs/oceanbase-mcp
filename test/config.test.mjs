@@ -7,6 +7,8 @@ import test from "node:test";
 import { loadConfig, loadGatewayConfig, loadHttpConfig, publicConfig } from "../dist/config.js";
 import { diagnoseGateway } from "../dist/diagnostics.js";
 
+const STRONG_TOKEN = "0123456789abcdef0123456789abcdef";
+
 test("loadConfig uses local OceanBase defaults outside production", () => {
   const config = loadConfig({});
   assert.equal(config.host, "127.0.0.1");
@@ -15,6 +17,9 @@ test("loadConfig uses local OceanBase defaults outside production", () => {
   assert.equal(config.password, "ob_password");
   assert.equal(config.productionMode, false);
   assert.equal(config.mcpReadOnly, true);
+  assert.equal(config.maxRows, 100);
+  assert.equal(config.maxResultBytes, 1_048_576);
+  assert.equal(config.maxConcurrentQueries, 5);
 });
 
 test("loadConfig builds user from OceanBase username tenant and cluster", () => {
@@ -168,7 +173,8 @@ test("loadHttpConfig requires a bearer token in production", () => {
     OB_ALLOWED_SCHEMAS: "app"
   });
   assert.throws(() => loadHttpConfig(productionConfig, {}), /OB_MCP_AUTH_TOKEN/);
-  assert.equal(loadHttpConfig(productionConfig, { OB_MCP_AUTH_TOKEN: "token" }).authToken, "token");
+  assert.throws(() => loadHttpConfig(productionConfig, { OB_MCP_AUTH_TOKEN: "token" }), /at least 32 bytes/);
+  assert.equal(loadHttpConfig(productionConfig, { OB_MCP_AUTH_TOKEN: STRONG_TOKEN }).authToken, STRONG_TOKEN);
 });
 
 test("loadHttpConfig applies HTTP hardening defaults", () => {
@@ -184,20 +190,22 @@ test("loadHttpConfig requires auth and allowed hosts for non-local binds", () =>
   const localConfig = loadConfig({});
   assert.throws(() => loadHttpConfig(localConfig, { OB_MCP_HOST: "0.0.0.0" }), /OB_MCP_AUTH_TOKEN/);
   assert.throws(
-    () => loadHttpConfig(localConfig, { OB_MCP_HOST: "0.0.0.0", OB_MCP_AUTH_TOKEN: "token" }),
+    () => loadHttpConfig(localConfig, { OB_MCP_HOST: "0.0.0.0", OB_MCP_AUTH_TOKEN: STRONG_TOKEN }),
     /OB_MCP_ALLOWED_HOSTS/
   );
   const httpConfig = loadHttpConfig(localConfig, {
     OB_MCP_HOST: "0.0.0.0",
-    OB_MCP_AUTH_TOKEN: "token",
+    OB_MCP_AUTH_TOKEN: STRONG_TOKEN,
     OB_MCP_ALLOWED_HOSTS: "mcp.local",
     OB_MCP_ALLOWED_IPS: "203.0.113.10,10.0.0.0/8",
-    OB_MCP_TRUST_PROXY: "true"
+    OB_MCP_TRUST_PROXY: "loopback"
   });
-  assert.equal(httpConfig.authToken, "token");
+  assert.equal(httpConfig.authToken, STRONG_TOKEN);
   assert.deepEqual(httpConfig.allowedHosts, ["mcp.local"]);
   assert.deepEqual(httpConfig.allowedIps, ["203.0.113.10", "10.0.0.0/8"]);
-  assert.equal(httpConfig.trustProxy, true);
+  assert.equal(httpConfig.trustProxy, "loopback");
+  assert.equal(httpConfig.metricsAuthRequired, true);
+  assert.equal(httpConfig.healthAuthRequired, false);
 });
 
 test("loadHttpConfig validates source IP allowlist for remote binds", () => {
@@ -206,7 +214,7 @@ test("loadHttpConfig validates source IP allowlist for remote binds", () => {
     () =>
       loadHttpConfig(localConfig, {
         OB_MCP_HOST: "0.0.0.0",
-        OB_MCP_AUTH_TOKEN: "token",
+        OB_MCP_AUTH_TOKEN: STRONG_TOKEN,
         OB_MCP_ALLOWED_HOSTS: "mcp.local"
       }),
     /OB_MCP_ALLOWED_IPS/
@@ -225,18 +233,46 @@ test("loadHttpConfig requires allowed hosts for non-local production binds", () 
     OB_ALLOWED_SCHEMAS: "app"
   });
   assert.throws(
-    () => loadHttpConfig(productionConfig, { OB_MCP_AUTH_TOKEN: "token", OB_MCP_HOST: "0.0.0.0" }),
+    () => loadHttpConfig(productionConfig, { OB_MCP_AUTH_TOKEN: STRONG_TOKEN, OB_MCP_HOST: "0.0.0.0" }),
     /OB_MCP_ALLOWED_HOSTS/
   );
   assert.deepEqual(
     loadHttpConfig(productionConfig, {
-      OB_MCP_AUTH_TOKEN: "token",
+      OB_MCP_AUTH_TOKEN: STRONG_TOKEN,
       OB_MCP_HOST: "0.0.0.0",
       OB_MCP_ALLOWED_HOSTS: "mcp.example.com",
       OB_MCP_ALLOWED_IPS: "203.0.113.0/24"
     }).allowedHosts,
     ["mcp.example.com"]
   );
+});
+
+test("loadHttpConfig supports scoped bearer token policies", () => {
+  const httpConfig = loadHttpConfig(loadConfig({}), {
+    OB_MCP_AUTH_TOKENS: JSON.stringify([
+      {
+        name: "readonly-app",
+        token: STRONG_TOKEN,
+        profiles: ["prod"],
+        tools: ["ob_query", "ob_list_tables"]
+      }
+    ])
+  });
+
+  assert.equal(httpConfig.authTokens.length, 1);
+  assert.deepEqual(httpConfig.authTokens[0], {
+    name: "readonly-app",
+    token: STRONG_TOKEN,
+    profiles: ["prod"],
+    tools: ["ob_query", "ob_list_tables"]
+  });
+});
+
+test("loadHttpConfig parses constrained trust proxy settings", () => {
+  const localConfig = loadConfig({});
+  assert.equal(loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "1" }).trustProxy, 1);
+  assert.equal(loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "loopback,10.0.0.0/8" }).trustProxy, "loopback,10.0.0.0/8");
+  assert.throws(() => loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "not-a-proxy" }), /Invalid OB_MCP_ALLOWED_IPS/);
 });
 
 test("diagnoseGateway reports production profile hardening", () => {
@@ -250,7 +286,7 @@ test("diagnoseGateway reports production profile hardening", () => {
     OB_PROFILE_PROD_REQUIRE_TLS: "true",
     OB_PROFILE_PROD_SSL: "true"
   });
-  const httpConfig = loadHttpConfig(gateway.profiles.prod, { OB_MCP_AUTH_TOKEN: "token" });
+  const httpConfig = loadHttpConfig(gateway.profiles.prod, { OB_MCP_AUTH_TOKEN: STRONG_TOKEN });
   const report = diagnoseGateway(gateway, httpConfig);
   assert.equal(report.ok, true);
   assert(report.checks.some((check) => check.id === "profile.access_policy" && check.severity === "pass"));

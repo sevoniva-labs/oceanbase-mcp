@@ -35,6 +35,8 @@ test("assertReadOnlySql rejects side-effect patterns", () => {
   assert.throws(() => assertReadOnlySql("SELECT LOAD_FILE('/etc/passwd')"), /blocked side-effect/);
   assert.throws(() => assertReadOnlySql("SELECT SLEEP(10)"), /blocked side-effect/);
   assert.throws(() => assertReadOnlySql("SELECT seq.NEXTVAL FROM DUAL"), /blocked side-effect/);
+  assert.throws(() => assertReadOnlySql("SELECT id INTO @captured FROM biz_test.orders"), /blocked side-effect/);
+  assert.throws(() => assertReadOnlySql("SELECT id INTO captured_id FROM biz_test.orders"), /blocked side-effect/);
 });
 
 test("assertSingleStatement allows semicolons inside strings", () => {
