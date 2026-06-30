@@ -96,6 +96,9 @@ jobs:
       - name: 测试
         run: npm test
 
+      - name: 生成 SBOM
+        run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
+
       - name: 打包
         run: npm pack
 
@@ -103,7 +106,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-package
-          path: "*.tgz"
+          path: |
+            "*.tgz"
+            sbom.cdx.json
           if-no-files-found: error
 
   image:
@@ -255,4 +260,5 @@ jobs:
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == true }}
           files: |
             dist-release/*.tgz
+            dist-release/*.json
             dist-release/*.tar.gz

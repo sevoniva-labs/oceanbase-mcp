@@ -8,7 +8,7 @@ OceanBase MCP 是 MCP client 与 OceanBase 之间的只读网关。它保护数�
 
 建议两层同时使用：
 
-- MCP 层：无写工具、SQL guard、策略检查、行数限制、输出过滤。
+- MCP 层：无写工具、SQL guard、策略检查、行数/返回大小限制、并发限制、输出过滤。
 - 数据库层：尽可能使用只有 SELECT/元数据权限的最小权限账号。
 
 ## 控制项
@@ -23,12 +23,15 @@ OceanBase MCP 是 MCP client 与 OceanBase 之间的只读网关。它保护数�
 | 系统 schema 拒绝 | 默认启用。 |
 | 敏感列拒绝 | 默认启用。 |
 | 只读事务 | 默认启用。 |
-| 行数上限 | 默认启用。 |
-| HTTP Bearer token | 生产 HTTP 和非本地绑定必填。 |
+| 行数和返回大小上限 | 默认启用，且客户端不能放大。 |
+| 并发上限 | 每个 profile 默认启用。 |
+| HTTP Bearer token | 生产 HTTP 和非本地绑定必填，支持按 profile/tool 限制。 |
 | Host allowlist | 非本地绑定必填。 |
 | 来源 IP allowlist | 非本地绑定必填。 |
+| `/metrics` 鉴权 | 生产和非本地绑定默认启用。 |
 | 限流和 body 限制 | 默认启用。 |
 | secret 文件加载 | 支持数据库密码和 Bearer token。 |
+| 数据库账号权限核验 | `ob_verify_permissions` 读取 grants/session privileges。 |
 
 ## 来源 IP Allowlist
 
@@ -41,10 +44,10 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8,2001:db8::/32
 部署在可信代理之后：
 
 ```bash
-OB_MCP_TRUST_PROXY=true
+OB_MCP_TRUST_PROXY=1
 ```
 
-只有 MCP 服务不能被不可信客户端绕过代理直接访问时，才启用 proxy trust。
+只有 MCP 服务不能被不可信客户端绕过代理直接访问时，才启用 proxy trust。`true` 表示信任所有代理转发头，优先使用跳数或明确代理 CIDR。
 
 ## 生产建议
 
@@ -55,7 +58,9 @@ OB_MCP_TRUST_PROXY=true
 - 设置 `OB_ALLOWED_SCHEMAS` 或 schema-qualified `OB_ALLOWED_TABLES`。
 - 保持 `OB_ALLOW_SELECT_STAR=false`。
 - 保持 `OB_ENFORCE_READ_ONLY_TX=true`。
+- 设置 `OB_MAX_ROWS`、`OB_MAX_RESULT_BYTES` 和 `OB_MAX_CONCURRENT_QUERIES`。
 - 尽可能使用只有 SELECT/元数据权限的数据库账号。
+- 用 `ob_verify_permissions` 核验账号权限。
 - 采集 JSON 日志并抓取 `/metrics`。
 
 ## 明确不支持

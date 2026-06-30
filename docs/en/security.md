@@ -8,7 +8,7 @@ OceanBase MCP is a read-only gateway between an MCP client and OceanBase. It pro
 
 Use both layers:
 
-- MCP layer: no write tools, SQL guards, policy checks, row limits, output filtering.
+- MCP layer: no write tools, SQL guards, policy checks, row/response-size caps, concurrency caps, output filtering.
 - Database layer: least-privileged account with SELECT/metadata grants where possible.
 
 ## Controls
@@ -23,12 +23,15 @@ Use both layers:
 | System schema denial | Enabled by default. |
 | Sensitive column denial | Enabled by default. |
 | Read-only transaction | Enabled by default. |
-| Row cap | Enabled by default. |
-| HTTP bearer token | Required in production HTTP and non-local bind. |
+| Row and response-size caps | Enabled by default and cannot be raised by clients. |
+| Concurrency cap | Enabled per profile by default. |
+| HTTP bearer token | Required in production HTTP and non-local bind; can be scoped by profile/tool. |
 | Host allowlist | Required for non-local bind. |
 | Source IP allowlist | Required for non-local bind. |
+| `/metrics` auth | Enabled by default in production and non-local bind. |
 | Rate limit and body limit | Enabled by default. |
 | Secret file loading | Supported for database password and bearer token. |
+| Database permission check | `ob_verify_permissions` reads grants/session privileges. |
 
 ## Source IP Allowlist
 
@@ -41,10 +44,10 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8,2001:db8::/32
 When the server is behind a trusted proxy:
 
 ```bash
-OB_MCP_TRUST_PROXY=true
+OB_MCP_TRUST_PROXY=1
 ```
 
-Only enable proxy trust when the MCP server cannot be reached directly by untrusted clients.
+Only enable proxy trust when the MCP server cannot be reached directly by untrusted clients. `true` trusts all forwarded headers; prefer a hop count or explicit proxy CIDR.
 
 ## Production Recommendations
 
@@ -55,7 +58,9 @@ Only enable proxy trust when the MCP server cannot be reached directly by untrus
 - Use `OB_ALLOWED_SCHEMAS` or schema-qualified `OB_ALLOWED_TABLES`.
 - Keep `OB_ALLOW_SELECT_STAR=false`.
 - Keep `OB_ENFORCE_READ_ONLY_TX=true`.
+- Set `OB_MAX_ROWS`, `OB_MAX_RESULT_BYTES`, and `OB_MAX_CONCURRENT_QUERIES`.
 - Prefer a database account with only SELECT/metadata grants.
+- Run `ob_verify_permissions` for the configured database account.
 - Collect JSON logs and scrape `/metrics`.
 
 ## What Is Intentionally Not Supported

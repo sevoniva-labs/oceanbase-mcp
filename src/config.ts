@@ -394,7 +394,11 @@ function parseTrustProxy(value: string | undefined): boolean | number | string {
     if (TRUST_PROXY_PRESETS.has(preset)) {
       continue;
     }
-    validateAllowedIpRules([entry]);
+    try {
+      validateAllowedIpRules([entry]);
+    } catch {
+      throw new Error(`Invalid OB_MCP_TRUST_PROXY entry "${entry}". Use false, true, hop count, loopback, or IP/CIDR entries.`);
+    }
   }
   return entries.join(",");
 }

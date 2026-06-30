@@ -9,9 +9,10 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 - Connects to OceanBase through OBProxy or a MySQL protocol endpoint.
 - Supports OceanBase MySQL and Oracle compatibility modes.
 - Exposes only read-only MCP tools.
-- Enforces schema/table allowlists, denied system schemas, denied sensitive columns, row limits, SQL length limits, and read-only transactions.
+- Enforces schema/table allowlists, denied system schemas, denied sensitive columns, hard row/response caps, SQL length limits, and read-only transactions.
 - Provides stdio mode for local development and HTTP mode for shared deployments.
-- Protects HTTP mode with bearer auth, Host allowlist, source IP allowlist, body limits, and rate limiting.
+- Protects HTTP mode with bearer token policies, Host allowlist, source IP allowlist, endpoint auth, body limits, and rate limiting.
+- Provides a read-only database account permission verification tool.
 - Ships Docker, Kubernetes, Nginx, systemd, and local OpenCode examples.
 
 ## Read-Only Contract
@@ -102,6 +103,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | --- | --- |
 | `ob_list_profiles` | List configured profiles with secrets redacted. |
 | `ob_config_diagnostics` | Report deployment and policy checks. |
+| `ob_verify_permissions` | Check current database grants for write or administrative privileges. |
 | `ob_ping` | Verify the OceanBase connection. |
 | `ob_policy_explain` | Explain whether SQL would be allowed. |
 | `ob_query` | Run strict read-only SQL. |

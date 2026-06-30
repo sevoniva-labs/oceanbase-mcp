@@ -55,7 +55,9 @@ docker run --rm \
   -e OB_ALLOWED_SCHEMAS=app_schema \
   -e OB_ALLOW_SELECT_STAR=false \
   -e OB_ENFORCE_READ_ONLY_TX=true \
-  -e OB_MCP_AUTH_TOKEN=change-me-long-random-token \
+  -e OB_MAX_ROWS=100 \
+  -e OB_MAX_RESULT_BYTES=1048576 \
+  -e OB_MCP_AUTH_TOKEN=change-me-long-random-token-32b \
   -e OB_MCP_ALLOWED_IPS=127.0.0.1 \
   oceanbase-mcp:latest
 ```
@@ -76,7 +78,7 @@ curl -f http://127.0.0.1:3000/healthz
 ```bash
 mkdir -p secrets
 printf '%s' 'database-password' > secrets/ob_password
-printf '%s' 'long-random-mcp-token' > secrets/ob_mcp_auth_token
+printf '%s' 'long-random-mcp-token-32b-or-longer' > secrets/ob_mcp_auth_token
 ```
 
 3. 启动：
@@ -116,6 +118,14 @@ kubectl get ingress ob-mcp
 
 示例使用 2 个副本，drop Linux capabilities，启用只读根文件系统，以只读方式挂载 secret，并配置 `/healthz` 探针。
 
+可选生产增强模板：
+
+```bash
+kubectl apply -f deploy/kubernetes/ob-mcp-optional.yaml
+```
+
+该模板包含 `PodDisruptionBudget`、`HorizontalPodAutoscaler`、`NetworkPolicy` 和 `ServiceMonitor`。应用前必须按实际 namespace、Ingress Controller、监控系统和 OBProxy 网段调整。
+
 ## Nginx 反向代理
 
 以 [deploy/nginx/ob-mcp.conf](../../deploy/nginx/ob-mcp.conf) 为模板。
@@ -127,10 +137,10 @@ OB_MCP_HOST=127.0.0.1
 OB_MCP_PORT=3000
 OB_MCP_ALLOWED_HOSTS=your-mcp.example.com
 OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
-OB_MCP_TRUST_PROXY=true
+OB_MCP_TRUST_PROXY=1
 ```
 
-只有 Nginx 是可信入口，且客户端不能绕过 Nginx 访问 MCP 服务时，才设置 `OB_MCP_TRUST_PROXY=true`。
+只有 Nginx 是可信入口，且客户端不能绕过 Nginx 访问 MCP 服务时，才启用代理信任。单层 Nginx 通常使用 `OB_MCP_TRUST_PROXY=1`。
 
 ## systemd
 
@@ -176,10 +186,12 @@ Windows 仅作为本地开发和 OpenCode 连接场景。生产承载建议使�
 - 已设置 `OB_ALLOWED_SCHEMAS` 或 schema-qualified `OB_ALLOWED_TABLES`。
 - `OB_ALLOW_SELECT_STAR=false`。
 - `OB_ENFORCE_READ_ONLY_TX=true`。
+- `OB_MAX_ROWS`、`OB_MAX_RESULT_BYTES`、`OB_MAX_CONCURRENT_QUERIES` 已按业务容量设定。
 - HTTP 模式设置了 `OB_MCP_AUTH_TOKEN` 或 `OB_MCP_AUTH_TOKEN_FILE`。
 - 非本地绑定设置了 `OB_MCP_ALLOWED_HOSTS` 和 `OB_MCP_ALLOWED_IPS`。
-- 只有在可信代理/Ingress 后才设置 `OB_MCP_TRUST_PROXY=true`。
+- 只有在可信代理/Ingress 后才设置 `OB_MCP_TRUST_PROXY`，优先使用跳数或明确 CIDR。
 - 边缘入口已启用 TLS。
+- 已运行 `ob_verify_permissions` 核验数据库账号权限。
 - 日志和 metrics 已接入采集。
 - 发布前通过 `npm test`、smoke、audit 和 pack dry-run。
 
@@ -187,8 +199,8 @@ Windows 仅作为本地开发和 OpenCode 连接场景。生产承载建议使�
 
 仓库内置：
 
-- [.github/workflows/ci.yml](../../.github/workflows/ci.yml)：构建、测试、审计、npm pack dry-run、Docker build。
-- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
+- [.github/workflows/ci.yml](../../.github/workflows/ci.yml)：构建、测试、审计、SBOM、npm pack dry-run、Docker build。
+- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
 
 Release workflow 产物：
 
@@ -198,6 +210,7 @@ Release workflow 产物：
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
 - `ob-mcp-X.Y.Z.tgz`
+- `sbom.cdx.json`
 
 手动发布：
 

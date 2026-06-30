@@ -28,10 +28,11 @@ OceanBase MCP is read-only by design. It has no write tool, rejects write/contro
 - Local stdio MCP server for OpenCode desktop/local workflows.
 - Streamable HTTP MCP server for shared or remote deployments.
 - Multiple profiles for dev, staging, production, tenants, or clusters.
-- Schema/table allowlist, denied system schemas, denied sensitive columns, and masked sample rows.
+- Schema/table allowlist, denied system schemas, denied sensitive columns, hard row/response caps, and masked sample rows.
 - Source IP allowlist with exact IP and CIDR entries through `OB_MCP_ALLOWED_IPS`.
-- HTTP bearer token, Host allowlist, body limit, and rate limiting.
+- HTTP bearer token policies, Host allowlist, body limit, endpoint auth, and rate limiting.
 - Health endpoint, Prometheus metrics, JSON audit logs, and config diagnostics.
+- Database grant verification through a read-only permission check tool.
 - Docker, Docker Compose, Kubernetes, Nginx, systemd, and local macOS/Linux/Windows client examples.
 - GitHub Actions for CI, tagged releases, GHCR multi-architecture images, and offline image archives.
 
@@ -63,6 +64,8 @@ OB_MCP_READ_ONLY=true
 OB_ALLOWED_SCHEMAS=app_schema
 OB_ALLOW_SELECT_STAR=false
 OB_ENFORCE_READ_ONLY_TX=true
+OB_MAX_ROWS=100
+OB_MAX_RESULT_BYTES=1048576
 OB_MCP_HOST=127.0.0.1
 OB_MCP_AUTH_TOKEN_FILE=/run/secrets/ob_mcp_auth_token
 OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
@@ -76,6 +79,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | --- | --- |
 | `ob_list_profiles` | List configured profiles with secrets redacted. |
 | `ob_config_diagnostics` | Report deployment and policy checks. |
+| `ob_verify_permissions` | Check current database grants for write/admin privileges. |
 | `ob_ping` | Verify the OceanBase connection. |
 | `ob_policy_explain` | Explain whether SQL would be allowed. |
 | `ob_query` | Run strict read-only SQL. |

@@ -30,6 +30,9 @@ OB_DB_USER_READ_ONLY=true
 OB_ALLOWED_SCHEMAS=app_schema
 OB_ALLOW_SELECT_STAR=false
 OB_ENFORCE_READ_ONLY_TX=true
+OB_MAX_ROWS=100
+OB_MAX_RESULT_BYTES=1048576
+OB_MAX_CONCURRENT_QUERIES=5
 OB_MCP_HOST=127.0.0.1
 OB_MCP_PORT=3000
 OB_MCP_PATH=/mcp
@@ -71,9 +74,11 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_REQUIRE_ACCESS_POLICY` | 生产：`true` | 生产环境要求配置 allowlist。 |
 | `OB_INCLUDE_SYSTEM_SCHEMAS` | `false` | 元数据工具是否包含系统 schema。 |
 | `OB_ENFORCE_READ_ONLY_TX` | `true` | 用户 SQL 是否放入数据库只读事务。 |
-| `OB_MAX_ROWS` | `100` | 默认返回行数上限。 |
+| `OB_MAX_ROWS` | `100` | 返回行数硬上限。客户端传入的 `maxRows` 或 `limit` 不能超过它。 |
+| `OB_MAX_RESULT_BYTES` | `1048576` | 单次工具返回 JSON 大小硬上限，超出会拒绝返回。 |
 | `OB_MAX_SQL_LENGTH` | `20000` | SQL 文本长度上限。 |
 | `OB_MAX_PARAM_COUNT` | `500` | SQL 参数数量上限。 |
+| `OB_MAX_CONCURRENT_QUERIES` | `5` | 每个 profile 同时执行的数据库操作上限。 |
 
 ## HTTP 服务
 
@@ -84,9 +89,14 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MCP_PATH` | `/mcp` | MCP endpoint 路径。 |
 | `OB_MCP_AUTH_TOKEN` | 未设置 | HTTP MCP Bearer token。生产和非本地绑定必填。 |
 | `OB_MCP_AUTH_TOKEN_FILE` | 未设置 | 保存 Bearer token 的文件。 |
+| `OB_MCP_AUTH_TOKENS` | 未设置 | JSON 数组，配置多个 token 及其允许的 `profiles`、`tools`。 |
+| `OB_MCP_AUTH_TOKENS_FILE` | 未设置 | 保存上述 JSON 数组的文件。 |
 | `OB_MCP_ALLOWED_HOSTS` | 未设置 | 允许的 Host header，逗号分隔。非本地绑定必填。 |
 | `OB_MCP_ALLOWED_IPS` | 未设置 | 来源 IP/CIDR allowlist，逗号分隔。非本地绑定必填。 |
-| `OB_MCP_TRUST_PROXY` | `false` | 是否信任反向代理传入的客户端 IP。只在可信代理/Ingress 后启用。 |
+| `OB_MCP_TRUST_PROXY` | `false` | 反向代理信任策略。支持 `false`、`true`、可信跳数（如 `1`）、`loopback` 或 IP/CIDR 列表。 |
+| `OB_MCP_METRICS_AUTH_REQUIRED` | 生产/非本地：`true` | `/metrics` 是否要求 Bearer token。 |
+| `OB_MCP_HEALTH_AUTH_REQUIRED` | `false` | `/healthz` 是否要求 Bearer token。Kubernetes probe 通常保持 `false`。 |
+| `OB_MCP_CLIENT_ID_HEADER` | `x-ob-mcp-client-id` | 写入审计日志的客户端标识请求头。 |
 | `OB_MCP_BODY_LIMIT` | `256kb` | JSON 请求体大小上限。 |
 | `OB_MCP_RATE_LIMIT_WINDOW_MS` | `60000` | HTTP 限流窗口。 |
 | `OB_MCP_RATE_LIMIT_MAX` | `60` | 每个限流窗口内的请求上限。 |
@@ -97,7 +107,28 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8,203.0.113.10,2001:db8::/32
 ```
 
-部署在 Nginx 或 Kubernetes Ingress 后时，只有代理可信且会处理不可信转发头，才设置 `OB_MCP_TRUST_PROXY=true`。
+部署在 Nginx 或 Kubernetes Ingress 后时，推荐使用明确跳数或代理网段，例如：
+
+```bash
+OB_MCP_TRUST_PROXY=1
+# 或
+OB_MCP_TRUST_PROXY=loopback,10.0.0.0/8
+```
+
+`OB_MCP_TRUST_PROXY=true` 会信任所有代理转发头，只适合客户端无法绕过可信入口的封闭网络。
+
+多个 HTTP token 可使用 JSON 配置：
+
+```json
+[
+  {
+    "name": "readonly-app",
+    "tokenFile": "/run/secrets/readonly_app_token",
+    "profiles": ["prod"],
+    "tools": ["ob_query", "ob_list_tables", "ob_describe_table"]
+  }
+]
+```
 
 ## TLS
 
@@ -140,4 +171,12 @@ OB_PROFILE_PROD_ALLOWED_SCHEMAS=app_schema
 npm run config:doctor
 ```
 
-诊断会检查凭据、只读模式、访问策略、HTTP 认证、Host allowlist、来源 IP allowlist、限流、body 限制和 TLS 状态。
+诊断会检查凭据、只读模式、访问策略、HTTP 认证、Host allowlist、来源 IP allowlist、限流、body 限制、返回大小、并发限制和 TLS 状态。
+
+数据库账号权限可通过 MCP 工具核验：
+
+```text
+ob_verify_permissions
+```
+
+该工具只读取当前账号 grants/session privileges，用于确认账号是否仍带有写入或管理权限。

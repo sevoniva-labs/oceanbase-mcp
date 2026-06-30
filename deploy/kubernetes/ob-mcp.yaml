@@ -4,9 +4,9 @@ metadata:
   name: ob-mcp-secrets
 type: Opaque
 stringData:
-  # 应用到真实集群前必须替换这两个值。
+  # 应用到真实集群前必须替换这两个值；token 建议不少于 32 字节。
   ob_password: replace-me
-  ob_mcp_auth_token: replace-me-long-random-token
+  ob_mcp_auth_token: replace-me-long-random-token-32b
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -25,14 +25,20 @@ data:
   OB_ALLOWED_SCHEMAS: app_schema
   OB_ALLOW_SELECT_STAR: "false"
   OB_ENFORCE_READ_ONLY_TX: "true"
+  OB_MAX_ROWS: "100"
+  OB_MAX_RESULT_BYTES: "1048576"
+  OB_MAX_CONCURRENT_QUERIES: "5"
   OB_MCP_HOST: 0.0.0.0
   OB_MCP_PORT: "3000"
   OB_MCP_PATH: /mcp
   OB_MCP_ALLOWED_HOSTS: your-mcp.example.com
   # 允许的客户端、VPN、NAT 或反向代理来源 IP/CIDR。
   OB_MCP_ALLOWED_IPS: 10.0.0.0/8,203.0.113.10
-  # 仅在 Ingress 可信且客户端无法绕过时启用。
-  OB_MCP_TRUST_PROXY: "true"
+  # Ingress 前置时通常只信任 1 跳；不要让客户端绕过 Ingress 直连 Pod/Service。
+  OB_MCP_TRUST_PROXY: "1"
+  # metrics 建议鉴权；health 默认不鉴权，便于 Kubernetes probe。
+  OB_MCP_METRICS_AUTH_REQUIRED: "true"
+  OB_MCP_HEALTH_AUTH_REQUIRED: "false"
   OB_MCP_BODY_LIMIT: 256kb
   OB_MCP_RATE_LIMIT_WINDOW_MS: "60000"
   OB_MCP_RATE_LIMIT_MAX: "60"
@@ -108,6 +114,8 @@ apiVersion: v1
 kind: Service
 metadata:
   name: ob-mcp
+  labels:
+    app: ob-mcp
 spec:
   selector:
     app: ob-mcp

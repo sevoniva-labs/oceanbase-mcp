@@ -55,7 +55,9 @@ docker run --rm \
   -e OB_ALLOWED_SCHEMAS=app_schema \
   -e OB_ALLOW_SELECT_STAR=false \
   -e OB_ENFORCE_READ_ONLY_TX=true \
-  -e OB_MCP_AUTH_TOKEN=change-me-long-random-token \
+  -e OB_MAX_ROWS=100 \
+  -e OB_MAX_RESULT_BYTES=1048576 \
+  -e OB_MCP_AUTH_TOKEN=change-me-long-random-token-32b \
   -e OB_MCP_ALLOWED_IPS=127.0.0.1 \
   oceanbase-mcp:latest
 ```
@@ -76,7 +78,7 @@ Use [docker-compose.yml](../../docker-compose.yml) as the starting point.
 ```bash
 mkdir -p secrets
 printf '%s' 'database-password' > secrets/ob_password
-printf '%s' 'long-random-mcp-token' > secrets/ob_mcp_auth_token
+printf '%s' 'long-random-mcp-token-32b-or-longer' > secrets/ob_mcp_auth_token
 ```
 
 3. Start:
@@ -116,6 +118,14 @@ kubectl get ingress ob-mcp
 
 The sample runs two replicas, drops Linux capabilities, uses a read-only root filesystem, mounts secrets read-only, and exposes `/healthz` probes.
 
+Optional production hardening templates:
+
+```bash
+kubectl apply -f deploy/kubernetes/ob-mcp-optional.yaml
+```
+
+This file includes a `PodDisruptionBudget`, `HorizontalPodAutoscaler`, `NetworkPolicy`, and `ServiceMonitor`. Edit namespace labels, ingress controller labels, monitoring labels, and OBProxy CIDR before applying.
+
 ## Nginx Reverse Proxy
 
 Use [deploy/nginx/ob-mcp.conf](../../deploy/nginx/ob-mcp.conf) as a starting point.
@@ -127,10 +137,10 @@ OB_MCP_HOST=127.0.0.1
 OB_MCP_PORT=3000
 OB_MCP_ALLOWED_HOSTS=your-mcp.example.com
 OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
-OB_MCP_TRUST_PROXY=true
+OB_MCP_TRUST_PROXY=1
 ```
 
-Use `OB_MCP_TRUST_PROXY=true` only when Nginx is the trusted peer and clients cannot bypass it.
+Enable proxy trust only when Nginx is the trusted peer and clients cannot bypass it. A single Nginx hop normally uses `OB_MCP_TRUST_PROXY=1`.
 
 ## systemd
 
@@ -176,10 +186,12 @@ Use Windows for local development and OpenCode connectivity. For production host
 - `OB_ALLOWED_SCHEMAS` or schema-qualified `OB_ALLOWED_TABLES` is set.
 - `OB_ALLOW_SELECT_STAR=false`.
 - `OB_ENFORCE_READ_ONLY_TX=true`.
+- `OB_MAX_ROWS`, `OB_MAX_RESULT_BYTES`, and `OB_MAX_CONCURRENT_QUERIES` are sized for the workload.
 - HTTP mode has `OB_MCP_AUTH_TOKEN` or `OB_MCP_AUTH_TOKEN_FILE`.
 - Non-local bind has `OB_MCP_ALLOWED_HOSTS` and `OB_MCP_ALLOWED_IPS`.
-- `OB_MCP_TRUST_PROXY=true` only behind a trusted proxy/ingress.
+- `OB_MCP_TRUST_PROXY` is set only behind a trusted proxy/ingress, preferably with a hop count or explicit CIDR.
 - TLS is terminated at the edge.
+- `ob_verify_permissions` has been run against the database account.
 - Logs and metrics are collected.
 - `npm test`, smoke tests, audit, and package dry-run pass before release.
 
@@ -187,8 +199,8 @@ Use Windows for local development and OpenCode connectivity. For production host
 
 The repository includes:
 
-- [.github/workflows/ci.yml](../../.github/workflows/ci.yml): build, test, audit, npm pack dry-run, Docker build.
-- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
+- [.github/workflows/ci.yml](../../.github/workflows/ci.yml): build, test, audit, SBOM, npm pack dry-run, Docker build.
+- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
 
 Release workflow outputs:
 
@@ -198,6 +210,7 @@ Release workflow outputs:
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
 - `ob-mcp-X.Y.Z.tgz`
+- `sbom.cdx.json`
 
 Manual release:
 

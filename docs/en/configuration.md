@@ -30,6 +30,9 @@ OB_DB_USER_READ_ONLY=true
 OB_ALLOWED_SCHEMAS=app_schema
 OB_ALLOW_SELECT_STAR=false
 OB_ENFORCE_READ_ONLY_TX=true
+OB_MAX_ROWS=100
+OB_MAX_RESULT_BYTES=1048576
+OB_MAX_CONCURRENT_QUERIES=5
 OB_MCP_HOST=127.0.0.1
 OB_MCP_PORT=3000
 OB_MCP_PATH=/mcp
@@ -71,9 +74,11 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_REQUIRE_ACCESS_POLICY` | production: `true` | Requires allowlist policy in production. |
 | `OB_INCLUDE_SYSTEM_SCHEMAS` | `false` | Includes system schemas in metadata tools. |
 | `OB_ENFORCE_READ_ONLY_TX` | `true` | Runs user SQL inside a database read-only transaction. |
-| `OB_MAX_ROWS` | `100` | Default row cap. |
+| `OB_MAX_ROWS` | `100` | Hard row cap. Client `maxRows` or `limit` values cannot exceed it. |
+| `OB_MAX_RESULT_BYTES` | `1048576` | Hard JSON response-size cap per tool call. |
 | `OB_MAX_SQL_LENGTH` | `20000` | Maximum SQL text length. |
 | `OB_MAX_PARAM_COUNT` | `500` | Maximum SQL parameter count. |
+| `OB_MAX_CONCURRENT_QUERIES` | `5` | Maximum concurrent database operations per profile. |
 
 ## HTTP Server
 
@@ -84,9 +89,14 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MCP_PATH` | `/mcp` | MCP endpoint path. |
 | `OB_MCP_AUTH_TOKEN` | unset | Bearer token for HTTP MCP. Required in production and any non-local bind. |
 | `OB_MCP_AUTH_TOKEN_FILE` | unset | File containing the bearer token. |
+| `OB_MCP_AUTH_TOKENS` | unset | JSON array of token policies with optional `profiles` and `tools` scopes. |
+| `OB_MCP_AUTH_TOKENS_FILE` | unset | File containing the token-policy JSON array. |
 | `OB_MCP_ALLOWED_HOSTS` | unset | Comma-separated allowed Host headers. Required for non-local binds. |
 | `OB_MCP_ALLOWED_IPS` | unset | Comma-separated source IP/CIDR allowlist. Required for non-local binds. |
-| `OB_MCP_TRUST_PROXY` | `false` | Trusts reverse proxy headers for client IP. Enable only behind a trusted proxy/ingress. |
+| `OB_MCP_TRUST_PROXY` | `false` | Reverse-proxy trust policy. Supports `false`, `true`, hop count such as `1`, `loopback`, or IP/CIDR entries. |
+| `OB_MCP_METRICS_AUTH_REQUIRED` | production/non-local: `true` | Requires bearer auth for `/metrics`. |
+| `OB_MCP_HEALTH_AUTH_REQUIRED` | `false` | Requires bearer auth for `/healthz`. Usually keep `false` for Kubernetes probes. |
+| `OB_MCP_CLIENT_ID_HEADER` | `x-ob-mcp-client-id` | Request header copied into audit logs as the client id. |
 | `OB_MCP_BODY_LIMIT` | `256kb` | Maximum JSON request body size. |
 | `OB_MCP_RATE_LIMIT_WINDOW_MS` | `60000` | HTTP rate-limit window. |
 | `OB_MCP_RATE_LIMIT_MAX` | `60` | Requests per rate-limit window. |
@@ -97,7 +107,28 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8,203.0.113.10,2001:db8::/32
 ```
 
-When behind Nginx or Kubernetes Ingress, set `OB_MCP_TRUST_PROXY=true` only if that proxy is trusted and strips untrusted forwarded headers.
+When behind Nginx or Kubernetes Ingress, prefer an explicit hop count or proxy CIDR:
+
+```bash
+OB_MCP_TRUST_PROXY=1
+# or
+OB_MCP_TRUST_PROXY=loopback,10.0.0.0/8
+```
+
+`OB_MCP_TRUST_PROXY=true` trusts all forwarded headers and should be used only when clients cannot bypass the trusted entrypoint.
+
+Multiple HTTP tokens can be configured with JSON:
+
+```json
+[
+  {
+    "name": "readonly-app",
+    "tokenFile": "/run/secrets/readonly_app_token",
+    "profiles": ["prod"],
+    "tools": ["ob_query", "ob_list_tables", "ob_describe_table"]
+  }
+]
+```
 
 ## TLS
 
@@ -140,4 +171,12 @@ Every MCP tool accepts an optional `profile` argument.
 npm run config:doctor
 ```
 
-The doctor checks credentials, read-only mode, access policy, HTTP auth, Host allowlist, source IP allowlist, rate limit, body limit, and TLS posture.
+The doctor checks credentials, read-only mode, access policy, HTTP auth, Host allowlist, source IP allowlist, rate limit, body limit, response-size caps, concurrency caps, and TLS posture.
+
+Database account permissions can be checked through the MCP tool:
+
+```text
+ob_verify_permissions
+```
+
+It reads current grants/session privileges and reports write or administrative privileges if present.

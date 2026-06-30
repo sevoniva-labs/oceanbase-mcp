@@ -47,6 +47,20 @@ test("verifyReadOnlyPermissions flags Oracle-compatible write privileges", async
   assert.deepEqual(report.writablePrivileges, ["CREATE TABLE", "UPDATE ANY TABLE"]);
 });
 
+test("verifyReadOnlyPermissions returns warn when Oracle-compatible privilege views are unavailable", async () => {
+  const pool = {
+    async query() {
+      throw new Error("view not found");
+    }
+  };
+
+  const report = await verifyReadOnlyPermissions(pool, "oracle", 1_000);
+
+  assert.equal(report.ok, false);
+  assert.equal(report.severity, "warn");
+  assert.match(report.error, /No supported/);
+});
+
 function queryPool(rows) {
   return {
     async query() {

@@ -75,6 +75,7 @@ try {
   const profileResult = parseToolJson(profiles);
   const defaultProfile = profileResult.defaultProfile;
   const diagnostics = await client.callTool({ name: "ob_config_diagnostics", arguments: {} });
+  const permissions = await client.callTool({ name: "ob_verify_permissions", arguments: {} });
   const policyExplain = await client.callTool({
     name: "ob_policy_explain",
     arguments: { sql: "SHOW DATABASES" }
@@ -147,6 +148,7 @@ try {
   });
   await client.close();
   const diagnosticsResult = parseToolJson(diagnostics);
+  const permissionsResult = parseToolJson(permissions);
   const policyExplainResult = parseToolJson(policyExplain);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
@@ -162,6 +164,7 @@ try {
   const expectedEnterpriseTools = [
     "ob_list_profiles",
     "ob_config_diagnostics",
+    "ob_verify_permissions",
     "ob_policy_explain",
     "ob_search_catalog",
     "ob_get_table_schema",
@@ -173,7 +176,7 @@ try {
 
   const output = {
     toolNames,
-    healthOk: health.ok === true && health.mode === "http" && Array.isArray(health.profiles),
+    healthOk: health.ok === true && health.mode === "http" && Number.isInteger(health.profileCount),
     metricsOk: metrics.ok && metricsText.includes("ob_mcp_http_requests_total"),
     unauthorizedStatus: unauthorized.status,
     forbiddenIpStatus: forbiddenIp.status,
@@ -181,6 +184,7 @@ try {
     explainRows: explainOutput.rows.length,
     profilesOk: profileResult.defaultProfile === defaultProfile && Boolean(profileResult.profiles?.[defaultProfile]),
     diagnosticsOk: diagnosticsResult.ok === true,
+    permissionsOk: Array.isArray(permissionsResult.writablePrivileges),
     policyExplainBlocked: policyExplainResult.allowed === false,
     catalogRows: catalogRows.length,
     tableSchemaRows: tableSchemaRows.length,
@@ -212,6 +216,7 @@ try {
     output.forbiddenIpStatus !== 403 ||
     !output.profilesOk ||
     !output.diagnosticsOk ||
+    !output.permissionsOk ||
     !output.policyExplainBlocked ||
     !output.enterpriseTools ||
     !output.resourcesOk ||

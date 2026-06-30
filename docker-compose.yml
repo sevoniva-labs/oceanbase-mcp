@@ -21,6 +21,9 @@ services:
       OB_ALLOWED_SCHEMAS: app_schema
       OB_ALLOW_SELECT_STAR: "false"
       OB_ENFORCE_READ_ONLY_TX: "true"
+      OB_MAX_ROWS: "100"
+      OB_MAX_RESULT_BYTES: "1048576"
+      OB_MAX_CONCURRENT_QUERIES: "5"
       OB_MCP_HOST: 0.0.0.0
       OB_MCP_PORT: "3000"
       OB_MCP_PATH: /mcp
@@ -28,8 +31,10 @@ services:
       OB_MCP_ALLOWED_HOSTS: localhost,127.0.0.1,your-mcp.example.com
       # 允许访问 /mcp、/healthz、/metrics 的来源 IP 或 CIDR。
       OB_MCP_ALLOWED_IPS: 127.0.0.1,10.0.0.0/8,203.0.113.10
-      # 仅在可信反向代理后启用，且代理必须控制转发头。
-      OB_MCP_TRUST_PROXY: "true"
+      # 有一层可信反向代理时使用 1；本机直连可设为 false。
+      OB_MCP_TRUST_PROXY: "1"
+      OB_MCP_METRICS_AUTH_REQUIRED: "true"
+      OB_MCP_HEALTH_AUTH_REQUIRED: "false"
       OB_MCP_BODY_LIMIT: 256kb
       OB_MCP_RATE_LIMIT_WINDOW_MS: "60000"
       OB_MCP_RATE_LIMIT_MAX: "60"

@@ -1,0 +1,95 @@
+# 可选生产增强模板。应用前请按集群命名空间、Ingress、监控和 OceanBase 网络修改。
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: ob-mcp
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: ob-mcp
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: ob-mcp
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: ob-mcp
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ob-mcp
+spec:
+  podSelector:
+    matchLabels:
+      app: ob-mcp
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 修改为实际 Ingress Controller 或内网客户端所在 namespace。
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 3000
+    # 如 Prometheus 不经过 Ingress 抓取 /metrics，请改成实际监控 namespace。
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    # 允许 DNS 解析。若集群 DNS namespace 不同，请调整。
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # 修改为 OBProxy 或 OceanBase 的真实网段和端口。
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+      ports:
+        - protocol: TCP
+          port: 2883
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ob-mcp
+  labels:
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app: ob-mcp
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 30s
+      bearerTokenSecret:
+        name: ob-mcp-secrets
+        key: ob_mcp_auth_token

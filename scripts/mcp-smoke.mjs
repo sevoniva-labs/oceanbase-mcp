@@ -69,6 +69,7 @@ try {
   const profileResult = parseToolJson(profiles);
   const defaultProfile = profileResult.defaultProfile;
   const diagnostics = await send("tools/call", { name: "ob_config_diagnostics", arguments: {} });
+  const permissions = await send("tools/call", { name: "ob_verify_permissions", arguments: {} });
   const policyExplain = await send("tools/call", {
     name: "ob_policy_explain",
     arguments: { sql: "SHOW DATABASES" }
@@ -145,6 +146,7 @@ try {
     arguments: {}
   });
   const diagnosticsResult = parseToolJson(diagnostics);
+  const permissionsResult = parseToolJson(permissions);
   const policyExplainResult = parseToolJson(policyExplain);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
@@ -159,6 +161,7 @@ try {
   const expectedEnterpriseTools = [
     "ob_list_profiles",
     "ob_config_diagnostics",
+    "ob_verify_permissions",
     "ob_policy_explain",
     "ob_search_catalog",
     "ob_get_table_schema",
@@ -173,6 +176,7 @@ try {
     toolNames,
     profilesOk: profileResult.defaultProfile === defaultProfile && Boolean(profileResult.profiles?.[defaultProfile]),
     diagnosticsOk: diagnosticsResult.ok === true,
+    permissionsOk: Array.isArray(permissionsResult.writablePrivileges),
     policyExplainBlocked: policyExplainResult.allowed === false,
     pingOk: JSON.parse(ping.content[0].text).ok === true,
     queryRows: JSON.parse(query.content[0].text).rows,
@@ -204,6 +208,7 @@ try {
   if (
     !output.profilesOk ||
     !output.diagnosticsOk ||
+    !output.permissionsOk ||
     !output.policyExplainBlocked ||
     !output.pingOk ||
     !output.enterpriseTools ||

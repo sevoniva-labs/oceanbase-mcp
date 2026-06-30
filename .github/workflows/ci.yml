@@ -39,6 +39,16 @@ jobs:
       - name: 依赖审计
         run: npm audit --omit=dev --audit-level=moderate
 
+      - name: 生成 SBOM
+        run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
+
+      - name: 上传 SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          if-no-files-found: error
+
       - name: npm 打包检查
         run: npm pack --dry-run
 

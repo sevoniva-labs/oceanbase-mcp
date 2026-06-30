@@ -272,7 +272,7 @@ test("loadHttpConfig parses constrained trust proxy settings", () => {
   const localConfig = loadConfig({});
   assert.equal(loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "1" }).trustProxy, 1);
   assert.equal(loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "loopback,10.0.0.0/8" }).trustProxy, "loopback,10.0.0.0/8");
-  assert.throws(() => loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "not-a-proxy" }), /Invalid OB_MCP_ALLOWED_IPS/);
+  assert.throws(() => loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "not-a-proxy" }), /Invalid OB_MCP_TRUST_PROXY/);
 });
 
 test("diagnoseGateway reports production profile hardening", () => {

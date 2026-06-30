@@ -9,9 +9,10 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 - 通过 OBProxy 或 MySQL 协议端点连接 OceanBase。
 - 支持 OceanBase MySQL 模式和 Oracle 模式。
 - 只暴露只读 MCP 工具。
-- 支持 schema/table allowlist、系统库隐藏、敏感列拦截、行数限制、SQL 长度限制和只读事务。
+- 支持 schema/table allowlist、系统库隐藏、敏感列拦截、行数和返回大小硬限制、SQL 长度限制和只读事务。
 - 支持本地 stdio 模式，也支持共享部署的 HTTP 模式。
-- HTTP 模式支持 Bearer token、Host allowlist、来源 IP allowlist、body 限制和限流。
+- HTTP 模式支持 Bearer token 策略、Host allowlist、来源 IP allowlist、端点鉴权、body 限制和限流。
+- 提供数据库账号权限只读核验工具。
 - 提供 Docker、Kubernetes、Nginx、systemd 和本地 OpenCode 示例。
 
 ## 只读边界
@@ -102,6 +103,7 @@ npm run start:http
 | --- | --- |
 | `ob_list_profiles` | 列出已配置 profile，并隐藏敏感信息。 |
 | `ob_config_diagnostics` | 输出部署和策略诊断。 |
+| `ob_verify_permissions` | 检查当前数据库账号是否包含写入或管理权限。 |
 | `ob_ping` | 验证 OceanBase 连接。 |
 | `ob_policy_explain` | 解释 SQL 是否会被允许。 |
 | `ob_query` | 执行严格只读 SQL。 |
