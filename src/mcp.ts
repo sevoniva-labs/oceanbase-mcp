@@ -5,12 +5,14 @@ import type { AuthPrincipal, GatewayConfig, HttpConfig, ObConfig } from "./confi
 import { publicConfig } from "./config.js";
 import {
   describeTable,
+  getTableDdlMetadata,
   listConstraints,
   listIndexes,
   listPartitions,
   listSchemas,
   listTables,
   ping,
+  renderStructuredTableDdl,
   runReadOnlyQuery,
   sampleRows,
   searchCatalog,
@@ -426,6 +428,59 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_get_table_ddl",
+    {
+      title: "Get Table DDL",
+      description: "Return native or structured DDL metadata for an allowed OceanBase table.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional()
+      }
+    },
+    async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadata = await withQuerySlot(selected, () =>
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const columns = filterColumnMetadata(metadata.columns, selected.config.policy);
+      const indexes = filterColumnMetadata(metadata.indexes, selected.config.policy);
+      const constraints = filterColumnMetadata(metadata.constraints, selected.config.policy);
+      const partitions = filterTables(metadata.partitions, selected.config.policy);
+      const policyFiltered =
+        columns.length !== metadata.columns.length ||
+        indexes.length !== metadata.indexes.length ||
+        constraints.length !== metadata.constraints.length ||
+        partitions.length !== metadata.partitions.length;
+      const ddl =
+        metadata.nativeDdl && !policyFiltered
+          ? metadata.nativeDdl
+          : renderStructuredTableDdl(selected.config.compatibility, metadata.schema, metadata.table, columns, indexes, constraints, partitions);
+
+      return toLimitedResult(
+        {
+          mode: metadata.mode,
+          schema: metadata.schema,
+          table: metadata.table,
+          source: metadata.nativeDdl && !policyFiltered ? "native" : "structured",
+          policyFiltered,
+          ddl,
+          columns,
+          indexes,
+          constraints,
+          partitions,
+          warnings: policyFiltered
+            ? [...metadata.warnings, "DDL was rendered from policy-filtered metadata because one or more metadata rows were hidden."]
+            : metadata.warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_get_indexes",
     {
       title: "Get Table Indexes",
@@ -443,7 +498,7 @@ export function createObMcpServer(
       const rows = await withQuerySlot(selected, () =>
         listIndexes(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
-      return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
+      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
     }
   );
 

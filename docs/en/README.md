@@ -113,6 +113,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_explain` | Run `EXPLAIN` for read-only SQL. |
 | `ob_search_catalog` | Search schemas, tables, and columns. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
+| `ob_get_table_ddl` | Return native or structured table DDL metadata. |
 | `ob_get_indexes` | Return table index metadata. |
 | `ob_get_constraints` | Return primary, unique, foreign-key, check, and not-null constraints. |
 | `ob_get_partitions` | Return table partition metadata. |

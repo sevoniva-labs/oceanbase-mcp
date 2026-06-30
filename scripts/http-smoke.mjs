@@ -105,6 +105,10 @@ try {
     name: "ob_get_table_schema",
     arguments: { schema: smokeSchema, table: smokeTable }
   });
+  const tableDdl = await client.callTool({
+    name: "ob_get_table_ddl",
+    arguments: { schema: smokeSchema, table: smokeTable }
+  });
   const indexes = await client.callTool({
     name: "ob_get_indexes",
     arguments: { schema: smokeSchema, table: smokeTable }
@@ -174,6 +178,7 @@ try {
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
   const tableSchemaRows = parseToolJson(tableSchema);
+  const tableDdlResult = parseToolJson(tableDdl);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
   const partitionRows = parseToolJson(partitions);
@@ -189,6 +194,7 @@ try {
     "ob_policy_explain",
     "ob_search_catalog",
     "ob_get_table_schema",
+    "ob_get_table_ddl",
     "ob_get_indexes",
     "ob_get_constraints",
     "ob_get_partitions",
@@ -209,6 +215,7 @@ try {
     policyExplainBlocked: policyExplainResult.allowed === false,
     catalogRows: catalogRows.length,
     tableSchemaRows: tableSchemaRows.length,
+    tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
     partitionRows: partitionRows.length,
@@ -249,6 +256,7 @@ try {
     output.catalogRows < 1 ||
     output.explainRows < 1 ||
     output.tableSchemaRows < 1 ||
+    !output.tableDdlOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
     !output.blockedSelectStar ||

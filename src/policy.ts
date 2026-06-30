@@ -109,7 +109,11 @@ export function filterColumnMetadata(rows: unknown[], policy: AccessPolicy): unk
   return filterTables(rows, policy).filter((row) => {
     const record = row as Record<string, unknown>;
     const column = stringValue(record.column_name ?? record.COLUMN_NAME);
-    return !column || !isDeniedColumn(column, policy);
+    const referencedColumn = stringValue(record.referenced_column_name ?? record.REFERENCED_COLUMN_NAME);
+    return (
+      (!column || !isDeniedColumn(column, policy)) &&
+      (!referencedColumn || !isDeniedColumn(referencedColumn, policy))
+    );
   });
 }
 

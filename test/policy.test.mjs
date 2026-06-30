@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertOutputAllowed, assertSqlPolicy, explainSqlPolicy, filterSchemas } from "../dist/policy.js";
+import { assertOutputAllowed, assertSqlPolicy, explainSqlPolicy, filterColumnMetadata, filterSchemas } from "../dist/policy.js";
 
 const basePolicy = {
   allowedSchemas: ["biz_test"],
@@ -97,6 +97,19 @@ test("filterSchemas hides denied schemas by default", () => {
   assert.deepEqual(
     filterSchemas([{ Database: "biz_test" }, { Database: "mysql" }, { Database: "information_schema" }], basePolicy),
     [{ Database: "biz_test" }]
+  );
+});
+
+test("filterColumnMetadata hides referenced denied columns", () => {
+  assert.deepEqual(
+    filterColumnMetadata(
+      [
+        { table_schema: "biz_test", table_name: "orders", column_name: "user_id", referenced_column_name: "id" },
+        { table_schema: "biz_test", table_name: "orders", column_name: "secret_id", referenced_column_name: "secret" }
+      ],
+      basePolicy
+    ),
+    [{ table_schema: "biz_test", table_name: "orders", column_name: "user_id", referenced_column_name: "id" }]
   );
 });
 

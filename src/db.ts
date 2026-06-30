@@ -28,6 +28,19 @@ export interface PermissionVerification {
   error?: string;
 }
 
+export interface TableDdlMetadata {
+  mode: CompatibilityMode;
+  schema?: string;
+  table: string;
+  nativeDdl?: string;
+  structuredDdl: string;
+  columns: unknown[];
+  indexes: unknown[];
+  constraints: unknown[];
+  partitions: unknown[];
+  warnings: string[];
+}
+
 interface QueryOptions {
   sql: string;
   values?: SqlParam[];
@@ -227,7 +240,7 @@ export async function describeTable(
       const [rows] = await pool.query({
         sql: `
           SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, table_name, column_name, data_type, data_length, data_precision,
-                 data_scale, nullable, column_id
+                 data_scale, data_default, nullable, column_id
           FROM user_tab_columns
           WHERE table_name = ?
           ORDER BY table_name, column_id
@@ -241,7 +254,7 @@ export async function describeTable(
     const [rows] = await pool.query({
       sql: `
         SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, column_name, data_type, data_length, data_precision,
-               data_scale, nullable, column_id
+               data_scale, data_default, nullable, column_id
         FROM all_tab_columns
         WHERE table_name = ?
           AND (? IS NULL OR owner = ?)
@@ -271,6 +284,44 @@ export async function describeTable(
     timeout: timeoutMs
   });
   return rows as unknown[];
+}
+
+export async function getTableDdlMetadata(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  table: string,
+  schema: string | undefined,
+  timeoutMs: number
+): Promise<TableDdlMetadata> {
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  if (mode === "mysql" && !resolvedSchema) {
+    throw new Error("No MySQL database is selected. Pass the schema argument to ob_get_table_ddl.");
+  }
+
+  const resolvedTable = mode === "oracle" ? table.trim().toUpperCase() : table.trim();
+  const columns = await describeTable(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
+  const indexes = await listIndexes(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
+  const constraints = await listConstraints(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
+  const partitions = await listPartitions(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
+  const nativeDdl = mode === "mysql" && resolvedSchema ? await showMysqlCreateTable(pool, resolvedSchema, resolvedTable, timeoutMs) : undefined;
+
+  return {
+    mode,
+    schema: resolvedSchema,
+    table: resolvedTable,
+    nativeDdl,
+    structuredDdl: renderStructuredTableDdl(mode, resolvedSchema, resolvedTable, columns, indexes, constraints, partitions),
+    columns,
+    indexes,
+    constraints,
+    partitions,
+    warnings: nativeDdl
+      ? []
+      : ["Native DDL is not available for this compatibility mode or endpoint; structured metadata was used."]
+  };
 }
 
 export async function searchCatalog(
@@ -603,6 +654,202 @@ export async function sampleRows(
       ? `SELECT ${oracleTimeoutHint(timeoutMs)} * FROM (SELECT ${columnList} FROM ${tableName}) WHERE ROWNUM <= ${limit + 1}`
       : `SELECT ${columnList} FROM ${tableName} LIMIT ${limit + 1}`;
   return runQuery(pool, sql, [], limit, timeoutMs);
+}
+
+async function showMysqlCreateTable(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<string | undefined> {
+  const [rows] = await pool.query({
+    sql: `SHOW CREATE TABLE ${quoteIdentifier("mysql", schema)}.${quoteIdentifier("mysql", table)}`,
+    timeout: timeoutMs
+  });
+  const first = Array.isArray(rows) ? (rows[0] as Record<string, unknown> | undefined) : undefined;
+  const ddl = first?.["Create Table"] ?? first?.["CREATE TABLE"];
+  return typeof ddl === "string" && ddl.trim() ? ddl : undefined;
+}
+
+export function renderStructuredTableDdl(
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  columns: unknown[],
+  indexes: unknown[],
+  constraints: unknown[],
+  partitions: unknown[]
+): string {
+  const tableName = qualifiedTableName(mode, schema, table);
+  const definitions = [
+    ...columns.map((column) => `  ${renderColumnDefinition(mode, column)}`),
+    ...renderConstraintDefinitions(mode, constraints).map((constraint) => `  ${constraint}`)
+  ].filter((line) => line.trim());
+  const body = definitions.length > 0 ? definitions.join(",\n") : "  /* no visible columns */";
+  const statements = [`CREATE TABLE ${tableName} (\n${body}\n);`];
+  const indexStatements = renderIndexStatements(mode, schema, table, indexes, constraints);
+  statements.push(...indexStatements);
+  if (partitions.length > 0) {
+    statements.push(`/* Partition metadata is available in the structured partitions field. */`);
+  }
+  return statements.join("\n\n");
+}
+
+function renderColumnDefinition(mode: CompatibilityMode, row: unknown): string {
+  const column = rowRecord(row);
+  const name = stringField(column, "column_name", "COLUMN_NAME") ?? "UNKNOWN_COLUMN";
+  const nullable = stringField(column, "is_nullable", "IS_NULLABLE", "nullable", "NULLABLE");
+  const defaultValue = fieldValue(column, "column_default", "COLUMN_DEFAULT", "data_default", "DATA_DEFAULT");
+  const extra = stringField(column, "extra", "EXTRA");
+  const parts = [quoteIdentifier(mode, mode === "oracle" ? name.toUpperCase() : name), columnType(mode, column)];
+  if (defaultValue != null && String(defaultValue).trim() !== "") {
+    parts.push(`DEFAULT ${String(defaultValue).trim()}`);
+  }
+  if (nullable && ["NO", "N"].includes(nullable.toUpperCase())) {
+    parts.push("NOT NULL");
+  }
+  if (mode === "mysql" && extra) {
+    parts.push(extra);
+  }
+  return parts.join(" ");
+}
+
+function columnType(mode: CompatibilityMode, column: Record<string, unknown>): string {
+  if (mode === "mysql") {
+    return stringField(column, "column_type", "COLUMN_TYPE", "data_type", "DATA_TYPE") ?? "UNKNOWN";
+  }
+
+  const dataType = stringField(column, "data_type", "DATA_TYPE") ?? "UNKNOWN";
+  const length = numberField(column, "data_length", "DATA_LENGTH");
+  const precision = numberField(column, "data_precision", "DATA_PRECISION");
+  const scale = numberField(column, "data_scale", "DATA_SCALE");
+  if (["CHAR", "NCHAR", "VARCHAR2", "NVARCHAR2", "RAW"].includes(dataType) && length != null) {
+    return `${dataType}(${length})`;
+  }
+  if (dataType === "NUMBER" && precision != null && scale != null) {
+    return `${dataType}(${precision},${scale})`;
+  }
+  if (dataType === "NUMBER" && precision != null) {
+    return `${dataType}(${precision})`;
+  }
+  if (dataType.startsWith("TIMESTAMP") && scale != null) {
+    return `${dataType}(${scale})`;
+  }
+  return dataType;
+}
+
+function renderConstraintDefinitions(mode: CompatibilityMode, rows: unknown[]): string[] {
+  const grouped = groupBy(rows, (row) => stringField(rowRecord(row), "constraint_name", "CONSTRAINT_NAME") ?? "");
+  const output: string[] = [];
+  for (const [name, group] of grouped) {
+    if (!name || name.startsWith("NOT_NULL_")) {
+      continue;
+    }
+    const first = rowRecord(group[0]);
+    const type = stringField(first, "constraint_type", "CONSTRAINT_TYPE") ?? "";
+    const columns = group
+      .map((row) => stringField(rowRecord(row), "column_name", "COLUMN_NAME"))
+      .filter((value): value is string => Boolean(value));
+    if (columns.length === 0) {
+      continue;
+    }
+    const columnList = columns.map((column) => quoteIdentifier(mode, mode === "oracle" ? column.toUpperCase() : column)).join(", ");
+    const quotedName = quoteIdentifier(mode, mode === "oracle" ? name.toUpperCase() : name);
+    if (["PRIMARY KEY", "P"].includes(type)) {
+      output.push(`CONSTRAINT ${quotedName} PRIMARY KEY (${columnList})`);
+    } else if (["UNIQUE", "U"].includes(type)) {
+      output.push(`CONSTRAINT ${quotedName} UNIQUE (${columnList})`);
+    } else if (["FOREIGN KEY", "R"].includes(type)) {
+      output.push(renderForeignKeyDefinition(mode, quotedName, columnList, first));
+    } else if (["CHECK", "C"].includes(type)) {
+      const condition = stringField(first, "search_condition", "SEARCH_CONDITION");
+      if (condition) {
+        output.push(`CONSTRAINT ${quotedName} CHECK (${condition})`);
+      }
+    }
+  }
+  return output;
+}
+
+function renderForeignKeyDefinition(
+  mode: CompatibilityMode,
+  quotedName: string,
+  columnList: string,
+  first: Record<string, unknown>
+): string {
+  const referencedSchema = stringField(first, "referenced_table_schema", "REFERENCED_TABLE_SCHEMA", "referenced_owner", "REFERENCED_OWNER");
+  const referencedTable = stringField(first, "referenced_table_name", "REFERENCED_TABLE_NAME");
+  const referencedColumn = stringField(first, "referenced_column_name", "REFERENCED_COLUMN_NAME");
+  if (!referencedTable || !referencedColumn) {
+    return `CONSTRAINT ${quotedName} FOREIGN KEY (${columnList})`;
+  }
+  const target = qualifiedTableName(mode, referencedSchema, referencedTable);
+  const targetColumn = quoteIdentifier(mode, mode === "oracle" ? referencedColumn.toUpperCase() : referencedColumn);
+  return `CONSTRAINT ${quotedName} FOREIGN KEY (${columnList}) REFERENCES ${target} (${targetColumn})`;
+}
+
+function renderIndexStatements(
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  rows: unknown[],
+  constraints: unknown[]
+): string[] {
+  const constraintNames = new Set(
+    constraints
+      .map((row) => stringField(rowRecord(row), "constraint_name", "CONSTRAINT_NAME"))
+      .filter((value): value is string => Boolean(value))
+      .map((value) => value.toUpperCase())
+  );
+  const grouped = groupBy(rows, (row) => stringField(rowRecord(row), "index_name", "INDEX_NAME") ?? "");
+  const output: string[] = [];
+  for (const [name, group] of grouped) {
+    if (!name || name.toUpperCase() === "PRIMARY" || constraintNames.has(name.toUpperCase())) {
+      continue;
+    }
+    const first = rowRecord(group[0]);
+    const columns = group
+      .map((row) => stringField(rowRecord(row), "column_name", "COLUMN_NAME"))
+      .filter((value): value is string => Boolean(value));
+    if (columns.length === 0) {
+      continue;
+    }
+    const unique = stringField(first, "uniqueness", "UNIQUENESS") === "UNIQUE" || numberField(first, "non_unique", "NON_UNIQUE") === 0;
+    const columnList = columns.map((column) => quoteIdentifier(mode, mode === "oracle" ? column.toUpperCase() : column)).join(", ");
+    const indexName = quoteIdentifier(mode, mode === "oracle" ? name.toUpperCase() : name);
+    output.push(`CREATE ${unique ? "UNIQUE " : ""}INDEX ${indexName} ON ${qualifiedTableName(mode, schema, table)} (${columnList});`);
+  }
+  return output;
+}
+
+function rowRecord(row: unknown): Record<string, unknown> {
+  return row && typeof row === "object" && !Array.isArray(row) ? (row as Record<string, unknown>) : {};
+}
+
+function fieldValue(record: Record<string, unknown>, ...keys: string[]): unknown {
+  return keys.map((key) => record[key]).find((value) => value != null);
+}
+
+function stringField(record: Record<string, unknown>, ...keys: string[]): string | undefined {
+  const value = fieldValue(record, ...keys);
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberField(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+  const value = fieldValue(record, ...keys);
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return undefined;
+}
+
+function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const item of items) {
+    const key = keyFn(item);
+    const group = grouped.get(key) ?? [];
+    group.push(item);
+    grouped.set(key, group);
+  }
+  return grouped;
 }
 
 export async function verifyReadOnlyPermissions(
