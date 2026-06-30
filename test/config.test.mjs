@@ -275,6 +275,21 @@ test("loadHttpConfig parses constrained trust proxy settings", () => {
   assert.throws(() => loadHttpConfig(localConfig, { OB_MCP_TRUST_PROXY: "not-a-proxy" }), /Invalid OB_MCP_TRUST_PROXY/);
 });
 
+test("loadHttpConfig requires a token when endpoint auth is enabled", () => {
+  const localConfig = loadConfig({});
+  assert.throws(
+    () => loadHttpConfig(localConfig, { OB_MCP_METRICS_AUTH_REQUIRED: "true" }),
+    /no HTTP bearer token/
+  );
+  assert.equal(
+    loadHttpConfig(localConfig, {
+      OB_MCP_METRICS_AUTH_REQUIRED: "true",
+      OB_MCP_AUTH_TOKEN: STRONG_TOKEN
+    }).metricsAuthRequired,
+    true
+  );
+});
+
 test("diagnoseGateway reports production profile hardening", () => {
   const gateway = loadGatewayConfig({
     OB_PROFILES: "prod",

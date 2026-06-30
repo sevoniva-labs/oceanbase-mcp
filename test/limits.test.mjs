@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { assertJsonByteLimit } from "../dist/format.js";
-import { effectiveRowLimit } from "../dist/mcp.js";
+import { effectiveRowLimit, isToolAllowed } from "../dist/mcp.js";
 import { withQuerySlot } from "../dist/runtime.js";
 
 test("effectiveRowLimit treats OB_MAX_ROWS as a hard cap", () => {
@@ -40,4 +40,11 @@ test("withQuerySlot enforces per-profile concurrency", async () => {
   release("done");
   await first;
   assert.equal(selected.limiter.active, 0);
+});
+
+test("isToolAllowed supports scoped bearer token tool visibility", () => {
+  assert.equal(isToolAllowed("ob_query"), true);
+  assert.equal(isToolAllowed("ob_query", { name: "default" }), true);
+  assert.equal(isToolAllowed("ob_query", { name: "limited", tools: ["ob_query"] }), true);
+  assert.equal(isToolAllowed("ob_ping", { name: "limited", tools: ["ob_query"] }), false);
 });

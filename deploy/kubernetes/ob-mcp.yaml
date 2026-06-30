@@ -64,7 +64,7 @@ spec:
         fsGroup: 1000
       containers:
         - name: ob-mcp
-          image: ghcr.io/sevoniva/oceanbase-mcp:0.3.0
+          image: ghcr.io/sevoniva/oceanbase-mcp:0.4.0
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

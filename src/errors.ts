@@ -7,7 +7,11 @@ export interface SerializedError {
   sqlMessage?: unknown;
 }
 
-export function serializeError(error: unknown): SerializedError {
+export interface SerializeErrorOptions {
+  includeSqlMessage?: boolean;
+}
+
+export function serializeError(error: unknown, options: SerializeErrorOptions = { includeSqlMessage: true }): SerializedError {
   if (!(error instanceof Error)) {
     return { message: String(error) };
   }
@@ -25,7 +29,7 @@ export function serializeError(error: unknown): SerializedError {
     code: record.code,
     errno: record.errno,
     sqlState: record.sqlState,
-    sqlMessage: record.sqlMessage
+    sqlMessage: options.includeSqlMessage === false ? undefined : record.sqlMessage
   };
 }
 

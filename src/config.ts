@@ -230,6 +230,11 @@ export function loadHttpConfig(obConfig: ObConfig, env: NodeJS.ProcessEnv = proc
     throw new Error("OB_MCP_ALLOWED_IPS must be set when binding the HTTP MCP server to a non-local host.");
   }
   const clientIdHeader = validateHeaderName(env.OB_MCP_CLIENT_ID_HEADER?.trim() || "x-ob-mcp-client-id", "OB_MCP_CLIENT_ID_HEADER");
+  const metricsAuthRequired = parseBoolean(env.OB_MCP_METRICS_AUTH_REQUIRED, obConfig.productionMode || nonLocalBind);
+  const healthAuthRequired = parseBoolean(env.OB_MCP_HEALTH_AUTH_REQUIRED, false);
+  if ((metricsAuthRequired || healthAuthRequired) && !hasAuthToken) {
+    throw new Error("Endpoint auth was requested, but no HTTP bearer token policy is configured.");
+  }
 
   return {
     host,
@@ -244,8 +249,8 @@ export function loadHttpConfig(obConfig: ObConfig, env: NodeJS.ProcessEnv = proc
     bodyLimit: env.OB_MCP_BODY_LIMIT?.trim() || "256kb",
     rateLimitWindowMs: parseInteger(env.OB_MCP_RATE_LIMIT_WINDOW_MS, 60_000, "OB_MCP_RATE_LIMIT_WINDOW_MS"),
     rateLimitMax: parseInteger(env.OB_MCP_RATE_LIMIT_MAX, 60, "OB_MCP_RATE_LIMIT_MAX"),
-    metricsAuthRequired: parseBoolean(env.OB_MCP_METRICS_AUTH_REQUIRED, obConfig.productionMode || nonLocalBind),
-    healthAuthRequired: parseBoolean(env.OB_MCP_HEALTH_AUTH_REQUIRED, false),
+    metricsAuthRequired,
+    healthAuthRequired,
     clientIdHeader
   };
 }

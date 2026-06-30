@@ -216,13 +216,13 @@ Manual release:
 
 1. Open GitHub Actions.
 2. Run `Release`.
-3. Enter a version such as `v0.3.0`.
+3. Enter a version such as `v0.4.0`.
 4. The workflow creates the tag, publishes images, and attaches release assets.
 
 Load an offline image:
 
 ```bash
-gunzip oceanbase-mcp-0.3.0-amd64.tar.gz
-docker load -i oceanbase-mcp-0.3.0-amd64.tar
-docker run --rm oceanbase-mcp:0.3.0-amd64
+gunzip oceanbase-mcp-0.4.0-amd64.tar.gz
+docker load -i oceanbase-mcp-0.4.0-amd64.tar
+docker run --rm oceanbase-mcp:0.4.0-amd64
 ```

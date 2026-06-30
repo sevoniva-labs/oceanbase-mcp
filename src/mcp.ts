@@ -55,10 +55,24 @@ export function createObMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "ob-mcp",
-    version: "0.3.0"
+    version: "0.4.0"
   });
   const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) =>
     safeTool(name, handler, context);
+  const registerTool = (
+    name: string,
+    spec: {
+      title: string;
+      description: string;
+      inputSchema: Record<string, z.ZodType>;
+    },
+    handler: (args: any) => Promise<ReturnType<typeof toResult>>
+  ) => {
+    if (!isToolAllowed(name, context.principal)) {
+      return;
+    }
+    server.registerTool(name, spec, toolHandler(name, handler) as any);
+  };
 
   server.registerResource(
     "connection",
@@ -86,7 +100,7 @@ export function createObMcpServer(
       resourceResult(uri.href, {
         defaultProfile: visibleDefaultProfile(runtime, context),
         profiles: publicProfiles(runtime, context)
-      })
+      }, gatewayLimitConfig(runtime, context))
   );
 
   server.registerResource(
@@ -109,43 +123,43 @@ export function createObMcpServer(
     }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_list_profiles",
     {
       title: "List OceanBase Profiles",
       description: "List configured OceanBase MCP profiles with redacted settings.",
       inputSchema: {}
     },
-    toolHandler("ob_list_profiles", async () =>
-      toResult({
+    async () =>
+      toGatewayLimitedResult({
         defaultProfile: visibleDefaultProfile(runtime, context),
         profiles: publicProfiles(runtime, context)
-      })
-    )
+      }, runtime, context)
   );
 
-  server.registerTool(
+  registerTool(
     "ob_config_diagnostics",
     {
       title: "Run Config Diagnostics",
       description: "Check profile, policy, TLS, HTTP, and production hardening settings.",
       inputSchema: {}
     },
-    toolHandler("ob_config_diagnostics", async () =>
-      toResult(
-        diagnoseGateway(authorizedGatewayConfig(runtime, context), httpConfig)
+    async () =>
+      toGatewayLimitedResult(
+        diagnoseGateway(authorizedGatewayConfig(runtime, context), httpConfig),
+        runtime,
+        context
       )
-    )
   );
 
-  server.registerTool(
+  registerTool(
     "ob_verify_permissions",
     {
       title: "Verify Database Permissions",
       description: "Inspect current database grants and report whether the account appears read-only.",
       inputSchema: profileInput
     },
-    toolHandler("ob_verify_permissions", async ({ profile }) => {
+    async ({ profile }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const result = await withQuerySlot(selected, () =>
         verifyReadOnlyPermissions(selected.pool, selected.config.compatibility, selected.config.queryTimeoutMs)
@@ -157,24 +171,24 @@ export function createObMcpServer(
         },
         selected.config
       );
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_ping",
     {
       title: "Ping OceanBase",
       description: "Verify the configured OceanBase connection.",
       inputSchema: profileInput
     },
-    toolHandler("ob_ping", async ({ profile }) => {
+    async ({ profile }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const result = await withQuerySlot(selected, () => ping(selected.pool, selected.config));
       return toLimitedResult(result, selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_policy_explain",
     {
       title: "Explain SQL Policy Decision",
@@ -185,7 +199,7 @@ export function createObMcpServer(
         params: z.array(sqlParamSchema).optional().default([])
       }
     },
-    toolHandler("ob_policy_explain", async ({ profile, sql, params = [] }) => {
+    async ({ profile, sql, params = [] }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const sqlParams = params as SqlParam[];
       const checks = [
@@ -199,10 +213,10 @@ export function createObMcpServer(
         checks,
         policy
       }, selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_query",
     {
       title: "Run Strict Read-Only Query",
@@ -214,7 +228,7 @@ export function createObMcpServer(
         maxRows: z.number().int().positive().max(10_000).optional()
       }
     },
-    toolHandler("ob_query", async ({ profile, sql, params = [], maxRows }) => {
+    async ({ profile, sql, params = [], maxRows }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const started = Date.now();
       const sqlParams = params as SqlParam[];
@@ -252,26 +266,26 @@ export function createObMcpServer(
         paramCount: sqlParams.length
       });
       return toResult(output);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_list_schemas",
     {
       title: "List Schemas",
       description: "List schemas/databases visible to the current OceanBase user, filtered by access policy.",
       inputSchema: profileInput
     },
-    toolHandler("ob_list_schemas", async ({ profile }) => {
+    async ({ profile }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const rows = await withQuerySlot(selected, () =>
         listSchemas(selected.pool, selected.config.compatibility, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterSchemas(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_list_tables",
     {
       title: "List Tables",
@@ -282,7 +296,7 @@ export function createObMcpServer(
         limit: z.number().int().positive().max(10_000).optional()
       }
     },
-    toolHandler("ob_list_tables", async ({ profile, schema, limit }) => {
+    async ({ profile, schema, limit }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       if (schema) {
         assertTableAccess(schema, "*", policyContext(selected.config));
@@ -297,10 +311,10 @@ export function createObMcpServer(
         )
       );
       return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_describe_table",
     {
       title: "Describe Table",
@@ -311,7 +325,7 @@ export function createObMcpServer(
         schema: z.string().optional()
       }
     },
-    toolHandler("ob_describe_table", async ({ profile, table, schema }) => {
+    async ({ profile, table, schema }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
@@ -319,10 +333,10 @@ export function createObMcpServer(
         describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_explain",
     {
       title: "Explain Query",
@@ -334,7 +348,7 @@ export function createObMcpServer(
         maxRows: z.number().int().positive().max(10_000).optional()
       }
     },
-    toolHandler("ob_explain", async ({ profile, sql, params = [], maxRows }) => {
+    async ({ profile, sql, params = [], maxRows }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const sqlParams = params as SqlParam[];
       assertSqlInputLimits(sql, sqlParams, selected.config);
@@ -355,10 +369,10 @@ export function createObMcpServer(
       );
       metrics.recordQueryDuration(Date.now() - started);
       return toLimitedResult(output, selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_search_catalog",
     {
       title: "Search Catalog",
@@ -370,7 +384,7 @@ export function createObMcpServer(
         limit: z.number().int().positive().max(1000).optional()
       }
     },
-    toolHandler("ob_search_catalog", async ({ profile, query, schema, limit }) => {
+    async ({ profile, query, schema, limit }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       if (schema) {
         assertTableAccess(schema, "*", policyContext(selected.config));
@@ -386,10 +400,10 @@ export function createObMcpServer(
         )
       );
       return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_get_table_schema",
     {
       title: "Get Table Schema",
@@ -400,7 +414,7 @@ export function createObMcpServer(
         schema: z.string().optional()
       }
     },
-    toolHandler("ob_get_table_schema", async ({ profile, table, schema }) => {
+    async ({ profile, table, schema }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
@@ -408,10 +422,10 @@ export function createObMcpServer(
         describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_get_indexes",
     {
       title: "Get Table Indexes",
@@ -422,7 +436,7 @@ export function createObMcpServer(
         schema: z.string().optional()
       }
     },
-    toolHandler("ob_get_indexes", async ({ profile, table, schema }) => {
+    async ({ profile, table, schema }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
@@ -430,10 +444,10 @@ export function createObMcpServer(
         listIndexes(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_get_constraints",
     {
       title: "Get Table Constraints",
@@ -444,7 +458,7 @@ export function createObMcpServer(
         schema: z.string().optional()
       }
     },
-    toolHandler("ob_get_constraints", async ({ profile, table, schema }) => {
+    async ({ profile, table, schema }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
@@ -452,10 +466,10 @@ export function createObMcpServer(
         listConstraints(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_get_partitions",
     {
       title: "Get Table Partitions",
@@ -466,7 +480,7 @@ export function createObMcpServer(
         schema: z.string().optional()
       }
     },
-    toolHandler("ob_get_partitions", async ({ profile, table, schema }) => {
+    async ({ profile, table, schema }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
@@ -474,10 +488,10 @@ export function createObMcpServer(
         listPartitions(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterTables(rows, selected.config.policy), selected.config);
-    })
+    }
   );
 
-  server.registerTool(
+  registerTool(
     "ob_sample_rows",
     {
       title: "Sample Rows",
@@ -489,7 +503,7 @@ export function createObMcpServer(
         limit: z.number().int().positive().max(100).optional()
       }
     },
-    toolHandler("ob_sample_rows", async ({ profile, table, schema, limit }) => {
+    async ({ profile, table, schema, limit }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
@@ -514,7 +528,7 @@ export function createObMcpServer(
       );
       assertOutputAllowed(output, selected.config.policy);
       return toLimitedResult(maskOutput(output, selected.config), selected.config);
-    })
+    }
   );
 
   return server;
@@ -552,12 +566,13 @@ function assertProfileAllowed(profile: string, principal: AuthPrincipal | undefi
 }
 
 function assertToolAllowed(tool: string, principal: AuthPrincipal | undefined): void {
-  if (!principal?.tools || principal.tools.length === 0) {
-    return;
+  if (!isToolAllowed(tool, principal)) {
+    throw new Error(`Tool "${tool}" is not allowed for token "${principal?.name ?? "unknown"}".`);
   }
-  if (!principal.tools.includes(tool)) {
-    throw new Error(`Tool "${tool}" is not allowed for token "${principal.name}".`);
-  }
+}
+
+export function isToolAllowed(tool: string, principal: AuthPrincipal | undefined): boolean {
+  return !principal?.tools || principal.tools.length === 0 || principal.tools.includes(tool);
 }
 
 function visibleDefaultProfile(runtime: GatewayRuntime, context: McpRequestContext): string {
@@ -590,6 +605,10 @@ function authorizedGatewayConfig(runtime: GatewayRuntime, context: McpRequestCon
 
 function isProfileVisible(profile: string, principal: AuthPrincipal | undefined): boolean {
   return !principal?.profiles || principal.profiles.length === 0 || principal.profiles.includes(profile);
+}
+
+function gatewayLimitConfig(runtime: GatewayRuntime, context: McpRequestContext): ObConfig {
+  return runtime.configs[visibleDefaultProfile(runtime, context)];
 }
 
 function columnNames(rows: unknown[]): string[] {
@@ -647,6 +666,10 @@ function toLimitedResult(data: unknown, config: ObConfig) {
   return toResult(data);
 }
 
+function toGatewayLimitedResult(data: unknown, runtime: GatewayRuntime, context: McpRequestContext) {
+  return toLimitedResult(data, gatewayLimitConfig(runtime, context));
+}
+
 function toResult(data: unknown) {
   return {
     content: [
@@ -666,7 +689,7 @@ function toErrorResult(error: unknown) {
         type: "text" as const,
         text: jsonText({
           ok: false,
-          error: serializeError(error)
+          error: serializeError(error, { includeSqlMessage: false })
         })
       }
     ]

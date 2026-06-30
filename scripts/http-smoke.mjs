@@ -5,6 +5,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 const port = process.env.OB_MCP_PORT ?? "3317";
 const token = process.env.OB_MCP_AUTH_TOKEN ?? "local-http-smoke-token";
+const scopedToken = process.env.OB_MCP_SCOPED_AUTH_TOKEN ?? "local-http-smoke-scoped-token";
 const url = `http://127.0.0.1:${port}/mcp`;
 const compatibility = (process.env.OB_COMPATIBILITY ?? "mysql").toLowerCase();
 const isOracle = compatibility === "oracle";
@@ -23,6 +24,14 @@ const child = spawn(process.execPath, ["dist/http.js"], {
     OB_MCP_HOST: "127.0.0.1",
     OB_MCP_PORT: port,
     OB_MCP_AUTH_TOKEN: token,
+    OB_MCP_AUTH_TOKENS: JSON.stringify([
+      {
+        name: "scoped-smoke",
+        token: scopedToken,
+        profiles: ["default"],
+        tools: ["ob_query", "ob_list_tables"]
+      }
+    ]),
     OB_MCP_ALLOWED_IPS: process.env.OB_MCP_ALLOWED_IPS ?? "127.0.0.1,::1",
     OB_MCP_TRUST_PROXY: process.env.OB_MCP_TRUST_PROXY ?? "true",
     OB_ALLOWED_SCHEMAS: process.env.OB_ALLOWED_SCHEMAS ?? smokeSchema,
@@ -147,6 +156,18 @@ try {
     arguments: {}
   });
   await client.close();
+  const scopedClient = new Client({ name: "ob-mcp-http-scoped-smoke", version: "0.0.0" });
+  const scopedTransport = new StreamableHTTPClientTransport(new URL(url), {
+    requestInit: {
+      headers: {
+        Authorization: `Bearer ${scopedToken}`
+      }
+    }
+  });
+  await scopedClient.connect(scopedTransport);
+  const scopedTools = await scopedClient.listTools();
+  const scopedToolNames = scopedTools.tools.map((tool) => tool.name);
+  await scopedClient.close();
   const diagnosticsResult = parseToolJson(diagnostics);
   const permissionsResult = parseToolJson(permissions);
   const policyExplainResult = parseToolJson(policyExplain);
@@ -194,6 +215,10 @@ try {
     partitionsOk: !requirePartitions || partitionRows.length > 0,
     sampleRows: sampleOutput.rows.length,
     enterpriseTools: expectedEnterpriseTools.every((name) => toolNames.includes(name)),
+    scopedToolsOk:
+      scopedToolNames.length === 2 &&
+      scopedToolNames.includes("ob_query") &&
+      scopedToolNames.includes("ob_list_tables"),
     resourcesOk:
       resources.resources.some((resource) => resource.uri === "ob://connection") &&
       resourceTemplates.resourceTemplates.some((template) => template.uriTemplate === "ob://profile/{profile}/schema/{schema}/table/{table}") &&
@@ -219,6 +244,7 @@ try {
     !output.permissionsOk ||
     !output.policyExplainBlocked ||
     !output.enterpriseTools ||
+    !output.scopedToolsOk ||
     !output.resourcesOk ||
     output.catalogRows < 1 ||
     output.explainRows < 1 ||
