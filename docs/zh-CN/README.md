@@ -114,6 +114,7 @@ npm run start:http
 | `ob_search_catalog` | 搜索 schema、表和列。 |
 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 |
 | `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 |
+| `ob_find_related_tables` | 查找外键关系和保守的命名推断表关系。 |
 | `ob_get_indexes` | 返回表索引元数据。 |
 | `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 |
 | `ob_get_partitions` | 返回表分区元数据。 |

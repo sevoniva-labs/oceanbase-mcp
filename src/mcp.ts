@@ -5,6 +5,7 @@ import type { AuthPrincipal, GatewayConfig, HttpConfig, ObConfig } from "./confi
 import { publicConfig } from "./config.js";
 import {
   describeTable,
+  findRelatedTables,
   getTableDdlMetadata,
   listConstraints,
   listIndexes,
@@ -17,6 +18,7 @@ import {
   sampleRows,
   searchCatalog,
   verifyReadOnlyPermissions,
+  type TableRelationship,
   type SqlParam
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
@@ -481,6 +483,47 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_find_related_tables",
+    {
+      title: "Find Related Tables",
+      description: "Find foreign-key and conservative naming-based relationships for an allowed OceanBase table.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        limit: z.number().int().positive().max(500).optional()
+      }
+    },
+    async ({ profile, table, schema, depth, limit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const maxRelations = Math.min(limit ?? 50, 500);
+      const result = await withQuerySlot(selected, () =>
+        findRelatedTables(
+          selected.pool,
+          selected.config.compatibility,
+          table,
+          effectiveSchema,
+          depth ?? 1,
+          maxRelations,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const relations = result.relations.filter((relation) => isRelationshipAllowed(relation, selected.config));
+      return toLimitedResult(
+        {
+          ...result,
+          relations,
+          policyFiltered: relations.length !== result.relations.length
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_get_indexes",
     {
       title: "Get Table Indexes",
@@ -595,6 +638,18 @@ function policyContext(config: ObConfig) {
     defaultSchema: config.database,
     policy: config.policy
   };
+}
+
+function isRelationshipAllowed(relation: TableRelationship, config: ObConfig): boolean {
+  try {
+    assertTableAccess(relation.sourceSchema, relation.sourceTable, policyContext(config));
+    assertTableAccess(relation.targetSchema, relation.targetTable, policyContext(config));
+  } catch {
+    return false;
+  }
+  return [...relation.sourceColumns, ...relation.targetColumns].every(
+    (column) => !isDeniedColumn(column, config.policy)
+  );
 }
 
 function metadataSchema(config: ObConfig, schema: string | undefined): string | undefined {
@@ -810,7 +865,7 @@ function auditArgs(args: unknown): Record<string, unknown> {
   }
   const record = args as Record<string, unknown>;
   const output: Record<string, unknown> = {};
-  for (const key of ["profile", "schema", "table", "limit", "maxRows", "mask"]) {
+  for (const key of ["profile", "schema", "table", "depth", "limit", "maxRows", "mask"]) {
     if (record[key] != null) {
       output[key] = record[key];
     }

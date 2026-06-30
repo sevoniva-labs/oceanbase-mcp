@@ -90,6 +90,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_search_catalog` | Search schemas, tables, and columns. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |
+| `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_indexes` | Return table index metadata. |
 | `ob_get_constraints` | Return primary, unique, foreign-key, check, and not-null constraints. |
 | `ob_get_partitions` | Return table partition metadata. |

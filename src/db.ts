@@ -41,6 +41,38 @@ export interface TableDdlMetadata {
   warnings: string[];
 }
 
+export interface TableRelationshipEvidence {
+  type: "foreign_key" | "referenced_by" | "naming" | "index" | "primary_or_unique_key";
+  detail: string;
+  columns?: string[];
+}
+
+export interface TableRelationship {
+  relationType: "foreign_key" | "referenced_by" | "name_inference";
+  direction: "outbound" | "inbound";
+  confidence: number;
+  sourceSchema?: string;
+  sourceTable: string;
+  sourceColumns: string[];
+  targetSchema?: string;
+  targetTable: string;
+  targetColumns: string[];
+  constraintName?: string;
+  depth: number;
+  evidence: TableRelationshipEvidence[];
+}
+
+export interface RelatedTablesResult {
+  mode: CompatibilityMode;
+  root: {
+    schema?: string;
+    table: string;
+  };
+  depth: number;
+  truncated: boolean;
+  relations: TableRelationship[];
+}
+
 interface QueryOptions {
   sql: string;
   values?: SqlParam[];
@@ -321,6 +353,74 @@ export async function getTableDdlMetadata(
     warnings: nativeDdl
       ? []
       : ["Native DDL is not available for this compatibility mode or endpoint; structured metadata was used."]
+  };
+}
+
+export async function findRelatedTables(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  table: string,
+  schema: string | undefined,
+  depth: number,
+  limit: number,
+  timeoutMs: number
+): Promise<RelatedTablesResult> {
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  if (mode === "mysql" && !resolvedSchema) {
+    throw new Error("No MySQL database is selected. Pass the schema argument to ob_find_related_tables.");
+  }
+
+  const root = {
+    schema: resolvedSchema,
+    table: mode === "oracle" ? table.trim().toUpperCase() : table.trim()
+  };
+  const maxDepth = Math.max(1, Math.min(depth, 3));
+  const maxRelations = Math.max(1, limit);
+  const relations: TableRelationship[] = [];
+  const relationKeys = new Set<string>();
+  const visited = new Set<string>();
+  const queue: Array<{ schema?: string; table: string; depth: number }> = [{ ...root, depth: 0 }];
+  let truncated = false;
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    const visitKey = tableKey(mode, current.schema, current.table);
+    if (visited.has(visitKey) || current.depth >= maxDepth) {
+      continue;
+    }
+    visited.add(visitKey);
+    const discovered = await discoverRelationshipsForTable(pool, mode, current.schema, current.table, current.depth + 1, maxRelations, timeoutMs);
+
+    for (const relation of discovered) {
+      const key = relationshipKey(mode, relation);
+      if (relationKeys.has(key)) {
+        continue;
+      }
+      if (relations.length >= maxRelations) {
+        truncated = true;
+        break;
+      }
+      relationKeys.add(key);
+      relations.push(relation);
+      if (relation.depth < maxDepth) {
+        queue.push({ schema: relation.targetSchema, table: relation.targetTable, depth: relation.depth });
+        queue.push({ schema: relation.sourceSchema, table: relation.sourceTable, depth: relation.depth });
+      }
+    }
+    if (truncated) {
+      break;
+    }
+  }
+
+  return {
+    mode,
+    root,
+    depth: maxDepth,
+    truncated,
+    relations
   };
 }
 
@@ -656,6 +756,481 @@ export async function sampleRows(
   return runQuery(pool, sql, [], limit, timeoutMs);
 }
 
+async function discoverRelationshipsForTable(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  depth: number,
+  limit: number,
+  timeoutMs: number
+): Promise<TableRelationship[]> {
+  const direct = await queryForeignKeyRelationships(pool, mode, schema, table, "outbound", depth, timeoutMs);
+  const inbound = await queryForeignKeyRelationships(pool, mode, schema, table, "inbound", depth, timeoutMs);
+  const inferredOutbound = await inferOutboundNamingRelationships(pool, mode, schema, table, depth, limit, timeoutMs);
+  const inferredInbound = await inferInboundNamingRelationships(pool, mode, schema, table, depth, limit, timeoutMs);
+  const output: TableRelationship[] = [];
+  const keys = new Set<string>();
+
+  for (const relation of [...direct, ...inbound, ...inferredOutbound, ...inferredInbound]) {
+    const pairKey = relationshipPairKey(mode, relation);
+    const exactKey = relationshipKey(mode, relation);
+    if (relation.relationType === "name_inference" && keys.has(pairKey)) {
+      continue;
+    }
+    if (keys.has(exactKey)) {
+      continue;
+    }
+    keys.add(exactKey);
+    keys.add(pairKey);
+    output.push(relation);
+  }
+  return output.slice(0, limit);
+}
+
+async function queryForeignKeyRelationships(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  direction: "outbound" | "inbound",
+  depth: number,
+  timeoutMs: number
+): Promise<TableRelationship[]> {
+  const rows = mode === "oracle"
+    ? await queryOracleForeignKeyRows(pool, schema, table, direction, timeoutMs)
+    : await queryMysqlForeignKeyRows(pool, schema, table, direction, timeoutMs);
+  const grouped = groupBy(rows, (row) => {
+    const record = rowRecord(row);
+    return [
+      stringField(record, "constraint_name", "CONSTRAINT_NAME") ?? "",
+      stringField(record, "source_schema", "SOURCE_SCHEMA") ?? "",
+      stringField(record, "source_table", "SOURCE_TABLE") ?? "",
+      stringField(record, "target_schema", "TARGET_SCHEMA") ?? "",
+      stringField(record, "target_table", "TARGET_TABLE") ?? ""
+    ].join(".");
+  });
+
+  return [...grouped.values()].map((group) => {
+    const first = rowRecord(group[0]);
+    const sourceColumns = group
+      .map((row) => stringField(rowRecord(row), "source_column", "SOURCE_COLUMN"))
+      .filter((value): value is string => Boolean(value));
+    const targetColumns = group
+      .map((row) => stringField(rowRecord(row), "target_column", "TARGET_COLUMN"))
+      .filter((value): value is string => Boolean(value));
+    return {
+      relationType: direction === "outbound" ? "foreign_key" : "referenced_by",
+      direction,
+      confidence: 1,
+      sourceSchema: stringField(first, "source_schema", "SOURCE_SCHEMA"),
+      sourceTable: stringField(first, "source_table", "SOURCE_TABLE") ?? table,
+      sourceColumns,
+      targetSchema: stringField(first, "target_schema", "TARGET_SCHEMA"),
+      targetTable: stringField(first, "target_table", "TARGET_TABLE") ?? table,
+      targetColumns,
+      constraintName: stringField(first, "constraint_name", "CONSTRAINT_NAME"),
+      depth,
+      evidence: [
+        {
+          type: direction === "outbound" ? "foreign_key" : "referenced_by",
+          detail: "Relationship comes from database foreign-key metadata.",
+          columns: sourceColumns
+        }
+      ]
+    };
+  });
+}
+
+async function queryMysqlForeignKeyRows(
+  pool: ObPool,
+  schema: string | undefined,
+  table: string,
+  direction: "outbound" | "inbound",
+  timeoutMs: number
+): Promise<unknown[]> {
+  if (!schema) {
+    return [];
+  }
+  const where =
+    direction === "outbound"
+      ? "kcu.table_schema = ? AND kcu.table_name = ?"
+      : "kcu.referenced_table_schema = ? AND kcu.referenced_table_name = ?";
+  const [rows] = await pool.query({
+    sql: `
+      SELECT kcu.constraint_name,
+             kcu.table_schema AS source_schema,
+             kcu.table_name AS source_table,
+             kcu.column_name AS source_column,
+             kcu.referenced_table_schema AS target_schema,
+             kcu.referenced_table_name AS target_table,
+             kcu.referenced_column_name AS target_column
+      FROM information_schema.key_column_usage kcu
+      WHERE ${where}
+        AND kcu.referenced_table_name IS NOT NULL
+      ORDER BY kcu.constraint_name, kcu.ordinal_position
+    `,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function queryOracleForeignKeyRows(
+  pool: ObPool,
+  schema: string | undefined,
+  table: string,
+  direction: "outbound" | "inbound",
+  timeoutMs: number
+): Promise<unknown[]> {
+  if (!schema) {
+    return [];
+  }
+  const where = direction === "outbound" ? "c.owner = ? AND c.table_name = ?" : "r.owner = ? AND r.table_name = ?";
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} c.constraint_name,
+             c.owner AS source_schema,
+             c.table_name AS source_table,
+             cc.column_name AS source_column,
+             r.owner AS target_schema,
+             r.table_name AS target_table,
+             rcc.column_name AS target_column
+      FROM all_constraints c
+      JOIN all_cons_columns cc
+        ON cc.owner = c.owner
+       AND cc.constraint_name = c.constraint_name
+       AND cc.table_name = c.table_name
+      JOIN all_constraints r
+        ON r.owner = c.r_owner
+       AND r.constraint_name = c.r_constraint_name
+      JOIN all_cons_columns rcc
+        ON rcc.owner = r.owner
+       AND rcc.constraint_name = r.constraint_name
+       AND rcc.position = cc.position
+      WHERE c.constraint_type = 'R'
+        AND ${where}
+      ORDER BY c.constraint_name, cc.position
+    `,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function inferOutboundNamingRelationships(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  depth: number,
+  limit: number,
+  timeoutMs: number
+): Promise<TableRelationship[]> {
+  if (!schema) {
+    return [];
+  }
+  const columns = await describeTable(pool, mode, table, schema, timeoutMs);
+  const indexes = await listIndexes(pool, mode, table, schema, timeoutMs);
+  const indexedColumns = new Set(
+    indexes
+      .map((row) => normalizeName(mode, stringField(rowRecord(row), "column_name", "COLUMN_NAME") ?? ""))
+      .filter(Boolean)
+  );
+  const relations: TableRelationship[] = [];
+
+  for (const column of columns.map(metadataColumnName).filter((value): value is string => Boolean(value))) {
+    const normalizedColumn = normalizeName(mode, column);
+    const prefix = idColumnPrefix(normalizedColumn);
+    if (!prefix) {
+      continue;
+    }
+    const candidateTables = await findTablesByNames(pool, mode, schema, tableNameCandidates(prefix), timeoutMs);
+    for (const candidate of candidateTables) {
+      if (relations.length >= limit) {
+        return relations;
+      }
+      const candidateRecord = rowRecord(candidate);
+      const targetSchema = stringField(candidateRecord, "table_schema", "TABLE_SCHEMA", "owner", "OWNER") ?? schema;
+      const targetTable = stringField(candidateRecord, "table_name", "TABLE_NAME");
+      if (!targetTable || sameName(mode, targetTable, table)) {
+        continue;
+      }
+      const targetColumn = await primaryOrUniqueColumn(pool, mode, targetSchema, targetTable, "id", timeoutMs);
+      if (!targetColumn) {
+        continue;
+      }
+      const sourceIndexed = indexedColumns.has(normalizedColumn);
+      relations.push({
+        relationType: "name_inference",
+        direction: "outbound",
+        confidence: sourceIndexed ? 0.68 : 0.55,
+        sourceSchema: schema,
+        sourceTable: table,
+        sourceColumns: [column],
+        targetSchema,
+        targetTable,
+        targetColumns: [targetColumn],
+        depth,
+        evidence: [
+          {
+            type: "naming",
+            detail: `Column ${column} follows the ${prefix}_id naming pattern and matches table ${targetTable}.`,
+            columns: [column]
+          },
+          {
+            type: "primary_or_unique_key",
+            detail: `Target column ${targetColumn} is covered by a primary or unique key.`,
+            columns: [targetColumn]
+          },
+          ...(sourceIndexed
+            ? [{
+                type: "index" as const,
+                detail: `Source column ${column} is indexed.`,
+                columns: [column]
+              }]
+            : [])
+        ]
+      });
+    }
+  }
+  return relations;
+}
+
+async function inferInboundNamingRelationships(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  depth: number,
+  limit: number,
+  timeoutMs: number
+): Promise<TableRelationship[]> {
+  if (!schema) {
+    return [];
+  }
+  const targetColumn = await primaryOrUniqueColumn(pool, mode, schema, table, "id", timeoutMs);
+  if (!targetColumn) {
+    return [];
+  }
+  const candidateColumns = idColumnNamesForTable(mode, table);
+  const rows = mode === "oracle"
+    ? await queryOracleColumnsByName(pool, schema, table, candidateColumns, limit, timeoutMs)
+    : await queryMysqlColumnsByName(pool, schema, table, candidateColumns, limit, timeoutMs);
+
+  return rows.map((row) => {
+    const record = rowRecord(row);
+    const sourceSchema = stringField(record, "table_schema", "TABLE_SCHEMA", "owner", "OWNER") ?? schema;
+    const sourceTable = stringField(record, "table_name", "TABLE_NAME") ?? "";
+    const sourceColumn = stringField(record, "column_name", "COLUMN_NAME") ?? "";
+    const indexed = Boolean(numberField(record, "indexed", "INDEXED"));
+    return {
+      relationType: "name_inference",
+      direction: "inbound",
+      confidence: indexed ? 0.66 : 0.52,
+      sourceSchema,
+      sourceTable,
+      sourceColumns: [sourceColumn],
+      targetSchema: schema,
+      targetTable: table,
+      targetColumns: [targetColumn],
+      depth,
+      evidence: [
+        {
+          type: "naming",
+          detail: `Column ${sourceColumn} matches the expected reference name for table ${table}.`,
+          columns: [sourceColumn]
+        },
+        {
+          type: "primary_or_unique_key",
+          detail: `Target column ${targetColumn} is covered by a primary or unique key.`,
+          columns: [targetColumn]
+        },
+        ...(indexed
+          ? [{
+              type: "index" as const,
+              detail: `Source column ${sourceColumn} is indexed.`,
+              columns: [sourceColumn]
+            }]
+          : [])
+      ]
+    };
+  });
+}
+
+async function findTablesByNames(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string,
+  names: string[],
+  timeoutMs: number
+): Promise<unknown[]> {
+  const normalized = [...new Set(names.map((name) => normalizeName(mode, name)).filter(Boolean))];
+  if (normalized.length === 0) {
+    return [];
+  }
+  const placeholders = normalized.map(() => "?").join(", ");
+  if (mode === "oracle") {
+    const [rows] = await pool.query({
+      sql: `
+        SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name
+        FROM all_tables
+        WHERE owner = ?
+          AND table_name IN (${placeholders})
+        ORDER BY table_name
+      `,
+      values: [schema, ...normalized],
+      timeout: timeoutMs
+    });
+    return rows as unknown[];
+  }
+
+  const [rows] = await pool.query({
+    sql: `
+      SELECT table_schema, table_name
+      FROM information_schema.tables
+      WHERE table_schema = ?
+        AND LOWER(table_name) IN (${placeholders})
+      ORDER BY table_name
+    `,
+    values: [schema, ...normalized],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function primaryOrUniqueColumn(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string,
+  table: string,
+  preferredColumn: string,
+  timeoutMs: number
+): Promise<string | undefined> {
+  const normalizedColumn = normalizeName(mode, preferredColumn);
+  const rows = mode === "oracle"
+    ? await queryOraclePrimaryOrUniqueColumns(pool, schema, table, timeoutMs)
+    : await queryMysqlPrimaryOrUniqueColumns(pool, schema, table, timeoutMs);
+  const values = rows
+    .map((row) => stringField(rowRecord(row), "column_name", "COLUMN_NAME"))
+    .filter((value): value is string => Boolean(value));
+  return values.find((value) => normalizeName(mode, value) === normalizedColumn) ?? values[0];
+}
+
+async function queryMysqlPrimaryOrUniqueColumns(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<unknown[]> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT kcu.column_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_schema = tc.constraint_schema
+       AND kcu.constraint_name = tc.constraint_name
+       AND kcu.table_schema = tc.table_schema
+       AND kcu.table_name = tc.table_name
+      WHERE tc.table_schema = ?
+        AND tc.table_name = ?
+        AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+      ORDER BY CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN 0 ELSE 1 END, kcu.ordinal_position
+    `,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function queryOraclePrimaryOrUniqueColumns(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<unknown[]> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} cc.column_name
+      FROM all_constraints c
+      JOIN all_cons_columns cc
+        ON cc.owner = c.owner
+       AND cc.constraint_name = c.constraint_name
+       AND cc.table_name = c.table_name
+      WHERE c.owner = ?
+        AND c.table_name = ?
+        AND c.constraint_type IN ('P', 'U')
+      ORDER BY CASE WHEN c.constraint_type = 'P' THEN 0 ELSE 1 END, cc.position
+    `,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function queryMysqlColumnsByName(
+  pool: ObPool,
+  schema: string,
+  table: string,
+  columnNames: string[],
+  limit: number,
+  timeoutMs: number
+): Promise<unknown[]> {
+  const normalized = [...new Set(columnNames.map((name) => name.toLowerCase()).filter(Boolean))];
+  if (normalized.length === 0) {
+    return [];
+  }
+  const placeholders = normalized.map(() => "?").join(", ");
+  const [rows] = await pool.query({
+    sql: `
+      SELECT c.table_schema, c.table_name, c.column_name,
+             MAX(CASE WHEN s.index_name IS NULL THEN 0 ELSE 1 END) AS indexed
+      FROM information_schema.columns c
+      LEFT JOIN information_schema.statistics s
+        ON s.table_schema = c.table_schema
+       AND s.table_name = c.table_name
+       AND s.column_name = c.column_name
+      WHERE c.table_schema = ?
+        AND c.table_name <> ?
+        AND LOWER(c.column_name) IN (${placeholders})
+      GROUP BY c.table_schema, c.table_name, c.column_name
+      ORDER BY indexed DESC, c.table_name, c.column_name
+      LIMIT ?
+    `,
+    values: [schema, table, ...normalized, limit],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function queryOracleColumnsByName(
+  pool: ObPool,
+  schema: string,
+  table: string,
+  columnNames: string[],
+  limit: number,
+  timeoutMs: number
+): Promise<unknown[]> {
+  const normalized = [...new Set(columnNames.map((name) => name.toUpperCase()).filter(Boolean))];
+  if (normalized.length === 0) {
+    return [];
+  }
+  const placeholders = normalized.map(() => "?").join(", ");
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} *
+      FROM (
+        SELECT c.owner, c.table_name, c.column_name,
+               MAX(CASE WHEN ic.index_name IS NULL THEN 0 ELSE 1 END) AS indexed
+        FROM all_tab_columns c
+        LEFT JOIN all_ind_columns ic
+          ON ic.table_owner = c.owner
+         AND ic.table_name = c.table_name
+         AND ic.column_name = c.column_name
+        WHERE c.owner = ?
+          AND c.table_name <> ?
+          AND c.column_name IN (${placeholders})
+        GROUP BY c.owner, c.table_name, c.column_name
+        ORDER BY indexed DESC, c.table_name, c.column_name
+      )
+      WHERE ROWNUM <= ?
+    `,
+    values: [schema, table, ...normalized, limit],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
 async function showMysqlCreateTable(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<string | undefined> {
   const [rows] = await pool.query({
     sql: `SHOW CREATE TABLE ${quoteIdentifier("mysql", schema)}.${quoteIdentifier("mysql", table)}`,
@@ -815,6 +1390,63 @@ function renderIndexStatements(
     output.push(`CREATE ${unique ? "UNIQUE " : ""}INDEX ${indexName} ON ${qualifiedTableName(mode, schema, table)} (${columnList});`);
   }
   return output;
+}
+
+function metadataColumnName(row: unknown): string | undefined {
+  return stringField(rowRecord(row), "column_name", "COLUMN_NAME");
+}
+
+function idColumnPrefix(column: string): string | undefined {
+  const match = /^(.+)_id$/.exec(column);
+  return match?.[1] ? match[1] : undefined;
+}
+
+function tableNameCandidates(prefix: string): string[] {
+  const candidates = [prefix, `${prefix}s`];
+  if (prefix.endsWith("y")) {
+    candidates.push(`${prefix.slice(0, -1)}ies`);
+  }
+  if (prefix.endsWith("s")) {
+    candidates.push(prefix.slice(0, -1));
+  }
+  return candidates;
+}
+
+function idColumnNamesForTable(mode: CompatibilityMode, table: string): string[] {
+  const normalized = normalizeName(mode, table);
+  const candidates = [`${normalized}_id`];
+  if (normalized.endsWith("s")) {
+    candidates.push(`${normalized.slice(0, -1)}_id`);
+  }
+  if (normalized.endsWith("ies")) {
+    candidates.push(`${normalized.slice(0, -3)}y_id`);
+  }
+  return [...new Set(candidates)];
+}
+
+function normalizeName(mode: CompatibilityMode, value: string): string {
+  return mode === "oracle" ? value.trim().toUpperCase() : value.trim().toLowerCase();
+}
+
+function sameName(mode: CompatibilityMode, left: string, right: string): boolean {
+  return normalizeName(mode, left) === normalizeName(mode, right);
+}
+
+function tableKey(mode: CompatibilityMode, schema: string | undefined, table: string): string {
+  return `${schema ? normalizeName(mode, schema) : ""}.${normalizeName(mode, table)}`;
+}
+
+function relationshipPairKey(mode: CompatibilityMode, relation: TableRelationship): string {
+  return [
+    tableKey(mode, relation.sourceSchema, relation.sourceTable),
+    relation.sourceColumns.map((column) => normalizeName(mode, column)).join(","),
+    tableKey(mode, relation.targetSchema, relation.targetTable),
+    relation.targetColumns.map((column) => normalizeName(mode, column)).join(",")
+  ].join("->");
+}
+
+function relationshipKey(mode: CompatibilityMode, relation: TableRelationship): string {
+  return `${relation.relationType}:${relationshipPairKey(mode, relation)}:${relation.constraintName ?? ""}`;
 }
 
 function rowRecord(row: unknown): Record<string, unknown> {

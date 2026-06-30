@@ -109,6 +109,10 @@ try {
     name: "ob_get_table_ddl",
     arguments: { schema: smokeSchema, table: smokeTable }
   });
+  const relatedTables = await client.callTool({
+    name: "ob_find_related_tables",
+    arguments: { schema: smokeSchema, table: smokeTable, depth: 1, limit: 20 }
+  });
   const indexes = await client.callTool({
     name: "ob_get_indexes",
     arguments: { schema: smokeSchema, table: smokeTable }
@@ -179,6 +183,7 @@ try {
   const explainOutput = parseToolJson(explain);
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
+  const relatedTablesResult = parseToolJson(relatedTables);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
   const partitionRows = parseToolJson(partitions);
@@ -195,6 +200,7 @@ try {
     "ob_search_catalog",
     "ob_get_table_schema",
     "ob_get_table_ddl",
+    "ob_find_related_tables",
     "ob_get_indexes",
     "ob_get_constraints",
     "ob_get_partitions",
@@ -216,6 +222,7 @@ try {
     catalogRows: catalogRows.length,
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
+    relatedTablesOk: Array.isArray(relatedTablesResult.relations),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
     partitionRows: partitionRows.length,
@@ -257,6 +264,7 @@ try {
     output.explainRows < 1 ||
     output.tableSchemaRows < 1 ||
     !output.tableDdlOk ||
+    !output.relatedTablesOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
     !output.blockedSelectStar ||
