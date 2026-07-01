@@ -339,11 +339,14 @@ export async function describeTable(
       const resolvedOwner = owner ?? (await currentOracleSchema(pool, timeoutMs)) ?? "";
       const [rows] = await pool.query({
         sql: `
-          SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, table_name, column_name, data_type, data_length, data_precision,
-                 data_scale, data_default, nullable, column_id
-          FROM user_tab_columns
-          WHERE table_name = ?
-          ORDER BY table_name, column_id
+        SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, c.table_name, c.column_name, c.data_type, c.data_length, c.data_precision,
+                 c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
+          FROM user_tab_columns c
+          LEFT JOIN user_col_comments cc
+            ON cc.table_name = c.table_name
+           AND cc.column_name = c.column_name
+          WHERE c.table_name = ?
+          ORDER BY c.table_name, c.column_id
         `,
         values: [resolvedOwner, tableName],
         timeout: timeoutMs
@@ -353,12 +356,16 @@ export async function describeTable(
 
     const [rows] = await pool.query({
       sql: `
-        SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, column_name, data_type, data_length, data_precision,
-               data_scale, data_default, nullable, column_id
-        FROM all_tab_columns
-        WHERE table_name = ?
-          AND (? IS NULL OR owner = ?)
-        ORDER BY owner, table_name, column_id
+        SELECT ${oracleTimeoutHint(timeoutMs)} c.owner, c.table_name, c.column_name, c.data_type, c.data_length, c.data_precision,
+               c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
+        FROM all_tab_columns c
+        LEFT JOIN all_col_comments cc
+          ON cc.owner = c.owner
+         AND cc.table_name = c.table_name
+         AND cc.column_name = c.column_name
+        WHERE c.table_name = ?
+          AND (? IS NULL OR c.owner = ?)
+        ORDER BY c.owner, c.table_name, c.column_id
       `,
       values: [tableName, owner ?? null, owner ?? null],
       timeout: timeoutMs
@@ -374,7 +381,7 @@ export async function describeTable(
   const [rows] = await pool.query({
     sql: `
       SELECT table_schema, table_name, column_name, column_type, data_type,
-             is_nullable, column_default, column_key, extra, ordinal_position
+             is_nullable, column_default, column_key, extra, ordinal_position, column_comment
       FROM information_schema.columns
       WHERE table_name = ?
         AND table_schema = ?

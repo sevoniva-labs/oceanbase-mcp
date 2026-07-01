@@ -98,6 +98,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 | Return native or structured table DDL metadata. |
+| `ob_get_table_context` | 返回写 SQL 和查数据常用的表上下文。 | Return common table context for SQL drafting and data inspection. |
 | `ob_find_related_tables` | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | 返回表行数估算、对象计数和存储统计。 | Return table row estimates, counts, and storage statistics. |
 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |

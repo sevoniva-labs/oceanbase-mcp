@@ -122,6 +122,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_object_metadata` | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |
+| `ob_get_table_context` | Return common table context for SQL drafting and data inspection. |
 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | Return table row estimates, counts, and storage statistics. |
 | `ob_generate_query` | Generate read-only SQL templates from table metadata. |

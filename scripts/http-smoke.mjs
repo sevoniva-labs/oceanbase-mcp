@@ -136,6 +136,10 @@ try {
     name: "ob_get_table_ddl",
     arguments: { schema: smokeSchema, table: smokeTable }
   });
+  const tableContext = await client.callTool({
+    name: "ob_get_table_context",
+    arguments: { schema: smokeSchema, table: smokeTable, sampleLimit: 3 }
+  });
   const relatedTables = await client.callTool({
     name: "ob_find_related_tables",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, limit: 20 }
@@ -224,6 +228,7 @@ try {
   const performanceReportResult = parseToolJson(performanceReport);
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
+  const tableContextResult = parseToolJson(tableContext);
   const relatedTablesResult = parseToolJson(relatedTables);
   const tableStatsResult = parseToolJson(tableStats);
   const queryTemplateResult = parseToolJson(queryTemplates);
@@ -248,6 +253,7 @@ try {
     "ob_get_object_metadata",
     "ob_get_table_schema",
     "ob_get_table_ddl",
+    "ob_get_table_context",
     "ob_find_related_tables",
     "ob_get_table_stats",
     "ob_generate_query",
@@ -280,6 +286,11 @@ try {
     objectMetadataOk: !isOracle || objectMetadataResult?.schema === smokeSchema,
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
+    tableContextOk:
+      tableContextResult.table === smokeTable &&
+      Array.isArray(tableContextResult.columns) &&
+      tableContextResult.columns.length > 0 &&
+      tableContextResult.sample?.rows?.length > 0,
     relatedTablesOk: Array.isArray(relatedTablesResult.relations),
     tableStatsOk: Number.isInteger(tableStatsResult.counts?.columns),
     queryTemplatesOk:
@@ -333,6 +344,7 @@ try {
     output.explainRows < 1 ||
     output.tableSchemaRows < 1 ||
     !output.tableDdlOk ||
+    !output.tableContextOk ||
     !output.relatedTablesOk ||
     !output.tableStatsOk ||
     !output.queryTemplatesOk ||
