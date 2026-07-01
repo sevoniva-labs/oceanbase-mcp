@@ -14,3 +14,11 @@
 | [business-glossary.example.json](business-glossary.example.json) | 可选业务词映射，用于搜索提示。 |
 
 复制示例后，修改地址、用户、密码、schema 策略和来源 IP allowlist，再运行 `npm run config:doctor`。
+
+## ER HTML 导出
+
+```bash
+ob-mcp export-er --schema biz_test --table orders --format interactive --out docs/orders-er.html
+```
+
+默认不会覆盖已有文件；需要覆盖时显式加 `--overwrite`。

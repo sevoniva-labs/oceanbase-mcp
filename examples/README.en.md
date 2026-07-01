@@ -14,3 +14,11 @@
 | [business-glossary.example.json](business-glossary.example.json) | Optional business-term mapping for search hints. |
 
 Copy an example, change hosts, users, passwords, schema policy, and IP allowlist, then run `npm run config:doctor`.
+
+## ER HTML Export
+
+```bash
+ob-mcp export-er --schema biz_test --table orders --format interactive --out docs/orders-er.html
+```
+
+Existing files are not overwritten by default. Add `--overwrite` only when replacing an existing artifact intentionally.

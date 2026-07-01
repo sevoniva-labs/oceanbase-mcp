@@ -5,6 +5,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 
 import { loadGatewayConfig } from "./config.js";
 import { runDoctorCommand } from "./doctor-runner.js";
+import { runExportErCommand } from "./er-export.js";
 import { runInitCommand } from "./init.js";
 import { createObMcpServer } from "./mcp.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
@@ -15,6 +16,8 @@ if (command === "init") {
   process.exitCode = await runInitCommand(args);
 } else if (command === "doctor") {
   process.exitCode = await runDoctorCommand(args);
+} else if (command === "export-er" || command === "ob_export_er_artifact") {
+  process.exitCode = await runExportErCommand(args);
 } else if (command === "--help" || command === "-h" || command === "help") {
   printHelp();
 } else if (command) {
@@ -47,9 +50,10 @@ function printHelp() {
   console.log(`OceanBase MCP
 
 Usage:
-  ob-mcp                 Start the stdio MCP server
-  ob-mcp init [options]  Create local OpenCode and OceanBase MCP files
-  ob-mcp doctor          Check local setup, config, and OceanBase connectivity
+  ob-mcp                     Start the stdio MCP server
+  ob-mcp init [options]      Create local OpenCode and OceanBase MCP files
+  ob-mcp doctor              Check local setup, config, and OceanBase connectivity
+  ob-mcp export-er [options] Export a local ER HTML artifact
 
 Init options:
   --mode mysql|oracle
@@ -64,5 +68,14 @@ Init options:
 
 Doctor options:
   --skip-connect
+
+Export ER options:
+  --schema <schema>
+  --table <table>
+  --tables <table_a,table_b>
+  --business-term <term>
+  --format static|interactive|compact|detailed
+  --out <file>
+  --overwrite
 `);
 }

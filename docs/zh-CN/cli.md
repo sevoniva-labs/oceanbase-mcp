@@ -74,3 +74,45 @@ ob-mcp doctor --skip-connect
 ```
 
 输出为 JSON，检查项使用 `pass`、`warn`、`fail` 标记。`doctor` 不输出密码、token 或完整连接串。
+
+## 导出 ER HTML
+
+将可见元数据和关系证据导出为本地单文件 HTML：
+
+```bash
+ob-mcp export-er --schema biz_test --table orders --format interactive --out docs/orders-er.html
+```
+
+源码仓库内也可以运行：
+
+```bash
+npm run build
+node dist/index.js export-er --schema biz_test --business-term 订单 --format detailed --out tmp/order-er.html
+```
+
+支持格式：
+
+| 格式 | 说明 |
+| --- | --- |
+| `static` | 单文件静态 HTML，包含图、关系清单、Mermaid 和 JSON。 |
+| `interactive` | 单文件交互 HTML，支持搜索和缩放。 |
+| `compact` | 紧凑图，只显示表和主关系，适合较大的局部模型。 |
+| `detailed` | 详细图，显示字段、主键、索引和字段注释。 |
+
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--schema <schema>` | 限定 schema。 |
+| `--table <table>` | 从单表出发生成局部 ER。 |
+| `--tables <a,b>` | 指定多张表。 |
+| `--business-term <term>` | 按业务词匹配表范围。 |
+| `--depth <1-3>` | 关系发现深度。 |
+| `--max-tables <n>` | 最大表数量。 |
+| `--min-confidence <0-1>` | 最低关系置信度。 |
+| `--no-include-inferred` | 只保留真实外键等高可信关系。 |
+| `--format <format>` | `static`、`interactive`、`compact` 或 `detailed`。 |
+| `--out <file>` | 输出文件。未指定时使用安全默认文件名。 |
+| `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
+
+导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 HTML 文件，不修改数据库。

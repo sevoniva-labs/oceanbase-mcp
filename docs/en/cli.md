@@ -74,3 +74,45 @@ ob-mcp doctor --skip-connect
 ```
 
 Output is JSON. Checks use `pass`, `warn`, and `fail`. `doctor` does not print passwords, tokens, or full connection strings.
+
+## Export ER HTML
+
+Export visible metadata and relationship evidence to a local single-file HTML artifact:
+
+```bash
+ob-mcp export-er --schema biz_test --table orders --format interactive --out docs/orders-er.html
+```
+
+From a source checkout:
+
+```bash
+npm run build
+node dist/index.js export-er --schema biz_test --business-term orders --format detailed --out tmp/order-er.html
+```
+
+Supported formats:
+
+| Format | Description |
+| --- | --- |
+| `static` | Single-file static HTML with the diagram, relationship table, Mermaid, and JSON. |
+| `interactive` | Single-file interactive HTML with search and zoom. |
+| `compact` | Compact diagram with tables and main relationships for larger local models. |
+| `detailed` | Detailed diagram with columns, primary keys, indexes, and column comments. |
+
+Common options:
+
+| Option | Description |
+| --- | --- |
+| `--schema <schema>` | Limit the schema. |
+| `--table <table>` | Build a local ER view from one table. |
+| `--tables <a,b>` | Use an explicit table list. |
+| `--business-term <term>` | Match the ER scope from a business term. |
+| `--depth <1-3>` | Relationship discovery depth. |
+| `--max-tables <n>` | Maximum table count. |
+| `--min-confidence <0-1>` | Minimum relationship confidence. |
+| `--no-include-inferred` | Keep only high-confidence relationships such as real foreign keys. |
+| `--format <format>` | `static`, `interactive`, `compact`, or `detailed`. |
+| `--out <file>` | Output file. A safe default name is used when omitted. |
+| `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
+
+Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only the local HTML file and never modifies the database.
