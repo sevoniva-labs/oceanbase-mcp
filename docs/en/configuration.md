@@ -81,6 +81,9 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MAX_SQL_LENGTH` | `20000` | Maximum SQL text length. |
 | `OB_MAX_PARAM_COUNT` | `500` | Maximum SQL parameter count. |
 | `OB_MAX_CONCURRENT_QUERIES` | `5` | Maximum concurrent database operations per profile. |
+| `OB_METADATA_CACHE_ENABLED` | `true` | Enables profile-scoped metadata caching. |
+| `OB_METADATA_CACHE_TTL_MS` | `60000` | Metadata cache TTL. Only table, column, constraint, and relationship metadata is cached. |
+| `OB_METADATA_CACHE_MAX_ENTRIES` | `500` | Maximum metadata cache entries per profile. |
 
 Masking priority:
 
@@ -93,6 +96,12 @@ Business glossary:
 - `OB_BUSINESS_GLOSSARY_FILE` points to a JSON file. See [business-glossary.example.json](../../examples/business-glossary.example.json).
 - The glossary only affects search hints from `ob_search_business_glossary` and `ob_search_catalog`; it does not grant database access.
 - Glossary targets are still filtered by profile, schema, table, and column policy. Denied tables or columns are not returned.
+
+Metadata cache:
+
+- Cache entries are isolated per profile and are not shared across profiles.
+- Only metadata such as table lists, columns, constraints, and relationships is cached. `ob_query`, sample rows, and user SQL results are not cached.
+- Set `OB_METADATA_CACHE_ENABLED=false` when every metadata request must read the current database structure.
 
 ## HTTP Server
 

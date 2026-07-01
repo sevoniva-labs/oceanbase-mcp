@@ -81,6 +81,9 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MAX_SQL_LENGTH` | `20000` | SQL 文本长度上限。 |
 | `OB_MAX_PARAM_COUNT` | `500` | SQL 参数数量上限。 |
 | `OB_MAX_CONCURRENT_QUERIES` | `5` | 每个 profile 同时执行的数据库操作上限。 |
+| `OB_METADATA_CACHE_ENABLED` | `true` | 是否启用 profile 级元数据缓存。 |
+| `OB_METADATA_CACHE_TTL_MS` | `60000` | 元数据缓存 TTL。仅缓存表结构、约束、关系等元数据。 |
+| `OB_METADATA_CACHE_MAX_ENTRIES` | `500` | 每个 profile 的元数据缓存最大条目数。 |
 
 脱敏优先级：
 
@@ -93,6 +96,12 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 - `OB_BUSINESS_GLOSSARY_FILE` 指向 JSON 文件，格式见 [business-glossary.example.json](../../examples/business-glossary.example.json)。
 - 字典只影响 `ob_search_business_glossary` 和 `ob_search_catalog` 的搜索提示，不授予额外数据库访问权限。
 - 字典目标仍会经过 profile、schema、table 和 column 策略过滤。被拒绝的表或字段不会出现在返回结果中。
+
+元数据缓存：
+
+- 缓存按 profile 隔离，不跨 profile 共享。
+- 缓存只用于表清单、字段、约束和关系等元数据读取，不缓存 `ob_query`、样例数据或用户 SQL 结果。
+- 如需要每次都读取最新结构，可设置 `OB_METADATA_CACHE_ENABLED=false`。
 
 ## HTTP 服务
 

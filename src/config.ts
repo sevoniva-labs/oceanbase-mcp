@@ -61,6 +61,9 @@ export interface ObConfig {
   maxSqlLength: number;
   maxParamCount: number;
   maxConcurrentQueries: number;
+  metadataCacheEnabled: boolean;
+  metadataCacheTtlMs: number;
+  metadataCacheMaxEntries: number;
   enforceReadOnlyTransaction: boolean;
   requireTls: boolean;
   policy: AccessPolicy;
@@ -150,6 +153,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
   const businessGlossary = loadBusinessGlossary(env);
   const enforceReadOnlyTransaction = parseBoolean(env.OB_ENFORCE_READ_ONLY_TX, true);
   const connectionLimit = parseInteger(env.OB_CONNECTION_LIMIT, 5, "OB_CONNECTION_LIMIT");
+  const metadataCacheEnabled = parseBoolean(env.OB_METADATA_CACHE_ENABLED ?? env.OB_METADATA_CACHE, true);
   if (requireTls && !ssl) {
     throw new Error("OB_REQUIRE_TLS=true but no OB_SSL_* certificate material was configured.");
   }
@@ -193,6 +197,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
     maxSqlLength: parseInteger(env.OB_MAX_SQL_LENGTH, 20_000, "OB_MAX_SQL_LENGTH"),
     maxParamCount: parseInteger(env.OB_MAX_PARAM_COUNT, 500, "OB_MAX_PARAM_COUNT"),
     maxConcurrentQueries: parseInteger(env.OB_MAX_CONCURRENT_QUERIES, Math.max(1, Math.min(connectionLimit, 5)), "OB_MAX_CONCURRENT_QUERIES"),
+    metadataCacheEnabled,
+    metadataCacheTtlMs: parseInteger(env.OB_METADATA_CACHE_TTL_MS, 60_000, "OB_METADATA_CACHE_TTL_MS"),
+    metadataCacheMaxEntries: parseInteger(env.OB_METADATA_CACHE_MAX_ENTRIES, 500, "OB_METADATA_CACHE_MAX_ENTRIES"),
     enforceReadOnlyTransaction,
     requireTls,
     policy,

@@ -56,7 +56,7 @@ import {
   isMaskedColumn
 } from "./policy.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "./query-generation.js";
-import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "./runtime.js";
+import { selectRuntimeProfile, withMetadataCache, withQuerySlot, type GatewayRuntime } from "./runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "./sql.js";
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "./sql-scan.js";
 
@@ -1051,16 +1051,7 @@ export function createObMcpServer(
         throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
       }
       const tableLimit = Math.min(maxTables ?? 30, 500);
-      const rawTables = await withQuerySlot(selected, () =>
-        listSchemaMapTables(
-          selected.pool,
-          selected.config.compatibility,
-          effectiveSchema,
-          tablePattern,
-          tableLimit + 1,
-          selected.config.queryTimeoutMs
-        )
-      );
+      const rawTables = await cachedSchemaMapTables(selected, effectiveSchema, tablePattern, tableLimit + 1);
       const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
       const summaries = [];
 
@@ -1118,16 +1109,7 @@ export function createObMcpServer(
       }
       const tableLimit = Math.min(maxTables ?? 30, 200);
       const columnLimit = Math.min(maxColumnsPerTable ?? 50, 100);
-      const rawTables = await withQuerySlot(selected, () =>
-        listSchemaMapTables(
-          selected.pool,
-          selected.config.compatibility,
-          effectiveSchema,
-          tablePattern,
-          tableLimit + 1,
-          selected.config.queryTimeoutMs
-        )
-      );
+      const rawTables = await cachedSchemaMapTables(selected, effectiveSchema, tablePattern, tableLimit + 1);
       const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
       const dictionary = await buildDatabaseDictionary(selected, visibleTables, columnLimit);
       const warnings = [];
@@ -1174,16 +1156,7 @@ export function createObMcpServer(
       }
       const tableLimit = Math.min(maxTables ?? 30, 200);
       const columnLimit = Math.min(maxColumnsPerTable ?? 50, 100);
-      const rawTables = await withQuerySlot(selected, () =>
-        listSchemaMapTables(
-          selected.pool,
-          selected.config.compatibility,
-          effectiveSchema,
-          tablePattern,
-          tableLimit + 1,
-          selected.config.queryTimeoutMs
-        )
-      );
+      const rawTables = await cachedSchemaMapTables(selected, effectiveSchema, tablePattern, tableLimit + 1);
       const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
       const dictionary = await buildDatabaseDictionary(selected, visibleTables, columnLimit);
       const warnings = uniqueStrings([
@@ -3851,6 +3824,72 @@ function filterSchemaMapTables(rows: SchemaMapTable[], config: ObConfig): Schema
   });
 }
 
+async function cachedSchemaMapTables(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  tablePattern: string | undefined,
+  limit: number
+): Promise<SchemaMapTable[]> {
+  return withMetadataCache(selected, "schema_map_tables", [selected.config.compatibility, schema ?? "", tablePattern ?? "", limit], () =>
+    withQuerySlot(selected, () =>
+      listSchemaMapTables(
+        selected.pool,
+        selected.config.compatibility,
+        schema,
+        tablePattern,
+        limit,
+        selected.config.queryTimeoutMs
+      )
+    )
+  );
+}
+
+async function cachedDescribeTable(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string
+): Promise<unknown[]> {
+  return withMetadataCache(selected, "describe_table", [selected.config.compatibility, schema ?? "", table], () =>
+    withQuerySlot(selected, () =>
+      describeTable(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
+    )
+  );
+}
+
+async function cachedListConstraints(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string
+): Promise<unknown[]> {
+  return withMetadataCache(selected, "list_constraints", [selected.config.compatibility, schema ?? "", table], () =>
+    withQuerySlot(selected, () =>
+      listConstraints(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
+    )
+  );
+}
+
+async function cachedRelatedTables(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string,
+  depth: number,
+  limit: number
+) {
+  return withMetadataCache(selected, "related_tables", [selected.config.compatibility, schema ?? "", table, depth, limit], () =>
+    withQuerySlot(selected, () =>
+      findRelatedTables(
+        selected.pool,
+        selected.config.compatibility,
+        table,
+        schema,
+        depth,
+        limit,
+        selected.config.queryTimeoutMs
+      )
+    )
+  );
+}
+
 async function buildSchemaMapTableSummary(
   selected: ReturnType<typeof selectRuntimeProfile>,
   tableInfo: SchemaMapTable,
@@ -3863,15 +3902,11 @@ async function buildSchemaMapTableSummary(
   const table = tableInfo.table;
   assertTableAccess(schema, table, policyContext(selected.config));
   const columns = filterColumnMetadata(
-    await withQuerySlot(selected, () =>
-      describeTable(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
-    ),
+    await cachedDescribeTable(selected, schema, table),
     selected.config.policy
   );
   const constraints = filterColumnMetadata(
-    await withQuerySlot(selected, () =>
-      listConstraints(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
-    ),
+    await cachedListConstraints(selected, schema, table),
     selected.config.policy
   );
   const compactColumns = compactSchemaColumns(columns, constraints, selected.config, schema, table);
@@ -3908,17 +3943,7 @@ async function buildSchemaMapRelationshipSummary(
   table: string,
   relationshipLimit: number
 ) {
-  const result = await withQuerySlot(selected, () =>
-    findRelatedTables(
-      selected.pool,
-      selected.config.compatibility,
-      table,
-      schema,
-      1,
-      Math.max(1, Math.min(relationshipLimit, 100)),
-      selected.config.queryTimeoutMs
-    )
-  );
+  const result = await cachedRelatedTables(selected, schema, table, 1, Math.max(1, Math.min(relationshipLimit, 100)));
   const relations = result.relations.filter((relation) => isRelationshipAllowed(relation, selected.config));
   const outbound = relations.filter((relation) => relation.direction === "outbound").length;
   const inbound = relations.filter((relation) => relation.direction === "inbound").length;
@@ -4089,15 +4114,11 @@ async function buildDatabaseDictionary(
     const schema = metadataSchema(selected.config, tableInfo.schema);
     assertTableAccess(schema, tableInfo.table, policyContext(selected.config));
     const columns = filterColumnMetadata(
-      await withQuerySlot(selected, () =>
-        describeTable(selected.pool, selected.config.compatibility, tableInfo.table, schema, selected.config.queryTimeoutMs)
-      ),
+      await cachedDescribeTable(selected, schema, tableInfo.table),
       selected.config.policy
     );
     const constraints = filterColumnMetadata(
-      await withQuerySlot(selected, () =>
-        listConstraints(selected.pool, selected.config.compatibility, tableInfo.table, schema, selected.config.queryTimeoutMs)
-      ),
+      await cachedListConstraints(selected, schema, tableInfo.table),
       selected.config.policy
     );
     const compactColumns = compactSchemaColumns(columns, constraints, selected.config, schema, tableInfo.table);
@@ -4510,16 +4531,7 @@ async function buildSchemaDocument(
   }
   const tableLimit = Math.min(input.maxTables, 100);
   const columnLimit = Math.min(input.maxColumnsPerTable, 80);
-  const rawTables = await withQuerySlot(selected, () =>
-    listSchemaMapTables(
-      selected.pool,
-      selected.config.compatibility,
-      effectiveSchema,
-      input.tablePattern,
-      tableLimit + 1,
-      selected.config.queryTimeoutMs
-    )
-  );
+  const rawTables = await cachedSchemaMapTables(selected, effectiveSchema, input.tablePattern, tableLimit + 1);
   const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
   const tables = [];
   for (const tableInfo of visibleTables) {
@@ -4627,16 +4639,7 @@ async function buildOnboardingDocument(
   const columnLimit = Math.min(input.maxColumnsPerTable, 50);
   const coreLimit = Math.min(input.maxCoreTables, 30);
   const relationLimit = Math.min(input.relationshipLimit, 50);
-  const rawTables = await withQuerySlot(selected, () =>
-    listSchemaMapTables(
-      selected.pool,
-      selected.config.compatibility,
-      effectiveSchema,
-      input.tablePattern,
-      tableLimit + 1,
-      selected.config.queryTimeoutMs
-    )
-  );
+  const rawTables = await cachedSchemaMapTables(selected, effectiveSchema, input.tablePattern, tableLimit + 1);
   const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
   const tableSummaries = [];
   for (const tableInfo of visibleTables) {
@@ -5205,16 +5208,7 @@ async function findSchemaMapTableInfo(
   table: string
 ): Promise<SchemaMapTable | undefined> {
   const rows = filterSchemaMapTables(
-    await withQuerySlot(selected, () =>
-      listSchemaMapTables(
-        selected.pool,
-        selected.config.compatibility,
-        schema,
-        table,
-        20,
-        selected.config.queryTimeoutMs
-      )
-    ),
+    await cachedSchemaMapTables(selected, schema, table, 20),
     selected.config
   );
   return rows.find((row) => sameTableName(selected.config.compatibility, row.table, table));
