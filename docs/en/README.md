@@ -191,6 +191,7 @@ Sorted by Since version in ascending order; tools with the same version are grou
 | v1.0.0 | `ob_explain_project_query` | Explain project SQL tables, fields, filters, pagination, and risk without executing it. |
 | v1.0.0 | `ob_generate_mapper_context` | Generate table and column context for mapper or SQL files without modifying code. |
 | v1.0.0 | `ob_find_unknown_columns_in_sql` | Find unknown tables or columns in SQL with visible metadata-based candidates. |
+| v1.0.0 | `ob_generate_table_doc` | Generate Markdown or JSON documentation for one table without sample values. |
 | v1.0.0 | `ob_rewrite_sql` | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | v1.0.0 | `ob_convert_sql_dialect` | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | v1.0.0 | `ob_explain_error` | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
@@ -213,6 +214,10 @@ Procedure, function, and package source is returned as a bounded preview, not as
 ## Performance Reports
 
 `ob_generate_performance_report` runs read-only `EXPLAIN`, collects visible table statistics and index metadata, and returns risk level, evidence, and review recommendations. It does not execute the target SQL and does not output DDL or directly executable index changes.
+
+## Documentation Generation
+
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. It does not include sample data values.
 
 ## Resources
 

@@ -191,6 +191,7 @@ npm run start:http
 | v1.0.0 | `ob_explain_project_query` | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 |
 | v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 |
 | v1.0.0 | `ob_find_unknown_columns_in_sql` | 发现 SQL 中未知表或字段，并给出可见元数据候选。 |
+| v1.0.0 | `ob_generate_table_doc` | 生成单表 Markdown 或 JSON 文档，不包含敏感样例值。 |
 | v1.0.0 | `ob_rewrite_sql` | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 |
 | v1.0.0 | `ob_convert_sql_dialect` | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 |
 | v1.0.0 | `ob_explain_error` | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
@@ -213,6 +214,10 @@ procedure、function、package 的源码只返回有限预览，不返回不受�
 ## 性能建议报告
 
 `ob_generate_performance_report` 会执行只读 `EXPLAIN`，读取可见的表统计和索引元数据，并返回风险等级、证据和建议方向。它不会执行目标 SQL，也不会输出 DDL 或可直接执行的索引变更语句。
+
+## 文档生成
+
+`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。输出不包含样例数据值。
 
 ## 资源
 

@@ -63,6 +63,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_explain_project_query", since: "v1.0.0", group: "sql", mode: "all", description: "Explain project SQL from text or a local file without executing it." },
   { name: "ob_generate_mapper_context", since: "v1.0.0", group: "sql", mode: "all", description: "Generate table and column context for mapper or SQL files without modifying code." },
   { name: "ob_find_unknown_columns_in_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Find unknown tables and columns in SQL with visible metadata-based candidates." },
+  { name: "ob_generate_table_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for one visible table." },
   { name: "ob_rewrite_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Rewrite SELECT/WITH SQL into a safer read-only form without executing it." },
   { name: "ob_convert_sql_dialect", since: "v1.0.0", group: "sql", mode: "all", description: "Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations." },
   { name: "ob_explain_error", since: "v1.0.0", group: "sql", mode: "all", description: "Explain SQL errors with policy context and visible metadata hints without executing SQL." },

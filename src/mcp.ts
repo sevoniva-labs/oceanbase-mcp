@@ -84,6 +84,7 @@ const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range"
 const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-compact", "html-detailed"]);
 const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
 const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
+const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -3169,6 +3170,63 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_generate_table_doc",
+    {
+      title: "Generate Table Documentation",
+      description: "Generate bounded JSON or Markdown documentation for one visible table without returning sample values.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        format: tableDocumentFormatSchema.optional().default("markdown"),
+        includeRelationships: z.boolean().optional().default(true),
+        includeQueryExamples: z.boolean().optional().default(true),
+        maxColumns: z.number().int().positive().max(200).optional(),
+        relationshipLimit: z.number().int().positive().max(50).optional(),
+        maxExamples: z.number().int().positive().max(10).optional(),
+        title: z.string().min(1).max(120).optional()
+      }
+    },
+    async ({
+      profile,
+      table,
+      schema,
+      format = "markdown",
+      includeRelationships = true,
+      includeQueryExamples = true,
+      maxColumns,
+      relationshipLimit,
+      maxExamples,
+      title
+    }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const document = await buildTableDocument(selected, {
+        schema,
+        table,
+        includeRelationships,
+        includeQueryExamples,
+        maxColumns: maxColumns ?? 80,
+        relationshipLimit: relationshipLimit ?? 20,
+        maxExamples: maxExamples ?? 6
+      });
+      return toLimitedResult(
+        {
+          format,
+          mode: selected.config.compatibility,
+          schema: document.schema,
+          table: document.table,
+          generatedAt: document.generatedAt,
+          executed: false,
+          document,
+          markdown: format === "markdown" ? renderTableDocumentMarkdown(document, title) : undefined,
+          warnings: document.warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_generate_er_diagram",
     {
       title: "Generate ER Diagram",
@@ -3884,6 +3942,251 @@ function renderDatabaseDictionaryMarkdown(dictionary: {
       lines.push("", `More columns exist for ${title}; output was truncated by maxColumnsPerTable.`);
     }
     lines.push("");
+  }
+  return lines.join("\n");
+}
+
+async function buildTableDocument(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  input: {
+    schema?: string;
+    table: string;
+    includeRelationships: boolean;
+    includeQueryExamples: boolean;
+    maxColumns: number;
+    relationshipLimit: number;
+    maxExamples: number;
+  }
+) {
+  const ref = metadataTableRef(selected.config, input.schema, input.table);
+  assertTableAccess(ref.schema, ref.table, policyContext(selected.config));
+  const metadata = await withQuerySlot(selected, () =>
+    getTableDdlMetadata(selected.pool, selected.config.compatibility, ref.table, ref.schema, selected.config.queryTimeoutMs)
+  );
+  const columns = filterColumnMetadata(metadata.columns, selected.config.policy);
+  const indexes = filterColumnMetadata(metadata.indexes, selected.config.policy);
+  const constraints = filterColumnMetadata(metadata.constraints, selected.config.policy);
+  const partitions = filterTables(metadata.partitions, selected.config.policy);
+  const compactColumns = compactSchemaColumns(columns, constraints, selected.config, metadata.schema, metadata.table);
+  const columnLimit = Math.min(input.maxColumns, 200);
+  const primaryKeys = schemaMapPrimaryKeyColumns(constraints);
+  const uniqueKeys = uniqueKeyGroups(constraints);
+  const timeFields = compactColumns.filter((column) => column.roles.includes("time")).map((column) => column.name);
+  const statusFields = compactColumns.filter((column) => column.roles.includes("status")).map((column) => column.name);
+  const keyFields = importantSchemaMapFields(compactColumns, primaryKeys, timeFields, statusFields);
+  const tableInfo = await findSchemaMapTableInfo(selected, metadata.schema, metadata.table);
+  const statistics = await withQuerySlot(selected, () =>
+    getTableStats(selected.pool, selected.config.compatibility, metadata.table, metadata.schema, selected.config.queryTimeoutMs)
+  );
+  const relationshipLimit = Math.min(input.relationshipLimit, 50);
+  const relationships = input.includeRelationships
+    ? await buildSchemaMapRelationshipSummary(selected, metadata.schema, metadata.table, relationshipLimit)
+    : undefined;
+  const queryExamples = input.includeQueryExamples
+    ? buildTableDocumentQueryExamples(
+        selected,
+        metadata.schema,
+        metadata.table,
+        columns,
+        constraints,
+        relationships?.relations ?? [],
+        input.maxExamples
+      )
+    : undefined;
+  const purpose = inferTablePurpose(metadata.table, tableInfo?.comment, compactColumns);
+  const warnings = uniqueStrings([
+    ...metadata.warnings,
+    "Document content is based on metadata visible to the active MCP policy.",
+    "No sample data values are included.",
+    "Purpose and field roles are inferred from visible metadata; verify with domain knowledge before using them as business facts.",
+    compactColumns.length > columnLimit ? `Only the first ${columnLimit} visible columns are included.` : "",
+    statistics.warnings.length > 0 ? statistics.warnings.join(" ") : "",
+    relationships?.truncated ? "Relationship output was truncated by relationshipLimit." : ""
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    mode: selected.config.compatibility,
+    schema: metadata.schema,
+    table: metadata.table,
+    comment: tableInfo?.comment,
+    tableType: tableInfo?.tableType,
+    engine: tableInfo?.engine,
+    purpose,
+    rowEstimate: tableInfo?.rowEstimate ?? statistics.rowEstimate,
+    statistics,
+    primaryKeys,
+    uniqueKeys,
+    keyFields,
+    timeFields,
+    statusFields,
+    columns: compactColumns.slice(0, columnLimit),
+    visibleColumnCount: compactColumns.length,
+    columnsTruncated: compactColumns.length > columnLimit,
+    indexes: mapperIndexSummary(indexes),
+    constraints: mapperConstraintSummary(constraints),
+    partitions: tableDocumentPartitionSummary(partitions),
+    relationships,
+    queryExamples,
+    structuredDdl: metadata.structuredDdl,
+    warnings
+  };
+}
+
+function buildTableDocumentQueryExamples(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string,
+  columns: unknown[],
+  constraints: unknown[],
+  relationships: Array<{
+    relationType: TableRelationship["relationType"];
+    direction: TableRelationship["direction"];
+    confidence: number;
+    sourceSchema?: string;
+    sourceTable: string;
+    sourceColumns: string[];
+    targetSchema?: string;
+    targetTable: string;
+    targetColumns: string[];
+    constraintName?: string;
+    evidence: TableRelationship["evidence"];
+  }>,
+  maxExamples: number
+) {
+  const generated = generateQueryTemplates({
+    mode: selected.config.compatibility,
+    schema,
+    table,
+    columns,
+    constraints,
+    relationships: relationships as TableRelationship[],
+    maxColumns: 12,
+    rowLimit: effectiveRowLimit(undefined, selected.config)
+  });
+  return {
+    examples: generated.templates
+      .slice(0, Math.min(maxExamples, 10))
+      .map((template) => queryExampleFromTemplate(template, selected.config)),
+    warnings: generated.warnings,
+    executed: false
+  };
+}
+
+function tableDocumentPartitionSummary(rows: unknown[]): Array<Record<string, unknown>> {
+  return rows.slice(0, 50).map((row) => {
+    const record = row as Record<string, unknown>;
+    return {
+      name: stringRecordValue(record, "partition_name", "PARTITION_NAME"),
+      subpartition: stringRecordValue(record, "subpartition_name", "SUBPARTITION_NAME"),
+      method: stringRecordValue(record, "partition_method", "PARTITION_METHOD"),
+      expression: stringRecordValue(record, "partition_expression", "PARTITION_EXPRESSION"),
+      description: stringRecordValue(record, "partition_description", "HIGH_VALUE"),
+      rowEstimate: numberRecordValue(record, "table_rows", "NUM_ROWS")
+    };
+  });
+}
+
+function renderTableDocumentMarkdown(document: Awaited<ReturnType<typeof buildTableDocument>>, title?: string): string {
+  const qualifiedName = `${document.schema ? `${document.schema}.` : ""}${document.table}`;
+  const lines = [
+    `# ${title ?? `Table Documentation: ${qualifiedName}`}`,
+    "",
+    `Generated at: ${document.generatedAt}`,
+    "",
+    `Mode: ${document.mode}`,
+    `Table: ${qualifiedName}`,
+    ""
+  ];
+  if (document.comment) {
+    lines.push(`Comment: ${document.comment}`, "");
+  }
+  if (document.rowEstimate) {
+    lines.push(`Row estimate: ${document.rowEstimate.value} (${document.rowEstimate.source})`, "");
+  }
+  lines.push("## Purpose", "", document.purpose.summary, "");
+  if (document.purpose.evidence.length > 0) {
+    lines.push("| Evidence | Value | Reason |", "| --- | --- | --- |");
+    for (const item of document.purpose.evidence) {
+      lines.push(`| ${markdownCell(item.source)} | ${markdownCell(item.value)} | ${markdownCell(item.reason)} |`);
+    }
+    lines.push("");
+  }
+  lines.push("## Columns", "");
+  lines.push("| Column | Type | Nullable | Roles | Masked | Comment |");
+  lines.push("| --- | --- | --- | --- | --- | --- |");
+  for (const column of document.columns) {
+    lines.push(`| ${markdownCell(column.name)} | ${markdownCell(column.type ?? "")} | ${column.nullable == null ? "" : column.nullable ? "YES" : "NO"} | ${markdownCell(column.roles.join(", "))} | ${column.masked ? "YES" : "NO"} | ${markdownCell(column.comment ?? "")} |`);
+  }
+  if (document.columnsTruncated) {
+    lines.push("", `Only the first ${document.columns.length} of ${document.visibleColumnCount} visible columns are included.`, "");
+  } else {
+    lines.push("");
+  }
+  lines.push("## Keys And Indexes", "");
+  lines.push(`Primary keys: ${document.primaryKeys.length > 0 ? document.primaryKeys.map(markdownCell).join(", ") : "None visible."}`, "");
+  if (document.uniqueKeys.length > 0) {
+    lines.push("| Unique Key | Columns |", "| --- | --- |");
+    for (const key of document.uniqueKeys) {
+      lines.push(`| ${markdownCell(key.name)} | ${markdownCell(key.columns.join(", "))} |`);
+    }
+    lines.push("");
+  }
+  if (document.indexes.length > 0) {
+    lines.push("| Index | Unique | Columns |", "| --- | --- | --- |");
+    for (const index of document.indexes) {
+      lines.push(`| ${markdownCell(index.name)} | ${index.unique == null ? "" : index.unique ? "YES" : "NO"} | ${markdownCell(index.columns.join(", "))} |`);
+    }
+    lines.push("");
+  }
+  if (document.constraints.length > 0) {
+    lines.push("## Constraints", "");
+    lines.push("| Constraint | Type | Columns |", "| --- | --- | --- |");
+    for (const constraint of document.constraints) {
+      lines.push(`| ${markdownCell(constraint.name)} | ${markdownCell(constraint.type ?? "")} | ${markdownCell(constraint.columns.join(", "))} |`);
+    }
+    lines.push("");
+  }
+  if (document.partitions.length > 0) {
+    lines.push("## Partitions", "");
+    lines.push("| Partition | Subpartition | Method | Rows |", "| --- | --- | --- | --- |");
+    for (const partition of document.partitions) {
+      lines.push(`| ${markdownCell(String(partition.name ?? ""))} | ${markdownCell(String(partition.subpartition ?? ""))} | ${markdownCell(String(partition.method ?? ""))} | ${partition.rowEstimate ?? ""} |`);
+    }
+    lines.push("");
+  }
+  if (document.relationships) {
+    lines.push("## Relationships", "");
+    if (document.relationships.relations.length === 0) {
+      lines.push("No visible relationships were found under the active policy.", "");
+    } else {
+      lines.push("| Direction | Type | Table | Columns | Confidence | Evidence |", "| --- | --- | --- | --- | --- | --- |");
+      for (const relation of document.relationships.relations) {
+        const table = relation.direction === "outbound"
+          ? `${relation.targetSchema ? `${relation.targetSchema}.` : ""}${relation.targetTable}`
+          : `${relation.sourceSchema ? `${relation.sourceSchema}.` : ""}${relation.sourceTable}`;
+        const columns = relation.direction === "outbound" ? relation.sourceColumns : relation.targetColumns;
+        lines.push(`| ${relation.direction} | ${relation.relationType} | ${markdownCell(table)} | ${markdownCell(columns.join(", "))} | ${relation.confidence} | ${markdownCell(relation.evidence.map((item) => item.detail).join("; "))} |`);
+      }
+      lines.push("");
+    }
+  }
+  if (document.queryExamples) {
+    lines.push("## Query Examples", "");
+    for (const example of document.queryExamples.examples) {
+      lines.push(`### ${example.title}`, "", `Purpose: ${example.purpose}`, "", "```sql", example.sql, "```", "");
+      if (example.parameters.length > 0) {
+        lines.push("| Parameter | Type | Description |", "| --- | --- | --- |");
+        for (const parameter of example.parameters) {
+          lines.push(`| ${markdownCell(parameter.name)} | ${markdownCell(parameter.type ?? "")} | ${markdownCell(parameter.description)} |`);
+        }
+        lines.push("");
+      }
+    }
+  }
+  lines.push("## Notes", "");
+  for (const warning of document.warnings) {
+    lines.push(`- ${warning}`);
   }
   return lines.join("\n");
 }

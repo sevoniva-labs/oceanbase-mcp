@@ -162,6 +162,7 @@ Sorted by Since version in ascending order; tools with the same version are grou
 | v1.0.0 | `ob_explain_project_query` | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 | Explain project SQL tables, fields, filters, pagination, and risk without executing it. |
 | v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 | Generate table and column context for mapper or SQL files without modifying code. |
 | v1.0.0 | `ob_find_unknown_columns_in_sql` | 发现 SQL 中未知表或字段，并给出可见元数据候选。 | Find unknown tables or columns in SQL with visible metadata-based candidates. |
+| v1.0.0 | `ob_generate_table_doc` | 生成单表 Markdown 或 JSON 文档，不包含敏感样例值。 | Generate Markdown or JSON documentation for one table without sample values. |
 | v1.0.0 | `ob_rewrite_sql` | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | v1.0.0 | `ob_convert_sql_dialect` | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | v1.0.0 | `ob_explain_error` | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
@@ -170,6 +171,12 @@ Sorted by Since version in ascending order; tools with the same version are grou
 | v1.0.0 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 | Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence. |
 | v1.0.0 | `ob_explain_relationship` | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 | Explain visible relationship evidence and confidence between two tables without inventing missing links. |
 | v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
+
+## Documentation Generation / 文档生成
+
+`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。输出不包含样例数据值。
+
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. It does not include sample data values.
 
 ## Validation / 验证
 
