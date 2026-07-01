@@ -110,6 +110,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_verify_permissions` | Check current database grants for write or administrative privileges. |
 | `ob_ping` | Verify the OceanBase connection. |
 | `ob_policy_explain` | Explain whether SQL would be allowed. |
+| `ob_query_preview` | Preview read-only policy and plan risk before execution, without returning data. |
 | `ob_query` | Run strict read-only SQL. |
 | `ob_list_schemas` | List visible schemas/databases. |
 | `ob_list_tables` | List visible tables. |

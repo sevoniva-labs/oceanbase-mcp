@@ -234,6 +234,76 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_query_preview",
+    {
+      title: "Preview Read-only Query",
+      description: "Preview policy, sensitive-column, and EXPLAIN risk for a read-only SQL statement without executing the target query.",
+      inputSchema: {
+        ...profileInput,
+        sql: z.string().min(1),
+        params: z.array(sqlParamSchema).optional().default([]),
+        maxRows: z.number().int().positive().max(10_000).optional()
+      }
+    },
+    async ({ profile, sql, params = [], maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const sqlParams = params as SqlParam[];
+      const checks = [
+        runExplainCheck("input_limits", () => assertSqlInputLimits(sql, sqlParams, selected.config)),
+        runExplainCheck("read_only_sql", () => assertReadOnlySql(sql))
+      ];
+      const policy = explainSqlPolicy(sql, policyContext(selected.config));
+      const allowed = checks.every((check) => check.ok) && policy.allowed;
+      const shape = queryShape(sql, selected.config.compatibility);
+      const sensitiveColumnRisk = sensitiveSqlTerms(sql, selected.config);
+      const warnings = queryPreviewWarnings(shape, sensitiveColumnRisk);
+
+      let plan: QueryOutput | undefined;
+      let analysis: ReturnType<typeof analyzeQueryPlan> | undefined;
+      if (allowed) {
+        const explainSql = buildExplainSql(sql);
+        const started = Date.now();
+        plan = await withQuerySlot(selected, () =>
+          runReadOnlyQuery(
+            selected.pool,
+            selected.config.compatibility,
+            explainSql,
+            sqlParams,
+            effectiveRowLimit(maxRows, selected.config),
+            selected.config.queryTimeoutMs,
+            selected.config.enforceReadOnlyTransaction
+          )
+        );
+        metrics.recordQueryDuration(Date.now() - started);
+        analysis = analyzeQueryPlan(plan, sql);
+        if (analysis.riskLevel !== "low") {
+          warnings.push(`EXPLAIN risk level is ${analysis.riskLevel}. Review findings before running the query.`);
+        }
+      } else {
+        warnings.push("EXPLAIN was skipped because SQL is not allowed by the current policy checks.");
+      }
+
+      return toLimitedResult(
+        {
+          sql,
+          paramCount: sqlParams.length,
+          allowed,
+          executed: false,
+          explainRun: Boolean(plan),
+          checks: [...checks, ...policy.checks],
+          policy,
+          shape,
+          sensitiveColumnRisk,
+          analysis,
+          plan,
+          warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_query",
     {
       title: "Run Strict Read-Only Query",
@@ -1401,6 +1471,61 @@ function uniqueTableRefs(refs: Array<{ schema?: string; table: string }>): Array
     output.push(ref);
   }
   return output;
+}
+
+function queryShape(sql: string, mode: ObConfig["compatibility"]) {
+  return {
+    hasRowLimit: hasSqlRowLimit(sql, mode),
+    hasOrderBy: /\border\s+by\b/i.test(sql),
+    hasWhere: /\bwhere\b/i.test(sql),
+    hasJoin: /\bjoin\b/i.test(sql)
+  };
+}
+
+function hasSqlRowLimit(sql: string, mode: ObConfig["compatibility"]): boolean {
+  if (/\blimit\s+\d+/i.test(sql) || /\bfetch\s+first\s+\d+\s+rows\b/i.test(sql) || /\brownum\b/i.test(sql)) {
+    return true;
+  }
+  return mode === "oracle" && /\boffset\s+\d+\s+rows\s+fetch\s+next\s+\d+\s+rows\b/i.test(sql);
+}
+
+function sensitiveSqlTerms(sql: string, config: ObConfig) {
+  const normalizedSql = sql.toLowerCase();
+  const terms = new Set<string>();
+  for (const match of sql.matchAll(/[A-Za-z_][\w$]*/g)) {
+    const value = match[0];
+    if (SENSITIVE_SAMPLE_PATTERN.test(value)) {
+      terms.add(value);
+    }
+  }
+  for (const pattern of [...config.policy.deniedColumns, ...config.policy.maskedColumns]) {
+    for (const part of pattern.split(/[.*,\s]+/).filter(Boolean)) {
+      if (part !== "*" && normalizedSql.includes(part.toLowerCase())) {
+        terms.add(part);
+      }
+    }
+  }
+  return {
+    detected: terms.size > 0,
+    terms: [...terms].slice(0, 20)
+  };
+}
+
+function queryPreviewWarnings(
+  shape: ReturnType<typeof queryShape>,
+  sensitiveColumnRisk: ReturnType<typeof sensitiveSqlTerms>
+): string[] {
+  const warnings: string[] = [];
+  if (!shape.hasRowLimit) {
+    warnings.push("No row limit was detected. Prefer a paged query or an explicit row cap for data inspection.");
+  }
+  if (!shape.hasOrderBy) {
+    warnings.push("No ORDER BY was detected. Result order may be unstable.");
+  }
+  if (sensitiveColumnRisk.detected) {
+    warnings.push("The SQL references fields that look sensitive or are configured for masking.");
+  }
+  return warnings;
 }
 
 export function effectiveRowLimit(requested: number | undefined, config: ObConfig): number {

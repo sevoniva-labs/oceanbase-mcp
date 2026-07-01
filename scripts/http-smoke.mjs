@@ -91,6 +91,10 @@ try {
     name: "ob_policy_explain",
     arguments: { sql: "SHOW DATABASES" }
   });
+  const queryPreview = await client.callTool({
+    name: "ob_query_preview",
+    arguments: { sql: countSql, maxRows: 20 }
+  });
   const query = await client.callTool({
     name: "ob_query",
     arguments: { sql: countSql }
@@ -222,6 +226,7 @@ try {
   const diagnosticsResult = parseToolJson(diagnostics);
   const permissionsResult = parseToolJson(permissions);
   const policyExplainResult = parseToolJson(policyExplain);
+  const queryPreviewResult = parseToolJson(queryPreview);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
   const planAnalysisResult = parseToolJson(planAnalysis);
@@ -246,6 +251,7 @@ try {
     "ob_config_diagnostics",
     "ob_verify_permissions",
     "ob_policy_explain",
+    "ob_query_preview",
     "ob_analyze_query_plan",
     "ob_generate_performance_report",
     "ob_search_catalog",
@@ -276,6 +282,11 @@ try {
     diagnosticsOk: diagnosticsResult.ok === true,
     permissionsOk: Array.isArray(permissionsResult.writablePrivileges),
     policyExplainBlocked: policyExplainResult.allowed === false,
+    queryPreviewOk:
+      queryPreviewResult.allowed === true &&
+      queryPreviewResult.executed === false &&
+      queryPreviewResult.explainRun === true &&
+      ["low", "medium", "high"].includes(queryPreviewResult.analysis?.riskLevel),
     planAnalysisOk: ["low", "medium", "high"].includes(planAnalysisResult.analysis?.riskLevel),
     performanceReportOk:
       performanceReportResult.executed === false &&
@@ -333,6 +344,7 @@ try {
     !output.diagnosticsOk ||
     !output.permissionsOk ||
     !output.policyExplainBlocked ||
+    !output.queryPreviewOk ||
     !output.planAnalysisOk ||
     !output.performanceReportOk ||
     !output.enterpriseTools ||
