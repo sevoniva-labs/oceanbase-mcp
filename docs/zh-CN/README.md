@@ -150,6 +150,7 @@ npm run start:http
 | `ob_find_tables_by_business_term` | v1.0.0 | 按业务词返回候选表、依据和关联表摘要。 |
 | `ob_find_columns` | v1.0.0 | 按字段名、注释、类型、表名模式或业务词查找字段。 |
 | `ob_get_table_summary` | v1.0.0 | 汇总单表用途推断、关键字段、关系和查询入口。 |
+| `ob_compare_tables` | v1.0.0 | 比较两张表的字段、索引、约束和分区差异。 |
 | `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
 | `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 |
 | `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 |

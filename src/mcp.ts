@@ -698,6 +698,39 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_compare_tables",
+    {
+      title: "Compare Tables",
+      description: "Compare two visible tables by columns, indexes, constraints, and partitions.",
+      inputSchema: {
+        ...profileInput,
+        leftTable: z.string().min(1),
+        leftSchema: z.string().optional(),
+        rightTable: z.string().min(1),
+        rightSchema: z.string().optional()
+      }
+    },
+    async ({ profile, leftTable, leftSchema, rightTable, rightSchema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const left = metadataTableRef(selected.config, leftSchema, leftTable);
+      const right = metadataTableRef(selected.config, rightSchema, rightTable);
+      assertTableAccess(left.schema, left.table, policyContext(selected.config));
+      assertTableAccess(right.schema, right.table, policyContext(selected.config));
+      const leftMetadata = await withQuerySlot(selected, () =>
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, left.table, left.schema, selected.config.queryTimeoutMs)
+      );
+      const rightMetadata = await withQuerySlot(selected, () =>
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, right.table, right.schema, selected.config.queryTimeoutMs)
+      );
+
+      return toLimitedResult(
+        compareTableMetadata(selected.config, leftMetadata, rightMetadata),
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_explain",
     {
       title: "Explain Query",
@@ -2287,6 +2320,128 @@ function renderDatabaseDictionaryMarkdown(dictionary: {
     lines.push("");
   }
   return lines.join("\n");
+}
+
+function compareTableMetadata(
+  config: ObConfig,
+  left: Awaited<ReturnType<typeof getTableDdlMetadata>>,
+  right: Awaited<ReturnType<typeof getTableDdlMetadata>>
+) {
+  const leftColumns = filterColumnMetadata(left.columns, config.policy);
+  const rightColumns = filterColumnMetadata(right.columns, config.policy);
+  const leftIndexes = filterColumnMetadata(left.indexes, config.policy);
+  const rightIndexes = filterColumnMetadata(right.indexes, config.policy);
+  const leftConstraints = filterColumnMetadata(left.constraints, config.policy);
+  const rightConstraints = filterColumnMetadata(right.constraints, config.policy);
+  const leftPartitions = filterTables(left.partitions, config.policy);
+  const rightPartitions = filterTables(right.partitions, config.policy);
+
+  return {
+    mode: config.compatibility,
+    left: { schema: left.schema, table: left.table },
+    right: { schema: right.schema, table: right.table },
+    columns: compareColumnMetadata(config.compatibility, leftColumns, rightColumns),
+    indexes: compareMetadataRows(config.compatibility, leftIndexes, rightIndexes, ["index_name", "INDEX_NAME", "column_name", "COLUMN_NAME"]),
+    constraints: compareMetadataRows(config.compatibility, leftConstraints, rightConstraints, ["constraint_name", "CONSTRAINT_NAME", "column_name", "COLUMN_NAME"]),
+    partitions: compareMetadataRows(config.compatibility, leftPartitions, rightPartitions, ["partition_name", "PARTITION_NAME", "subpartition_name", "SUBPARTITION_NAME"]),
+    warnings: [
+      "Comparison uses metadata visible to the active MCP policy; hidden columns or objects are not included."
+    ]
+  };
+}
+
+function compareColumnMetadata(
+  mode: ObConfig["compatibility"],
+  leftRows: unknown[],
+  rightRows: unknown[]
+) {
+  const left = columnCompareMap(mode, leftRows);
+  const right = columnCompareMap(mode, rightRows);
+  const leftOnly = [];
+  const rightOnly = [];
+  const changed = [];
+  for (const [key, leftColumn] of left) {
+    const rightColumn = right.get(key);
+    if (!rightColumn) {
+      leftOnly.push(leftColumn);
+      continue;
+    }
+    const changes = [];
+    for (const field of ["type", "nullable", "comment"] as const) {
+      if (leftColumn[field] !== rightColumn[field]) {
+        changes.push({ field, left: leftColumn[field], right: rightColumn[field] });
+      }
+    }
+    if (changes.length > 0) {
+      changed.push({ column: leftColumn.name, left: leftColumn, right: rightColumn, changes });
+    }
+  }
+  for (const [key, rightColumn] of right) {
+    if (!left.has(key)) {
+      rightOnly.push(rightColumn);
+    }
+  }
+  return {
+    leftOnly,
+    rightOnly,
+    changed,
+    commonCount: [...left.keys()].filter((key) => right.has(key)).length
+  };
+}
+
+function columnCompareMap(mode: ObConfig["compatibility"], rows: unknown[]) {
+  const output = new Map<string, { name: string; type?: string; nullable?: boolean; comment?: string }>();
+  for (const row of rows) {
+    const column = profileColumnMetadata(row, mode);
+    if (!column) {
+      continue;
+    }
+    output.set(normalizeTableName(mode, column.name), {
+      name: column.name,
+      type: column.dataType,
+      nullable: column.nullable,
+      comment: column.comment
+    });
+  }
+  return output;
+}
+
+function compareMetadataRows(
+  mode: ObConfig["compatibility"],
+  leftRows: unknown[],
+  rightRows: unknown[],
+  preferredKeys: string[]
+) {
+  const left = metadataSignatureMap(mode, leftRows, preferredKeys);
+  const right = metadataSignatureMap(mode, rightRows, preferredKeys);
+  return {
+    leftOnly: [...left.entries()].filter(([key]) => !right.has(key)).map(([, row]) => row),
+    rightOnly: [...right.entries()].filter(([key]) => !left.has(key)).map(([, row]) => row),
+    commonCount: [...left.keys()].filter((key) => right.has(key)).length
+  };
+}
+
+function metadataSignatureMap(
+  mode: ObConfig["compatibility"],
+  rows: unknown[],
+  preferredKeys: string[]
+) {
+  const output = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      continue;
+    }
+    const record = row as Record<string, unknown>;
+    const parts = preferredKeys
+      .map((key) => record[key])
+      .filter((value) => value != null)
+      .map((value) => normalizeTableName(mode, String(value)));
+    const signature = parts.length > 0
+      ? parts.join(":")
+      : JSON.stringify(record, Object.keys(record).sort());
+    output.set(signature, record);
+  }
+  return output;
 }
 
 async function findSchemaMapTableInfo(
