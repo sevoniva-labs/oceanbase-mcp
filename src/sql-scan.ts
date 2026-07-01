@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
-import { extname, join, relative, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, extname, join, relative, resolve } from "node:path";
 
 import { assertReadOnlySql, hasPaginationClause } from "./sql.js";
 
@@ -14,6 +14,8 @@ export interface ScanSqlOptions {
   maxBytes?: number;
   format?: ScanSqlFormat;
   failOnRisk?: boolean;
+  indexOut?: string;
+  indexOverwrite?: boolean;
 }
 
 export interface SqlScanFinding {
@@ -24,7 +26,13 @@ export interface SqlScanFinding {
   statementType: string;
   readOnlyCandidate: boolean;
   tables: string[];
+  columns: string[];
+  dynamicSql: {
+    detected: boolean;
+    sources: string[];
+  };
   risks: string[];
+  dialectHints: string[];
   warnings: string[];
   sql: string;
 }
@@ -50,6 +58,31 @@ export interface SqlScanReport {
   };
 }
 
+export interface SqlUsageIndex {
+  indexVersion: "1.1";
+  generatedAt: string;
+  root: string;
+  scannedFiles: number;
+  skippedFiles: number;
+  snippetCount: number;
+  entries: Array<{
+    file: string;
+    line: number;
+    sql: string;
+    statementType: string;
+    tables: string[];
+    columns: string[];
+    dynamicSql: {
+      detected: boolean;
+      sources: string[];
+    };
+    risks: string[];
+    dialectHints: string[];
+  }>;
+  warnings: string[];
+  limits: SqlScanReport["limits"];
+}
+
 export type SqlScanSource = "sql_file" | "xml_mapper" | "code_string";
 
 export interface SqlScanSnippet {
@@ -57,6 +90,7 @@ export interface SqlScanSnippet {
   source: SqlScanSource;
   sql: string;
   dynamic: boolean;
+  dynamicHints: string[];
 }
 
 interface CandidateFile {
@@ -78,11 +112,67 @@ const DEFAULT_IGNORE = [
 const DEFAULT_MAX_FILES = 500;
 const DEFAULT_MAX_BYTES = 512 * 1024;
 const SQL_KEYWORD_PATTERN = /\b(select|with|explain|show|describe|insert|update|delete|merge|create|alter|drop|truncate)\b/i;
+const SQL_IDENTIFIER_STOPWORDS = new Set([
+  "select",
+  "from",
+  "where",
+  "and",
+  "or",
+  "join",
+  "left",
+  "right",
+  "inner",
+  "outer",
+  "on",
+  "as",
+  "case",
+  "when",
+  "then",
+  "else",
+  "end",
+  "null",
+  "is",
+  "not",
+  "in",
+  "exists",
+  "like",
+  "between",
+  "group",
+  "by",
+  "order",
+  "having",
+  "limit",
+  "offset",
+  "fetch",
+  "first",
+  "next",
+  "rows",
+  "rownum",
+  "count",
+  "sum",
+  "avg",
+  "min",
+  "max",
+  "distinct",
+  "update",
+  "set",
+  "insert",
+  "into",
+  "values",
+  "delete",
+  "create",
+  "alter",
+  "drop",
+  "truncate"
+]);
 
 export async function runScanSqlCommand(args: string[], cwd = process.cwd()): Promise<number> {
   try {
     const options = parseScanSqlArgs(args);
     const report = scanSqlProject({ ...options, cwd });
+    if (options.indexOut) {
+      writeSqlUsageIndex(resolve(cwd, options.indexOut), buildSqlUsageIndex(report), { overwrite: options.indexOverwrite });
+    }
     if ((options.format ?? "json") === "text") {
       console.log(renderScanSqlText(report));
     } else {
@@ -104,6 +194,10 @@ export function parseScanSqlArgs(args: string[]): ScanSqlOptions {
     const arg = args[index];
     if (arg === "--fail-on-risk") {
       options.failOnRisk = true;
+      continue;
+    }
+    if (arg === "--index-overwrite") {
+      options.indexOverwrite = true;
       continue;
     }
     const [name, inlineValue] = arg.includes("=") ? arg.split(/=(.*)/s, 2) : [arg, undefined];
@@ -137,11 +231,38 @@ export function parseScanSqlArgs(args: string[]): ScanSqlOptions {
       case "--format":
         options.format = parseScanSqlFormat(value);
         break;
+      case "--index-out":
+        options.indexOut = value;
+        break;
       default:
         throw new Error(`Unknown scan-sql argument: ${name}`);
     }
   }
   return options;
+}
+
+export function buildSqlUsageIndex(report: SqlScanReport): SqlUsageIndex {
+  return {
+    indexVersion: "1.1",
+    generatedAt: new Date().toISOString(),
+    root: report.root,
+    scannedFiles: report.scannedFiles,
+    skippedFiles: report.skippedFiles,
+    snippetCount: report.snippetCount,
+    entries: report.findings.map((finding) => ({
+      file: finding.file,
+      line: finding.line,
+      sql: finding.sql,
+      statementType: finding.statementType,
+      tables: finding.tables,
+      columns: finding.columns,
+      dynamicSql: finding.dynamicSql,
+      risks: finding.risks,
+      dialectHints: finding.dialectHints
+    })),
+    warnings: report.warnings,
+    limits: report.limits
+  };
 }
 
 export function scanSqlProject(options: ScanSqlOptions = {}): SqlScanReport {
@@ -205,8 +326,17 @@ export function renderScanSqlText(report: SqlScanReport): string {
     if (finding.tables.length > 0) {
       lines.push(`tables: ${finding.tables.join(", ")}`);
     }
+    if (finding.columns.length > 0) {
+      lines.push(`columns: ${finding.columns.join(", ")}`);
+    }
+    if (finding.dynamicSql.detected) {
+      lines.push(`dynamic: ${finding.dynamicSql.sources.join(", ") || "detected"}`);
+    }
     if (finding.risks.length > 0) {
       lines.push(`risks: ${finding.risks.join(", ")}`);
+    }
+    if (finding.dialectHints.length > 0) {
+      lines.push(`dialect: ${finding.dialectHints.join(", ")}`);
     }
     if (finding.warnings.length > 0) {
       lines.push(`warnings: ${finding.warnings.join(", ")}`);
@@ -285,10 +415,11 @@ function extractSqlSnippets(ext: string, content: string): SqlScanSnippet[] {
   if (ext === ".sql") {
     return splitSqlStatements(content).map((item) => ({
       line: lineNumberAt(content, item.index),
-      source: "sql_file" as const,
-      sql: item.sql,
-      dynamic: false
-    }));
+        source: "sql_file" as const,
+        sql: item.sql,
+        dynamic: false,
+        dynamicHints: []
+      }));
   }
   if (ext === ".xml") {
     return extractXmlMapperSql(content);
@@ -309,7 +440,8 @@ function extractXmlMapperSql(content: string): SqlScanSnippet[] {
       line: lineNumberAt(content, match.index ?? 0),
       source: "xml_mapper",
       sql,
-      dynamic: /<\s*(if|choose|foreach|where|trim|set)\b/i.test(body) || /[#\$]\{/.test(body)
+      dynamic: /<\s*(if|choose|foreach|where|trim|set)\b/i.test(body) || /[#\$]\{/.test(body),
+      dynamicHints: mybatisDynamicHints(body)
     });
   }
   return snippets;
@@ -329,7 +461,8 @@ function extractCodeStringSql(content: string): SqlScanSnippet[] {
       line: lineNumberAt(content, match.index ?? 0),
       source: "code_string",
       sql,
-      dynamic: raw.startsWith("`") && /\$\{/.test(body)
+      dynamic: raw.startsWith("`") && /\$\{/.test(body),
+      dynamicHints: raw.startsWith("`") && /\$\{/.test(body) ? ["template_interpolation"] : []
     });
   }
   return snippets;
@@ -360,6 +493,9 @@ function classifySqlSnippet(file: CandidateFile, snippet: SqlScanSnippet): SqlSc
   if (snippet.dynamic) {
     warnings.push("SQL contains dynamic placeholders or template interpolation; review the rendered SQL before execution.");
   }
+  if (snippet.dynamicHints.some((hint) => hint === "mybatis_text_substitution" || hint === "template_interpolation")) {
+    risks.push("dynamic_sql");
+  }
   if (/\border\s+by\b/i.test(sql) === false && hasPaginationClause(sql)) {
     warnings.push("Pagination without ORDER BY may produce unstable pages.");
   }
@@ -371,10 +507,24 @@ function classifySqlSnippet(file: CandidateFile, snippet: SqlScanSnippet): SqlSc
     statementType,
     readOnlyCandidate,
     tables: extractTableRefs(sql),
+    columns: extractColumnRefs(sql),
+    dynamicSql: {
+      detected: snippet.dynamic,
+      sources: snippet.dynamicHints
+    },
     risks: uniqueStrings(risks),
+    dialectHints: dialectHints(sql),
     warnings: uniqueStrings(warnings),
     sql: truncateSql(sql)
   };
+}
+
+function writeSqlUsageIndex(path: string, index: SqlUsageIndex, options: { overwrite?: boolean } = {}): void {
+  if (!options.overwrite && existsSync(path)) {
+    throw new Error(`${path} already exists. Re-run with --index-overwrite to replace it.`);
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(index, null, 2));
 }
 
 function summarizeScan(findings: SqlScanFinding[]): SqlScanReport["summary"] {
@@ -464,6 +614,115 @@ function extractTableRefs(sql: string): string[] {
     }
   }
   return uniqueStrings(refs).slice(0, 20);
+}
+
+function extractColumnRefs(sql: string): string[] {
+  const withoutStrings = sql.replace(/'(?:''|[^'])*'|"(?:\\"|[^"])*"/g, " ");
+  const tables = new Set(extractTableRefs(sql).map((ref) => ref.split(".").pop()?.toLowerCase()).filter(Boolean));
+  const columns: string[] = [];
+  for (const match of withoutStrings.matchAll(/\b(?:[A-Za-z_][\w$#]*\.){1,2}([A-Za-z_][\w$#]*)\b/g)) {
+    columns.push(match[1]);
+  }
+
+  const selectMatch = /\bselect\b([\s\S]*?)\bfrom\b/i.exec(withoutStrings);
+  if (selectMatch && !/\*/.test(selectMatch[1] ?? "")) {
+    for (const segment of splitSqlList(selectMatch[1] ?? "")) {
+      const cleaned = segment
+        .replace(/\bas\b\s+[A-Za-z_][\w$#]*$/i, "")
+        .replace(/[()]/g, " ");
+      for (const token of cleaned.matchAll(/\b[A-Za-z_][\w$#]*\b/g)) {
+        columns.push(token[0]);
+      }
+    }
+  }
+
+  for (const clause of clauseSegments(withoutStrings)) {
+    for (const token of clause.matchAll(/\b[A-Za-z_][\w$#]*\b/g)) {
+      columns.push(token[0]);
+    }
+  }
+
+  return uniqueStrings(columns)
+    .filter((column) => !SQL_IDENTIFIER_STOPWORDS.has(column.toLowerCase()))
+    .filter((column) => !tables.has(column.toLowerCase()))
+    .slice(0, 100);
+}
+
+function mybatisDynamicHints(body: string): string[] {
+  const hints: string[] = [];
+  if (/<\s*if\b/i.test(body)) {
+    hints.push("mybatis_if");
+  }
+  if (/<\s*choose\b/i.test(body)) {
+    hints.push("mybatis_choose");
+  }
+  if (/<\s*foreach\b/i.test(body)) {
+    hints.push("mybatis_foreach");
+  }
+  if (/<\s*(where|trim|set)\b/i.test(body)) {
+    hints.push("mybatis_sql_node");
+  }
+  if (/#\{/.test(body)) {
+    hints.push("mybatis_parameter");
+  }
+  if (/\$\{/.test(body)) {
+    hints.push("mybatis_text_substitution");
+  }
+  return uniqueStrings(hints);
+}
+
+function dialectHints(sql: string): string[] {
+  const hints: string[] = [];
+  if (/\blimit\s+\d+/i.test(sql)) {
+    hints.push("mysql_limit");
+  }
+  if (/\brownum\b/i.test(sql)) {
+    hints.push("oracle_rownum");
+  }
+  if (/\boffset\s+\d+\s+rows\b|\bfetch\s+(?:first|next)\s+\d+\s+rows\b/i.test(sql)) {
+    hints.push("oracle_fetch_offset");
+  }
+  if (/`[^`]+`/.test(sql)) {
+    hints.push("mysql_quoted_identifier");
+  }
+  if (/"[^"]+"/.test(sql)) {
+    hints.push("oracle_quoted_identifier");
+  }
+  if (/\bselect\s+\*/i.test(sql) || /,\s*\*/.test(sql)) {
+    hints.push("select_star");
+  }
+  return hints;
+}
+
+function splitSqlList(value: string): string[] {
+  const output: string[] = [];
+  let current = "";
+  let depth = 0;
+  for (const char of value) {
+    if (char === "(") {
+      depth += 1;
+    } else if (char === ")") {
+      depth = Math.max(0, depth - 1);
+    } else if (char === "," && depth === 0) {
+      output.push(current);
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) {
+    output.push(current);
+  }
+  return output;
+}
+
+function clauseSegments(sql: string): string[] {
+  const output: string[] = [];
+  const pattern = /\b(?:where|on|having|group\s+by|order\s+by)\b([\s\S]*?)(?=\b(?:where|on|having|group\s+by|order\s+by|limit|fetch|offset)\b|$)/gi;
+  for (const match of sql.matchAll(pattern)) {
+    output.push(match[1] ?? "");
+  }
+  return output;
 }
 
 function firstSqlKeyword(sql: string): string | undefined {

@@ -94,6 +94,8 @@ Scan SQL options:
   --max-bytes <n>
   --format json|text
   --fail-on-risk
+  --index-out <file>
+  --index-overwrite
 
 Metadata commands:
   snapshot                  Capture a metadata-only JSON snapshot
