@@ -696,6 +696,48 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_query_next_page",
+    {
+      title: "Query Next Session Page",
+      description: "Run the next page for a read-only query session without bypassing row, timeout, output, or policy limits.",
+      inputSchema: {
+        ...profileInput,
+        sessionId: z.string().min(1),
+        pageSize: z.number().int().positive().max(1_000).optional(),
+        orderBy: z.string().min(1).optional()
+      }
+    },
+    async ({ profile, sessionId, pageSize, orderBy }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const session = getQuerySessionForProfile(querySessions, sessionId, selected.profile);
+      return runQuerySessionPage(selected, session, session.page + 1, pageSize, orderBy);
+    }
+  );
+
+  registerTool(
+    "ob_query_prev_page",
+    {
+      title: "Query Previous Session Page",
+      description: "Run the previous page for a read-only query session without bypassing row, timeout, output, or policy limits.",
+      inputSchema: {
+        ...profileInput,
+        sessionId: z.string().min(1),
+        pageSize: z.number().int().positive().max(1_000).optional(),
+        orderBy: z.string().min(1).optional()
+      }
+    },
+    async ({ profile, sessionId, pageSize, orderBy }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const session = getQuerySessionForProfile(querySessions, sessionId, selected.profile);
+      const previousPage = Math.max(1, session.page - 1);
+      const warnings = previousPage === session.page ? ["Session is already on the first page."] : [];
+      return runQuerySessionPage(selected, session, previousPage, pageSize, orderBy, warnings);
+    }
+  );
+
+  registerTool(
     "ob_list_schemas",
     {
       title: "List Schemas",
@@ -4726,6 +4768,111 @@ function publicQuerySession(session: QuerySessionState) {
     masking: session.masking,
     resultState: session.resultState
   };
+}
+
+async function runQuerySessionPage(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  session: QuerySessionState,
+  page: number,
+  pageSize: number | undefined,
+  orderBy: string | undefined,
+  extraWarnings: string[] = []
+) {
+  if (!session.sql) {
+    throw new Error(`Query session "${session.id}" does not have SQL to page.`);
+  }
+  const started = Date.now();
+  assertSqlInputLimits(session.sql, session.params, selected.config);
+  assertReadOnlySql(session.sql);
+  assertSqlPolicy(session.sql, policyContext(selected.config));
+
+  const maxPageSize = Math.max(1, Math.min(selected.config.maxRows > 1 ? selected.config.maxRows - 1 : 1, 1_000));
+  const effectivePageSize = Math.min(pageSize ?? session.pageSize ?? Math.min(50, maxPageSize), maxPageSize);
+  const fetchRows = Math.min(effectivePageSize + 1, selected.config.maxRows);
+  const effectiveOrderBy = querySessionOrderBy(session.sql, orderBy, session.orderBy);
+  const pagedSql = buildPagedReadOnlySql(session.sql, selected.config.compatibility, {
+    page,
+    pageSize: effectivePageSize,
+    fetchRows,
+    orderBy: effectiveOrderBy
+  });
+  const output = await withQuerySlot(selected, () =>
+    runReadOnlyQuery(
+      selected.pool,
+      selected.config.compatibility,
+      pagedSql,
+      session.params,
+      fetchRows,
+      selected.config.queryTimeoutMs,
+      selected.config.enforceReadOnlyTransaction
+    )
+  );
+  assertOutputAllowed(output, selected.config.policy);
+  const rows = output.rows.slice(0, effectivePageSize);
+  const hasMore = output.rows.length > effectivePageSize;
+  const warnings = [
+    ...extraWarnings,
+    ...pagedQueryWarnings(session.sql, pageSize ?? session.pageSize, effectivePageSize, fetchRows, effectiveOrderBy)
+  ];
+  if (output.truncated) {
+    warnings.push("Result was truncated by the configured row limit.");
+  }
+  const visibleOutput = enrichQueryOutput(
+    {
+      ...output,
+      rowCount: rows.length,
+      rows,
+      truncated: output.truncated || hasMore
+    },
+    selected.config,
+    warnings
+  );
+  const now = new Date();
+  session.page = page;
+  session.pageSize = effectivePageSize;
+  session.orderBy = cleanOptionalString(orderBy) ?? session.orderBy;
+  session.updatedAt = now.toISOString();
+  session.expiresAt = new Date(now.getTime() + QUERY_SESSION_TTL_MS).toISOString();
+  session.warnings = uniqueStrings([...session.warnings, ...visibleOutput.warnings]);
+  session.resultState = {
+    rowCount: visibleOutput.rowCount,
+    hasMore,
+    truncated: visibleOutput.truncated
+  };
+  const result = {
+    sessionId: session.id,
+    mode: selected.config.compatibility,
+    sql: session.sql,
+    pagedSql,
+    paramCount: session.params.length,
+    page,
+    pageSize: effectivePageSize,
+    hasMore,
+    truncated: visibleOutput.truncated,
+    columns: visibleOutput.columns,
+    rows: visibleOutput.rows,
+    markdownPreview: visibleOutput.markdownPreview,
+    warnings: visibleOutput.warnings,
+    session: publicQuerySession(session),
+    executed: true
+  };
+  assertJsonByteLimit(result, selected.config.maxResultBytes);
+  metrics.recordQueryDuration(Date.now() - started);
+  return toResult(result);
+}
+
+function querySessionOrderBy(
+  sql: string,
+  requestedOrderBy: string | undefined,
+  sessionOrderBy: string | undefined
+): string | undefined {
+  if (requestedOrderBy) {
+    return requestedOrderBy;
+  }
+  if (/\border\s+by\b/i.test(sql)) {
+    return undefined;
+  }
+  return sessionOrderBy;
 }
 
 function cleanOptionalString(value: string | undefined): string | undefined {

@@ -25,6 +25,8 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_start_query_session", since: "v1.0.0", group: "query", mode: "all", description: "Start an in-memory read-only query context." },
   { name: "ob_get_query_session", since: "v1.0.0", group: "query", mode: "all", description: "Read a query session context without exposing stored parameter values." },
   { name: "ob_close_query_session", since: "v1.0.0", group: "query", mode: "all", description: "Close an in-memory query session." },
+  { name: "ob_query_next_page", since: "v1.0.0", group: "query", mode: "all", description: "Run the next page for a read-only query session." },
+  { name: "ob_query_prev_page", since: "v1.0.0", group: "query", mode: "all", description: "Run the previous page for a read-only query session." },
   { name: "ob_list_schemas", since: "v0.3.0", group: "metadata", mode: "all", description: "List visible schemas or databases." },
   { name: "ob_list_tables", since: "v0.3.0", group: "metadata", mode: "all", description: "List visible tables." },
   { name: "ob_describe_table", since: "v0.3.0", group: "metadata", mode: "all", description: "Return column metadata." },

@@ -139,6 +139,8 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_start_query_session` | v1.0.0 | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
 | `ob_get_query_session` | v1.0.0 | Read a query session context without exposing stored parameter values. |
 | `ob_close_query_session` | v1.0.0 | Close an in-memory query session. |
+| `ob_query_next_page` | v1.0.0 | Run the next page for a query session with read-only policy and row limits enforced. |
+| `ob_query_prev_page` | v1.0.0 | Run the previous page for a query session with read-only policy and row limits enforced. |
 | `ob_list_schemas` | v0.3.0 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | Return column metadata. |

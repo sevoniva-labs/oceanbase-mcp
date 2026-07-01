@@ -139,6 +139,8 @@ npm run start:http
 | `ob_start_query_session` | v1.0.0 | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 |
 | `ob_get_query_session` | v1.0.0 | 读取查询上下文，不暴露已存参数值。 |
 | `ob_close_query_session` | v1.0.0 | 关闭内存查询上下文。 |
+| `ob_query_next_page` | v1.0.0 | 基于查询上下文读取下一页，继续执行只读策略和行数限制。 |
+| `ob_query_prev_page` | v1.0.0 | 基于查询上下文读取上一页，继续执行只读策略和行数限制。 |
 | `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 |
 | `ob_list_tables` | v0.3.0 | 列出可见表。 |
 | `ob_describe_table` | v0.3.0 | 返回列元数据。 |
