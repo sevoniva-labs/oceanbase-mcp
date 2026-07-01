@@ -6,6 +6,9 @@ export interface ErColumn {
   type?: string;
   primaryKey?: boolean;
   nullable?: boolean;
+  comment?: string;
+  indexed?: boolean;
+  indexNames?: string[];
 }
 
 export interface ErEntity {
@@ -21,11 +24,14 @@ export interface ErDiagram {
   mermaid: string;
 }
 
+export type ErHtmlFormat = "html-static" | "html-interactive" | "html-compact" | "html-detailed";
+
 export interface ErHtmlOptions {
   title?: string;
   warnings?: string[];
   generatedAt?: string;
   maxColumnsPerEntity?: number;
+  format?: ErHtmlFormat;
 }
 
 export function buildErDiagram(
@@ -44,7 +50,8 @@ export function buildErDiagram(
 export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): string {
   const title = options.title ?? "OceanBase ER Diagram";
   const generatedAt = options.generatedAt ?? new Date().toISOString();
-  const maxColumns = Math.max(3, Math.min(options.maxColumnsPerEntity ?? 18, 50));
+  const format = options.format ?? "html-static";
+  const maxColumns = Math.max(0, Math.min(options.maxColumnsPerEntity ?? defaultMaxColumnsForFormat(format), 50));
   const svg = renderSvgEr(diagram.entities, diagram.relationships, maxColumns);
   const metadataJson = JSON.stringify({
     mode: diagram.mode,
@@ -136,6 +143,32 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
     .column-muted { fill: var(--muted); font-size: 11px; }
     .rel-line { stroke: var(--accent); stroke-width: 1.5; fill: none; opacity: 0.75; }
     .rel-label { fill: var(--accent); font-size: 11px; }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .controls input {
+      min-width: 240px;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font: inherit;
+    }
+    .controls button {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--panel);
+      cursor: pointer;
+      font: inherit;
+    }
+    .svg-wrap { transform-origin: 0 0; }
+    .dimmed { opacity: 0.18; }
+    .match .entity-box { stroke: var(--accent); stroke-width: 2; }
+    .entity-details h3 { margin: 18px 0 8px; font-size: 16px; }
   </style>
 </head>
 <body>
@@ -143,6 +176,7 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
     <h1>${escapeHtml(title)}</h1>
     <div class="meta">
       <span>Mode: ${escapeHtml(diagram.mode)}</span>
+      <span>Format: ${escapeHtml(format)}</span>
       <span>Tables: ${diagram.entities.length}</span>
       <span>Relationships: ${diagram.relationships.length}</span>
       <span>Generated: ${escapeHtml(generatedAt)}</span>
@@ -151,13 +185,15 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
   <main>
     ${warnings.length > 0 ? `<section class="warnings">${warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</section>` : ""}
     <section class="canvas">
-      ${svg}
+      ${format === "html-interactive" ? renderInteractiveControls() : ""}
+      <div class="svg-wrap">${svg}</div>
     </section>
+    ${format === "html-detailed" || format === "html-interactive" ? `<section class="entity-details">${renderEntityDetails(diagram.entities)}</section>` : ""}
     <section>
       <h2>Relationships</h2>
       ${renderRelationshipTable(diagram.relationships)}
     </section>
-    <section>
+    ${format === "html-compact" ? "" : `<section>
       <details>
         <summary>Mermaid Source</summary>
         <pre>${escapeHtml(diagram.mermaid)}</pre>
@@ -166,8 +202,9 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
         <summary>JSON Metadata</summary>
         <pre>${escapeHtml(metadataJson)}</pre>
       </details>
-    </section>
+    </section>`}
   </main>
+  ${format === "html-interactive" ? renderInteractiveScript() : ""}
 </body>
 </html>`;
 }
@@ -291,6 +328,16 @@ function renderSvgEr(entities: ErEntity[], relationships: TableRelationship[], m
   </svg>`;
 }
 
+function defaultMaxColumnsForFormat(format: ErHtmlFormat): number {
+  if (format === "html-compact") {
+    return 0;
+  }
+  if (format === "html-detailed" || format === "html-interactive") {
+    return 50;
+  }
+  return 18;
+}
+
 function renderSvgEntityBox(
   box: {
     entity: ErEntity;
@@ -306,14 +353,15 @@ function renderSvgEntityBox(
   const rows = visibleColumns.map((column, index) => {
     const y = position.y + headerHeight + 19 + index * rowHeight;
     const flags = [column.primaryKey ? "PK" : "", column.nullable === false ? "NN" : ""].filter(Boolean).join(" ");
-    const label = `${column.name}${column.type ? `: ${column.type}` : ""}${flags ? ` [${flags}]` : ""}`;
+    const indexLabel = column.indexed && !column.primaryKey ? " IDX" : "";
+    const label = `${column.name}${column.type ? `: ${column.type}` : ""}${flags ? ` [${flags}${indexLabel}]` : indexLabel ? ` [${indexLabel.trim()}]` : ""}`;
     return `<text x="${position.x + 12}" y="${y}" class="column-text">${escapeHtml(label)}</text>`;
   });
   if (hiddenCount > 0) {
     const y = position.y + headerHeight + 19 + visibleColumns.length * rowHeight;
     rows.push(`<text x="${position.x + 12}" y="${y}" class="column-muted">+ ${hiddenCount} more column(s)</text>`);
   }
-  return `<g>
+  return `<g data-entity="${escapeHtml(title.toLowerCase())}">
     <rect x="${position.x}" y="${position.y}" width="${position.width}" height="${position.height}" rx="6" class="entity-box"></rect>
     <rect x="${position.x}" y="${position.y}" width="${position.width}" height="${headerHeight}" rx="6" class="entity-header"></rect>
     <text x="${position.x + 12}" y="${position.y + 22}" class="entity-name">${escapeHtml(title)}</text>
@@ -364,6 +412,72 @@ function renderRelationshipTable(relationships: TableRelationship[]): string {
     </thead>
     <tbody>${rows}</tbody>
   </table>`;
+}
+
+function renderEntityDetails(entities: ErEntity[]): string {
+  if (entities.length === 0) {
+    return "";
+  }
+  return entities.map((entity) => {
+    const title = tableLabel(entity.schema, entity.table);
+    const rows = entity.columns.map((column) => `<tr>
+      <td>${escapeHtml(column.name)}</td>
+      <td>${escapeHtml(column.type ?? "")}</td>
+      <td>${column.primaryKey ? "yes" : ""}</td>
+      <td>${column.nullable === false ? "no" : column.nullable === true ? "yes" : ""}</td>
+      <td>${column.indexed ? escapeHtml((column.indexNames ?? []).join(", ")) : ""}</td>
+      <td>${escapeHtml(column.comment ?? "")}</td>
+    </tr>`).join("");
+    return `<h3>${escapeHtml(title)}</h3>
+    <table>
+      <thead>
+        <tr><th>Column</th><th>Type</th><th>PK</th><th>Nullable</th><th>Index</th><th>Comment</th></tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+  }).join("");
+}
+
+function renderInteractiveControls(): string {
+  return `<div class="controls">
+    <input id="er-search" type="search" placeholder="Search table or column">
+    <button type="button" id="er-zoom-in">Zoom in</button>
+    <button type="button" id="er-zoom-out">Zoom out</button>
+    <button type="button" id="er-reset">Reset</button>
+  </div>`;
+}
+
+function renderInteractiveScript(): string {
+  return `<script>
+(() => {
+  const wrap = document.querySelector(".svg-wrap");
+  const groups = Array.from(document.querySelectorAll("[data-entity]"));
+  const search = document.getElementById("er-search");
+  let scale = 1;
+  function setScale(next) {
+    scale = Math.max(0.5, Math.min(2, next));
+    wrap.style.transform = "scale(" + scale + ")";
+    wrap.style.width = 100 / scale + "%";
+  }
+  function applySearch() {
+    const value = (search.value || "").trim().toLowerCase();
+    groups.forEach((group) => {
+      const haystack = (group.getAttribute("data-entity") || "") + " " + group.textContent.toLowerCase();
+      const matched = !value || haystack.includes(value);
+      group.classList.toggle("dimmed", Boolean(value) && !matched);
+      group.classList.toggle("match", Boolean(value) && matched);
+    });
+  }
+  document.getElementById("er-zoom-in").addEventListener("click", () => setScale(scale + 0.1));
+  document.getElementById("er-zoom-out").addEventListener("click", () => setScale(scale - 0.1));
+  document.getElementById("er-reset").addEventListener("click", () => {
+    search.value = "";
+    setScale(1);
+    applySearch();
+  });
+  search.addEventListener("input", applySearch);
+})();
+</script>`;
 }
 
 function tableLabel(schema: string | undefined, table: string): string {

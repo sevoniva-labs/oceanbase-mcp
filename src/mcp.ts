@@ -78,6 +78,7 @@ const resultSummaryColumnSchema = z.object({
 const compatibilityModeSchema = z.enum(["mysql", "oracle"]);
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
 const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
+const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-compact", "html-detailed"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -2991,15 +2992,17 @@ export function createObMcpServer(
         maxTables: z.number().int().positive().max(50).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
         includeInferred: z.boolean().optional().default(true),
+        format: erHtmlFormatSchema.optional().default("html-static"),
         title: z.string().min(1).max(120).optional()
       }
     },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true, title }) => {
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true, format = "html-static", title }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred });
       const html = renderErHtml(result.diagram, {
         title: title ?? defaultErHtmlTitle(result.response),
-        warnings: result.response.warnings
+        warnings: result.response.warnings,
+        format
       });
       return toLimitedResult(
         {
@@ -3010,6 +3013,7 @@ export function createObMcpServer(
           tableCount: result.response.tableCount,
           relationshipCount: result.response.relationshipCount,
           contentType: "text/html",
+          format,
           html,
           mermaid: result.response.mermaid,
           warnings: result.response.warnings
@@ -3968,7 +3972,19 @@ async function buildErDiagramResult(
       ),
       selected.config.policy
     );
-    entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, columns, constraints));
+    const indexes = filterColumnMetadata(
+      await withQuerySlot(selected, () =>
+        listIndexes(
+          selected.pool,
+          selected.config.compatibility,
+          ref.table,
+          ref.schema,
+          selected.config.queryTimeoutMs
+        )
+      ),
+      selected.config.policy
+    );
+    entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, columns, constraints, indexes));
   }
 
   const entityKeys = new Set(
@@ -4113,9 +4129,11 @@ function erEntityFromMetadata(
   schema: string | undefined,
   table: string,
   columns: unknown[],
-  constraints: unknown[]
+  constraints: unknown[],
+  indexes: unknown[] = []
 ): ErEntity {
   const primaryKeys = new Set(primaryKeyColumns(mode, constraints));
+  const indexMap = erIndexMap(mode, indexes);
   return {
     schema,
     table,
@@ -4123,14 +4141,33 @@ function erEntityFromMetadata(
       const record = row as Record<string, unknown>;
       const name = stringRecordValue(record, "column_name", "COLUMN_NAME") ?? "column";
       const nullable = stringRecordValue(record, "is_nullable", "IS_NULLABLE", "nullable", "NULLABLE");
+      const indexNames = indexMap.get(normalizeTableName(mode, name)) ?? [];
       return {
         name,
         type: columnTypeLabel(mode, record),
         primaryKey: primaryKeys.has(normalizeTableName(mode, name)),
-        nullable: nullable ? !["NO", "N"].includes(nullable.toUpperCase()) : undefined
+        nullable: nullable ? !["NO", "N"].includes(nullable.toUpperCase()) : undefined,
+        comment: stringRecordValue(record, "column_comment", "COLUMN_COMMENT", "comments", "COMMENTS"),
+        indexed: indexNames.length > 0,
+        indexNames
       };
     })
   };
+}
+
+function erIndexMap(mode: ObConfig["compatibility"], indexes: unknown[]): Map<string, string[]> {
+  const output = new Map<string, string[]>();
+  for (const row of indexes) {
+    const record = row as Record<string, unknown>;
+    const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    const indexName = stringRecordValue(record, "index_name", "INDEX_NAME");
+    if (!column || !indexName) {
+      continue;
+    }
+    const key = normalizeTableName(mode, column);
+    output.set(key, uniqueStrings([...(output.get(key) ?? []), indexName]));
+  }
+  return output;
 }
 
 function primaryKeyColumns(mode: ObConfig["compatibility"], constraints: unknown[]): string[] {

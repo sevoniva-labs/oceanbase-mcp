@@ -153,7 +153,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_generate_query_examples` | v1.0.0 | 基于表上下文生成常用只读查询示例，不执行 SQL。 | Generate common read-only query examples from table context without executing SQL. |
 | `ob_generate_query` | v0.5.0 | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 | Generate Mermaid and JSON ER metadata from allowed tables; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls. |
-| `ob_generate_er_html` | v1.0.0 | 基于允许访问的元数据和关系证据生成自包含 HTML ER 图。 | Generate self-contained HTML ER diagrams from allowed metadata and relationship evidence. |
+| `ob_generate_er_html` | v1.0.0 | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
 | `ob_get_indexes` | v0.3.0 | 返回表索引元数据。 | Return table index metadata. |
 | `ob_get_constraints` | v0.3.0 | 返回主键、唯一键、外键、check 和 not-null 约束。 | Return primary, unique, foreign-key, check, and not-null constraints. |
 | `ob_get_partitions` | v0.3.0 | 返回表分区元数据。 | Return table partition metadata. |

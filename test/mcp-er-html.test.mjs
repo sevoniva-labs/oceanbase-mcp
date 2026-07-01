@@ -15,19 +15,23 @@ test("ob_generate_er_html returns self-contained ER HTML from visible metadata",
     schema: "biz_test",
     table: "orders",
     includeInferred: false,
+    format: "html-interactive",
     title: "Order ER"
   }, {});
   const payload = JSON.parse(result.content[0].text);
 
   assert.equal(payload.contentType, "text/html");
+  assert.equal(payload.format, "html-interactive");
   assert.equal(payload.tableCount, 2);
   assert.equal(payload.relationshipCount, 1);
   assert.match(payload.html, /<svg role="img" aria-label="OceanBase ER diagram"/);
   assert.match(payload.html, /Order ER/);
   assert.match(payload.html, /fk_orders_user/);
+  assert.match(payload.html, /id="er-search"/);
+  assert.match(payload.html, /Zoom in/);
   assert.match(payload.html, /Mermaid Source/);
-  assert.doesNotMatch(payload.html, /<script/i);
   assert.doesNotMatch(payload.html, /<link/i);
+  assert.doesNotMatch(payload.html, /src=["']/i);
   assert.doesNotMatch(payload.html, /secret_token/);
 });
 

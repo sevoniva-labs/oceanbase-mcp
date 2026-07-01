@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildErDiagram } from "../dist/er.js";
+import { buildErDiagram, renderErHtml } from "../dist/er.js";
 
 test("buildErDiagram renders Mermaid entities and relationships", () => {
   const diagram = buildErDiagram(
@@ -43,4 +43,31 @@ test("buildErDiagram renders Mermaid entities and relationships", () => {
   assert.match(diagram.mermaid, /biz_test_users/);
   assert.match(diagram.mermaid, /bigint id PK NOT_NULL/);
   assert.match(diagram.mermaid, /biz_test_users \|\|--o\{ biz_test_orders : "fk_orders_user"/);
+});
+
+test("renderErHtml supports compact and detailed formats", () => {
+  const diagram = buildErDiagram(
+    "mysql",
+    [
+      {
+        schema: "biz_test",
+        table: "orders",
+        columns: [
+          { name: "id", type: "bigint", primaryKey: true, nullable: false, indexed: true, indexNames: ["PRIMARY"], comment: "order id" },
+          { name: "status", type: "varchar(32)", nullable: true, comment: "order status" }
+        ]
+      }
+    ],
+    []
+  );
+
+  const compact = renderErHtml(diagram, { format: "html-compact", title: "Compact ER" });
+  assert.match(compact, /Format: html-compact/);
+  assert.doesNotMatch(compact, /Mermaid Source/);
+  assert.match(compact, /\+ 2 more column\(s\)/);
+
+  const detailed = renderErHtml(diagram, { format: "html-detailed", title: "Detailed ER" });
+  assert.match(detailed, /Format: html-detailed/);
+  assert.match(detailed, /order status/);
+  assert.match(detailed, /PRIMARY/);
 });
