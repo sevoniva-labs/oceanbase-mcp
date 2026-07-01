@@ -137,6 +137,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_get_table_context` | v0.5.1 | 返回写 SQL 和查数据常用的表上下文。 | Return common table context for SQL drafting and data inspection. |
 | `ob_find_related_tables` | v0.5.0 | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | v0.5.0 | 返回表行数估算、对象计数和存储统计。 | Return table row estimates, counts, and storage statistics. |
+| `ob_profile_table` | v1.0.0 | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 | Return bounded table profiles with key fields, null overview, and sampled field signals. |
 | `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像，并对敏感值脱敏。 | Return bounded-sample column profiles with sensitive values masked. |
 | `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 | Build parameterized read-only SELECT statements from validated structured input. |

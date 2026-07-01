@@ -49,6 +49,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_get_table_context", since: "v0.5.1", group: "metadata", mode: "all", description: "Return table context for SQL drafting and data inspection." },
   { name: "ob_find_related_tables", since: "v0.5.0", group: "relationships", mode: "all", description: "Find foreign-key and conservative naming-based relationships." },
   { name: "ob_get_table_stats", since: "v0.5.0", group: "metadata", mode: "all", description: "Return table estimates, counts, and storage statistics." },
+  { name: "ob_profile_table", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Return bounded table-level profiles with metadata counts and sampled field signals." },
   { name: "ob_profile_columns", since: "v0.5.1", group: "data_understanding", mode: "all", description: "Return bounded column profiles with sensitive values masked." },
   { name: "ob_prepare_query", since: "v1.0.0", group: "sql", mode: "all", description: "Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata." },
   { name: "ob_build_select", since: "v1.0.0", group: "sql", mode: "all", description: "Build parameterized read-only SELECT statements from validated structured input." },

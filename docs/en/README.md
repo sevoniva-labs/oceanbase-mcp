@@ -168,6 +168,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_table_context` | v0.5.1 | Return common table context for SQL drafting and data inspection. |
 | `ob_find_related_tables` | v0.5.0 | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | v0.5.0 | Return table row estimates, counts, and storage statistics. |
+| `ob_profile_table` | v1.0.0 | Return bounded table profiles with key fields, null overview, and sampled field signals. |
 | `ob_profile_columns` | v0.5.1 | Return bounded-sample column profiles with sensitive values masked. |
 | `ob_prepare_query` | v1.0.0 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
 | `ob_build_select` | v1.0.0 | Build parameterized read-only SELECT statements from validated structured input. |

@@ -2026,6 +2026,112 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_profile_table",
+    {
+      title: "Profile Table",
+      description: "Return a bounded table-level profile with metadata counts, key fields, time/status fields, and sampled null overview.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        rowLimit: z.number().int().positive().max(10_000).optional(),
+        maxProfileColumns: z.number().int().positive().max(50).optional(),
+        topValues: z.number().int().positive().max(10).optional(),
+        sampleValues: z.number().int().positive().max(10).optional(),
+        includeColumnProfiles: z.boolean().optional().default(true)
+      }
+    },
+    async ({ profile, table, schema, rowLimit, maxProfileColumns, topValues, sampleValues, includeColumnProfiles = true }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadata = await withQuerySlot(selected, () =>
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const stats = await withQuerySlot(selected, () =>
+        getTableStats(selected.pool, selected.config.compatibility, metadata.table, metadata.schema, selected.config.queryTimeoutMs)
+      );
+      const visibleColumns = filterColumnMetadata(metadata.columns, selected.config.policy);
+      const visibleIndexes = filterColumnMetadata(metadata.indexes, selected.config.policy);
+      const visibleConstraints = filterColumnMetadata(metadata.constraints, selected.config.policy);
+      const compactColumns = compactSchemaColumns(visibleColumns, visibleConstraints, selected.config, metadata.schema, metadata.table);
+      const primaryKeys = schemaMapPrimaryKeyColumns(visibleConstraints);
+      const timeFields = compactColumns.filter((column) => column.roles.includes("time")).map((column) => column.name);
+      const statusFields = compactColumns.filter((column) => column.roles.includes("status")).map((column) => column.name);
+      const profileRowLimit = Math.min(effectiveRowLimit(rowLimit, selected.config), 10_000);
+      const effectiveTopLimit = Math.min(topValues ?? 5, 10);
+      const effectiveSampleLimit = Math.min(sampleValues ?? 3, 10);
+      const selectedProfileColumns = includeColumnProfiles
+        ? selectTableProfileColumns(compactColumns, primaryKeys, maxProfileColumns ?? 12)
+        : [];
+      const rawColumnProfiles = selectedProfileColumns.length > 0
+        ? await withQuerySlot(selected, () =>
+            profileColumns(
+              selected.pool,
+              selected.config.compatibility,
+              metadata.schema,
+              metadata.table,
+              selectedProfileColumns.map((column) => ({ name: column.name, dataType: column.type })),
+              profileRowLimit,
+              effectiveTopLimit,
+              effectiveSampleLimit,
+              selected.config.queryTimeoutMs
+            )
+          )
+        : undefined;
+      const columnProfiles = rawColumnProfiles
+        ? tableProfileMaskedColumns(rawColumnProfiles, compactColumns, selected.config, metadata.schema, metadata.table)
+        : [];
+      const warnings = tableProfileWarnings(
+        [...metadata.warnings, ...stats.warnings],
+        rawColumnProfiles?.warnings ?? [],
+        stats.rowEstimate?.value,
+        profileRowLimit,
+        compactColumns.length,
+        selectedProfileColumns.length,
+        includeColumnProfiles
+      );
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: metadata.schema,
+          table: metadata.table,
+          rowEstimate: stats.rowEstimate,
+          objectCounts: {
+            visibleColumns: compactColumns.length,
+            visibleIndexes: visibleIndexes.length,
+            visibleConstraints: visibleConstraints.length,
+            partitions: metadata.partitions.length,
+            catalog: stats.counts
+          },
+          storage: stats.storage,
+          analyzedAt: stats.analyzedAt,
+          primaryKeys,
+          keyFields: importantSchemaMapFields(compactColumns, primaryKeys, timeFields, statusFields),
+          timeFields: tableProfileTimeFields(timeFields, columnProfiles),
+          statusFields: tableProfileStatusFields(statusFields, columnProfiles),
+          nullableColumns: compactColumns.filter((column) => column.nullable).map((column) => column.name).slice(0, 50),
+          nullOverview: tableProfileNullOverview(columnProfiles),
+          indexSummary: tableProfileIndexSummary(visibleIndexes),
+          profileScope: {
+            enabled: includeColumnProfiles,
+            rowLimit: profileRowLimit,
+            topValues: effectiveTopLimit,
+            sampleValues: effectiveSampleLimit,
+            selectedColumns: selectedProfileColumns.map((column) => column.name),
+            visibleColumnCount: compactColumns.length,
+            selectedColumnCount: selectedProfileColumns.length
+          },
+          columnProfiles,
+          warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_profile_columns",
     {
       title: "Profile Table Columns",
@@ -3640,6 +3746,195 @@ function profileWarnings(
     warnings.add(`Only ${selectedColumnCount} of ${visibleColumnCount} visible columns were profiled. Pass columns or maxColumns to change scope.`);
   }
   return [...warnings];
+}
+
+function selectTableProfileColumns(
+  columns: Array<{ name: string; type?: string; nullable?: boolean; roles: string[]; masked: boolean }>,
+  primaryKeys: string[],
+  maxColumns: number
+): Array<{ name: string; type?: string; nullable?: boolean; roles: string[]; masked: boolean }> {
+  const cappedMax = Math.max(1, Math.min(maxColumns, 50));
+  const primaryKeySet = new Set(primaryKeys.map((column) => column.toLowerCase()));
+  return columns
+    .map((column, index) => ({
+      column,
+      index,
+      score: tableProfileColumnScore(column, primaryKeySet)
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, cappedMax)
+    .map((item) => item.column);
+}
+
+function tableProfileColumnScore(
+  column: { name: string; type?: string; nullable?: boolean; roles: string[] },
+  primaryKeySet: Set<string>
+): number {
+  let score = 0;
+  if (primaryKeySet.has(column.name.toLowerCase()) || column.roles.includes("primary_key")) {
+    score += 100;
+  }
+  if (column.roles.includes("time")) {
+    score += 90;
+  }
+  if (column.roles.includes("status")) {
+    score += 85;
+  }
+  if (column.nullable) {
+    score += 55;
+  }
+  if (column.roles.includes("identifier")) {
+    score += 35;
+  }
+  if (/(int|number|decimal|numeric|float|double|date|time|timestamp|char|text)/i.test(column.type ?? "")) {
+    score += 20;
+  }
+  return score;
+}
+
+function tableProfileMaskedColumns(
+  result: { schema?: string; table: string; columns: unknown[] },
+  metadataColumns: Array<{ name: string; type?: string; nullable?: boolean; comment?: string; roles: string[] }>,
+  config: ObConfig,
+  schema: string | undefined,
+  table: string
+): Array<Record<string, unknown>> {
+  const metadata = new Map(metadataColumns.map((column) => [normalizeTableName(config.compatibility, column.name), column]));
+  const enriched = {
+    ...result,
+    columns: result.columns.map((profileResult) => {
+      const record = profileResult && typeof profileResult === "object" && !Array.isArray(profileResult)
+        ? profileResult as Record<string, unknown>
+        : {};
+      const columnName = stringRecordValue(record, "column", "COLUMN") ?? "";
+      const column = metadata.get(normalizeTableName(config.compatibility, columnName));
+      return {
+        ...record,
+        dataType: column?.type,
+        nullable: column?.nullable,
+        comment: column?.comment,
+        roles: column?.roles ?? [],
+        masked: shouldMaskColumnValue(columnName, config, schema, table)
+      };
+    })
+  };
+  const masked = maskColumnProfileResult(enriched, config, schema, table);
+  return (masked.columns ?? [])
+    .filter((column) => Boolean(column && typeof column === "object" && !Array.isArray(column)))
+    .map((column) => column as Record<string, unknown>);
+}
+
+function tableProfileWarnings(
+  metadataWarnings: string[],
+  columnWarnings: string[],
+  rowEstimate: number | undefined,
+  rowLimit: number,
+  visibleColumnCount: number,
+  selectedColumnCount: number,
+  includeColumnProfiles: boolean
+): string[] {
+  const warnings = new Set<string>([
+    ...metadataWarnings,
+    ...columnWarnings,
+    "Table profile combines metadata with bounded column samples; row estimates and sampled values are not full-table exact values."
+  ]);
+  if (!includeColumnProfiles) {
+    warnings.add("Column profiling was disabled, so null overview, time ranges, and value distributions are metadata-only.");
+  } else {
+    for (const warning of profileWarnings([], rowEstimate, rowLimit, selectedColumnCount, visibleColumnCount)) {
+      warnings.add(warning);
+    }
+  }
+  return [...warnings];
+}
+
+function tableProfileNullOverview(profiles: Array<Record<string, unknown>>) {
+  return profiles
+    .map((profile) => {
+      const nulls = profile.nulls && typeof profile.nulls === "object" && !Array.isArray(profile.nulls)
+        ? profile.nulls as Record<string, unknown>
+        : {};
+      return {
+        column: stringRecordValue(profile, "column", "COLUMN") ?? "",
+        nullable: Boolean(profile.nullable),
+        masked: Boolean(profile.masked),
+        sampledRows: numberRecordValue(profile, "sampledRows", "sampled_rows") ?? 0,
+        nullCount: numberRecordValue(nulls, "count") ?? 0,
+        nullRatio: numberRecordValue(nulls, "ratio") ?? 0,
+        source: stringRecordValue(nulls, "source")
+      };
+    })
+    .filter((item) => item.column)
+    .sort((left, right) => right.nullRatio - left.nullRatio || right.nullCount - left.nullCount || left.column.localeCompare(right.column))
+    .slice(0, 20);
+}
+
+function tableProfileTimeFields(timeFields: string[], profiles: Array<Record<string, unknown>>) {
+  return timeFields.map((column) => {
+    const profile = profileByColumn(profiles, column);
+    const timeRange = profile?.timeRange && typeof profile.timeRange === "object" && !Array.isArray(profile.timeRange)
+      ? profile.timeRange as Record<string, unknown>
+      : undefined;
+    return {
+      column,
+      confidence: 0.72,
+      evidence: ["Column name or metadata role suggests a time field."],
+      sampledRows: profile ? numberRecordValue(profile, "sampledRows", "sampled_rows") ?? 0 : undefined,
+      min: timeRange?.min,
+      max: timeRange?.max,
+      masked: profile ? Boolean(profile.masked) : undefined
+    };
+  });
+}
+
+function tableProfileStatusFields(statusFields: string[], profiles: Array<Record<string, unknown>>) {
+  return statusFields.map((column) => {
+    const profile = profileByColumn(profiles, column);
+    const distinct = profile?.distinct && typeof profile.distinct === "object" && !Array.isArray(profile.distinct)
+      ? profile.distinct as Record<string, unknown>
+      : undefined;
+    return {
+      column,
+      confidence: 0.72,
+      evidence: ["Column name or metadata role suggests a status or dimension field."],
+      sampledRows: profile ? numberRecordValue(profile, "sampledRows", "sampled_rows") ?? 0 : undefined,
+      distinct: distinct ? { value: numberRecordValue(distinct, "value"), exact: false } : undefined,
+      topValues: Array.isArray(profile?.topValues) ? profile?.topValues : undefined,
+      masked: profile ? Boolean(profile.masked) : undefined
+    };
+  });
+}
+
+function profileByColumn(profiles: Array<Record<string, unknown>>, column: string): Record<string, unknown> | undefined {
+  return profiles.find((profile) => {
+    const name = stringRecordValue(profile, "column", "COLUMN");
+    return Boolean(name && name.toLowerCase() === column.toLowerCase());
+  });
+}
+
+function tableProfileIndexSummary(indexes: unknown[]) {
+  const grouped = new Map<string, { name: string; unique?: boolean; type?: string; columns: string[] }>();
+  for (const row of indexes) {
+    const record = row && typeof row === "object" && !Array.isArray(row) ? row as Record<string, unknown> : {};
+    const name = stringRecordValue(record, "index_name", "INDEX_NAME");
+    const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    if (!name) {
+      continue;
+    }
+    const nonUnique = record.non_unique ?? record.NON_UNIQUE;
+    const uniqueness = stringRecordValue(record, "uniqueness", "UNIQUENESS");
+    const existing = grouped.get(name) ?? {
+      name,
+      unique: uniqueness ? uniqueness.toUpperCase() === "UNIQUE" : nonUnique == null ? undefined : String(nonUnique) === "0",
+      type: stringRecordValue(record, "index_type", "INDEX_TYPE"),
+      columns: []
+    };
+    if (column) {
+      existing.columns = uniqueStrings([...existing.columns, column]);
+    }
+    grouped.set(name, existing);
+  }
+  return [...grouped.values()].slice(0, 20);
 }
 
 function maskColumnProfileResult<T extends { columns?: unknown[] }>(
