@@ -16,6 +16,7 @@ import {
   listSchemas,
   listTables,
   ping,
+  profileColumns,
   renderStructuredTableDdl,
   runReadOnlyQuery,
   sampleRows,
@@ -999,6 +1000,86 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_profile_columns",
+    {
+      title: "Profile Table Columns",
+      description: "Return bounded, policy-filtered column profiles for an allowed OceanBase table.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        columns: z.array(z.string().min(1)).max(50).optional(),
+        rowLimit: z.number().int().positive().max(10_000).optional(),
+        maxColumns: z.number().int().positive().max(50).optional(),
+        topValues: z.number().int().positive().max(20).optional(),
+        sampleValues: z.number().int().positive().max(20).optional()
+      }
+    },
+    async ({ profile, table, schema, columns, rowLimit, maxColumns, topValues, sampleValues }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadataRows = await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const visibleColumns = filterColumnMetadata(metadataRows, selected.config.policy);
+      const selectedColumns = selectProfileColumns(
+        visibleColumns,
+        selected.config.compatibility,
+        columns,
+        maxColumns ?? 10
+      );
+      const profileRowLimit = Math.min(effectiveRowLimit(rowLimit, selected.config), 10_000);
+      const effectiveTopLimit = Math.min(topValues ?? 5, 20);
+      const effectiveSampleLimit = Math.min(sampleValues ?? 5, 20);
+      const stats = await withQuerySlot(selected, () =>
+        getTableStats(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const result = await withQuerySlot(selected, () =>
+        profileColumns(
+          selected.pool,
+          selected.config.compatibility,
+          effectiveSchema,
+          table,
+          selectedColumns.map((column) => ({
+            name: column.name,
+            dataType: column.dataType
+          })),
+          profileRowLimit,
+          effectiveTopLimit,
+          effectiveSampleLimit,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const warnings = profileWarnings(result.warnings, stats.rowEstimate?.value, profileRowLimit, selectedColumns.length, visibleColumns.length);
+      return toLimitedResult(
+        maskColumnProfileResult(
+          {
+            ...result,
+            requestedColumns: columns?.length ? columns : undefined,
+            tableRowEstimate: stats.rowEstimate,
+            columns: result.columns.map((profileResult) => {
+              const metadata = selectedColumns.find((column) => sameColumnName(selected.config.compatibility, column.name, profileResult.column));
+              return {
+                ...profileResult,
+                dataType: metadata?.dataType,
+                nullable: metadata?.nullable,
+                comment: metadata?.comment,
+                masked: shouldMaskColumnValue(profileResult.column, selected.config, result.schema, result.table)
+              };
+            }),
+            warnings
+          },
+          selected.config,
+          result.schema,
+          result.table
+        ),
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_find_related_tables",
     {
       title: "Find Related Tables",
@@ -1526,6 +1607,141 @@ function numberRecordValue(record: Record<string, unknown>, ...keys: string[]): 
     return Number(value);
   }
   return undefined;
+}
+
+function selectProfileColumns(
+  rows: unknown[],
+  mode: ObConfig["compatibility"],
+  requestedColumns: string[] | undefined,
+  maxColumns: number
+): Array<{ name: string; dataType?: string; nullable?: boolean; comment?: string }> {
+  const cappedMax = Math.max(1, Math.min(maxColumns, 50));
+  const metadata = rows
+    .map((row) => profileColumnMetadata(row, mode))
+    .filter((row): row is { name: string; dataType?: string; nullable?: boolean; comment?: string } => Boolean(row));
+  if (metadata.length === 0) {
+    throw new Error("No visible columns are available for ob_profile_columns.");
+  }
+
+  if (requestedColumns && requestedColumns.length > 0) {
+    if (requestedColumns.length > cappedMax) {
+      throw new Error(`Requested ${requestedColumns.length} columns, but maxColumns is ${cappedMax}.`);
+    }
+    const byName = new Map(metadata.map((column) => [normalizeTableName(mode, column.name), column]));
+    const selected: Array<{ name: string; dataType?: string; nullable?: boolean; comment?: string }> = [];
+    const seen = new Set<string>();
+    for (const requested of requestedColumns) {
+      const key = normalizeTableName(mode, requested);
+      const column = byName.get(key);
+      if (!column) {
+        throw new Error(`Unknown column "${requested}" or column is hidden by policy.`);
+      }
+      if (!seen.has(key)) {
+        selected.push(column);
+        seen.add(key);
+      }
+    }
+    return selected;
+  }
+
+  return metadata.slice(0, cappedMax);
+}
+
+function profileColumnMetadata(
+  row: unknown,
+  mode: ObConfig["compatibility"]
+): { name: string; dataType?: string; nullable?: boolean; comment?: string } | undefined {
+  const record = row as Record<string, unknown>;
+  const name = stringRecordValue(record, "column_name", "COLUMN_NAME");
+  if (!name) {
+    return undefined;
+  }
+  const nullableText = stringRecordValue(record, "is_nullable", "IS_NULLABLE", "nullable", "NULLABLE");
+  return {
+    name,
+    dataType: columnTypeLabel(mode, record),
+    nullable: nullableText ? !["NO", "N"].includes(nullableText.toUpperCase()) : undefined,
+    comment: stringRecordValue(record, "column_comment", "COLUMN_COMMENT", "comments", "COMMENTS")
+  };
+}
+
+function sameColumnName(mode: ObConfig["compatibility"], left: string, right: string): boolean {
+  return normalizeTableName(mode, left) === normalizeTableName(mode, right);
+}
+
+function profileWarnings(
+  baseWarnings: string[],
+  rowEstimate: number | undefined,
+  rowLimit: number,
+  selectedColumnCount: number,
+  visibleColumnCount: number
+): string[] {
+  const warnings = new Set(baseWarnings);
+  warnings.add("Column profiling uses a bounded sample; returned counts and value distributions are not full-table exact values.");
+  if (rowEstimate != null && rowEstimate > rowLimit) {
+    warnings.add(`Table row estimate is ${rowEstimate}; profiling was limited to ${rowLimit} rows.`);
+  }
+  if (visibleColumnCount > selectedColumnCount) {
+    warnings.add(`Only ${selectedColumnCount} of ${visibleColumnCount} visible columns were profiled. Pass columns or maxColumns to change scope.`);
+  }
+  return [...warnings];
+}
+
+function maskColumnProfileResult<T extends { columns?: unknown[] }>(
+  result: T,
+  config: ObConfig,
+  schema: string | undefined,
+  table: string
+): T {
+  if (!Array.isArray(result.columns)) {
+    return result;
+  }
+  return {
+    ...result,
+    columns: result.columns.map((column) => maskColumnProfile(column, config, schema, table))
+  };
+}
+
+function maskColumnProfile(
+  column: unknown,
+  config: ObConfig,
+  schema: string | undefined,
+  table: string
+): unknown {
+  if (!column || typeof column !== "object" || Array.isArray(column)) {
+    return column;
+  }
+  const record = column as Record<string, unknown>;
+  const columnName = stringRecordValue(record, "column", "COLUMN") ?? "";
+  const masked = Boolean(record.masked) || shouldMaskColumnValue(columnName, config, schema, table);
+  if (!masked) {
+    return { ...record, masked };
+  }
+  const timeRange = record.timeRange && typeof record.timeRange === "object" && !Array.isArray(record.timeRange)
+    ? {
+        ...(record.timeRange as Record<string, unknown>),
+        min: maskProfileValue((record.timeRange as Record<string, unknown>).min),
+        max: maskProfileValue((record.timeRange as Record<string, unknown>).max)
+      }
+    : record.timeRange;
+  return {
+    ...record,
+    masked,
+    min: maskProfileValue(record.min),
+    max: maskProfileValue(record.max),
+    timeRange,
+    topValues: Array.isArray(record.topValues)
+      ? record.topValues.map((item) => {
+          const valueRecord = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+          return { ...valueRecord, value: maskProfileValue(valueRecord.value) };
+        })
+      : record.topValues,
+    sampleValues: Array.isArray(record.sampleValues) ? record.sampleValues.map(maskProfileValue) : record.sampleValues
+  };
+}
+
+function maskProfileValue(value: unknown): unknown {
+  return value == null ? value : "***MASKED***";
 }
 
 function metadataSchema(config: ObConfig, schema: string | undefined): string | undefined {

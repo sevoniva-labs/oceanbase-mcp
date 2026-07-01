@@ -127,6 +127,7 @@ npm run start:http
 | `ob_get_table_context` | 返回写 SQL 和查数据常用的表上下文。 |
 | `ob_find_related_tables` | 查找外键关系和保守的命名推断表关系。 |
 | `ob_get_table_stats` | 返回表行数估算、对象计数和存储统计。 |
+| `ob_profile_columns` | 返回受限样本内的字段画像，并对敏感值脱敏。 |
 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 |
 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 |
 | `ob_get_indexes` | 返回表索引元数据。 |

@@ -127,6 +127,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_table_context` | Return common table context for SQL drafting and data inspection. |
 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | Return table row estimates, counts, and storage statistics. |
+| `ob_profile_columns` | Return bounded-sample column profiles with sensitive values masked. |
 | `ob_generate_query` | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | Generate Mermaid and JSON ER metadata from allowed tables. |
 | `ob_get_indexes` | Return table index metadata. |

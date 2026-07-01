@@ -97,6 +97,54 @@ export interface TableStats {
   warnings: string[];
 }
 
+export interface ColumnProfileRequest {
+  name: string;
+  dataType?: string;
+}
+
+export interface ColumnProfileValueCount {
+  value: unknown;
+  count: number;
+  ratio: number;
+}
+
+export interface ColumnProfile {
+  column: string;
+  sampledRows: number;
+  rowLimit: number;
+  nulls: {
+    count: number;
+    ratio: number;
+    exact: false;
+    source: string;
+  };
+  distinct?: {
+    value: number;
+    exact: false;
+    source: string;
+  };
+  min?: unknown;
+  max?: unknown;
+  timeRange?: {
+    min?: unknown;
+    max?: unknown;
+  };
+  topValues: ColumnProfileValueCount[];
+  sampleValues: unknown[];
+  warnings: string[];
+}
+
+export interface ColumnProfileResult {
+  mode: CompatibilityMode;
+  schema?: string;
+  table: string;
+  rowLimit: number;
+  topLimit: number;
+  sampleValueLimit: number;
+  columns: ColumnProfile[];
+  warnings: string[];
+}
+
 export type OracleObjectType = "VIEW" | "SEQUENCE" | "SYNONYM" | "PROCEDURE" | "FUNCTION" | "PACKAGE" | "PACKAGE BODY";
 
 export interface ObjectListResult {
@@ -979,6 +1027,278 @@ export async function sampleRows(
       ? `SELECT ${oracleTimeoutHint(timeoutMs)} * FROM (SELECT ${columnList} FROM ${tableName}) WHERE ROWNUM <= ${limit + 1}`
       : `SELECT ${columnList} FROM ${tableName} LIMIT ${limit + 1}`;
   return runQuery(pool, sql, [], limit, timeoutMs);
+}
+
+export async function profileColumns(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  columns: ColumnProfileRequest[],
+  rowLimit: number,
+  topLimit: number,
+  sampleValueLimit: number,
+  timeoutMs: number
+): Promise<ColumnProfileResult> {
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  if (mode === "mysql" && !resolvedSchema) {
+    throw new Error("No MySQL database is selected. Pass the schema argument to ob_profile_columns.");
+  }
+  const resolvedTable = mode === "oracle" ? table.trim().toUpperCase() : table.trim();
+  const normalizedColumns = columns.map((column) => ({
+    ...column,
+    name: mode === "oracle" ? column.name.trim().toUpperCase() : column.name.trim()
+  }));
+  const warnings: string[] = [];
+  const profiles: ColumnProfile[] = [];
+
+  for (const column of normalizedColumns) {
+    profiles.push(await profileOneColumn(pool, mode, resolvedSchema, resolvedTable, column, rowLimit, topLimit, sampleValueLimit, timeoutMs));
+  }
+
+  return {
+    mode,
+    schema: resolvedSchema,
+    table: resolvedTable,
+    rowLimit,
+    topLimit,
+    sampleValueLimit,
+    columns: profiles,
+    warnings
+  };
+}
+
+async function profileOneColumn(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  table: string,
+  column: ColumnProfileRequest,
+  rowLimit: number,
+  topLimit: number,
+  sampleValueLimit: number,
+  timeoutMs: number
+): Promise<ColumnProfile> {
+  const warnings: string[] = [];
+  const tableName = qualifiedTableName(mode, schema, table);
+  const quotedColumn = quoteIdentifier(mode, column.name);
+  const comparable = isProfileComparableType(column.dataType);
+  const temporal = isTemporalType(column.dataType);
+  const source = `bounded sample of up to ${rowLimit} rows`;
+
+  const nulls = await queryProfileNulls(pool, mode, tableName, quotedColumn, rowLimit, timeoutMs);
+  let distinct: ColumnProfile["distinct"];
+  let minMax: { min?: unknown; max?: unknown } = {};
+  let topValues: ColumnProfileValueCount[] = [];
+  let sampleValues: unknown[] = [];
+
+  if (comparable) {
+    try {
+      const value = await queryProfileDistinct(pool, mode, tableName, quotedColumn, rowLimit, timeoutMs);
+      distinct = { value, exact: false, source };
+    } catch (error) {
+      warnings.push(`Distinct count was skipped: ${(error as Error).message}`);
+    }
+    try {
+      minMax = await queryProfileMinMax(pool, mode, tableName, quotedColumn, rowLimit, timeoutMs);
+    } catch (error) {
+      warnings.push(`Min/max values were skipped: ${(error as Error).message}`);
+    }
+    try {
+      topValues = await queryProfileTopValues(pool, mode, tableName, quotedColumn, rowLimit, topLimit, nulls.sampledRows, timeoutMs);
+    } catch (error) {
+      warnings.push(`Top values were skipped: ${(error as Error).message}`);
+    }
+    try {
+      sampleValues = await queryProfileSampleValues(pool, mode, tableName, quotedColumn, sampleValueLimit, timeoutMs);
+    } catch (error) {
+      warnings.push(`Sample values were skipped: ${(error as Error).message}`);
+    }
+  } else {
+    warnings.push("Value preview, distinct count, top values, and min/max were skipped for this column type.");
+  }
+
+  return {
+    column: column.name,
+    sampledRows: nulls.sampledRows,
+    rowLimit,
+    nulls: {
+      count: nulls.nullCount,
+      ratio: ratio(nulls.nullCount, nulls.sampledRows),
+      exact: false,
+      source
+    },
+    distinct,
+    min: minMax.min,
+    max: minMax.max,
+    timeRange: temporal ? { min: minMax.min, max: minMax.max } : undefined,
+    topValues,
+    sampleValues,
+    warnings
+  };
+}
+
+async function queryProfileNulls(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  tableName: string,
+  quotedColumn: string,
+  rowLimit: number,
+  timeoutMs: number
+): Promise<{ sampledRows: number; nullCount: number }> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleSelectHint(mode, timeoutMs)} COUNT(1) AS sampled_count,
+             SUM(CASE WHEN profile_value IS NULL THEN 1 ELSE 0 END) AS null_count
+      FROM ${profileColumnSubquery(mode, tableName, quotedColumn, rowLimit)}
+    `,
+    timeout: timeoutMs
+  });
+  const record = firstRecord(rows) ?? {};
+  return {
+    sampledRows: numberField(record, "sampled_count", "SAMPLED_COUNT") ?? 0,
+    nullCount: numberField(record, "null_count", "NULL_COUNT") ?? 0
+  };
+}
+
+async function queryProfileDistinct(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  tableName: string,
+  quotedColumn: string,
+  rowLimit: number,
+  timeoutMs: number
+): Promise<number> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleSelectHint(mode, timeoutMs)} COUNT(DISTINCT profile_value) AS distinct_count
+      FROM ${profileColumnSubquery(mode, tableName, quotedColumn, rowLimit)}
+    `,
+    timeout: timeoutMs
+  });
+  return numberField(firstRecord(rows) ?? {}, "distinct_count", "DISTINCT_COUNT") ?? 0;
+}
+
+async function queryProfileMinMax(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  tableName: string,
+  quotedColumn: string,
+  rowLimit: number,
+  timeoutMs: number
+): Promise<{ min?: unknown; max?: unknown }> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleSelectHint(mode, timeoutMs)} MIN(profile_value) AS min_value,
+             MAX(profile_value) AS max_value
+      FROM ${profileColumnSubquery(mode, tableName, quotedColumn, rowLimit)}
+    `,
+    timeout: timeoutMs
+  });
+  const record = firstRecord(rows) ?? {};
+  return {
+    min: fieldValue(record, "min_value", "MIN_VALUE"),
+    max: fieldValue(record, "max_value", "MAX_VALUE")
+  };
+}
+
+async function queryProfileTopValues(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  tableName: string,
+  quotedColumn: string,
+  rowLimit: number,
+  topLimit: number,
+  sampledRows: number,
+  timeoutMs: number
+): Promise<ColumnProfileValueCount[]> {
+  const sql =
+    mode === "oracle"
+      ? `
+        SELECT ${oracleTimeoutHint(timeoutMs)} *
+        FROM (
+          SELECT profile_value, COUNT(1) AS value_count
+          FROM ${profileColumnSubquery(mode, tableName, quotedColumn, rowLimit)}
+          GROUP BY profile_value
+          ORDER BY value_count DESC
+        )
+        WHERE ROWNUM <= ${safeLimit(topLimit)}
+      `
+      : `
+        SELECT profile_value, COUNT(1) AS value_count
+        FROM ${profileColumnSubquery(mode, tableName, quotedColumn, rowLimit)}
+        GROUP BY profile_value
+        ORDER BY value_count DESC
+        LIMIT ${safeLimit(topLimit)}
+      `;
+  const [rows] = await pool.query({ sql, timeout: timeoutMs });
+  return (Array.isArray(rows) ? rows as unknown[] : []).map((row) => {
+    const record = rowRecord(row);
+    const count = numberField(record, "value_count", "VALUE_COUNT") ?? 0;
+    return {
+      value: fieldValue(record, "profile_value", "PROFILE_VALUE"),
+      count,
+      ratio: ratio(count, sampledRows)
+    };
+  });
+}
+
+async function queryProfileSampleValues(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  tableName: string,
+  quotedColumn: string,
+  sampleValueLimit: number,
+  timeoutMs: number
+): Promise<unknown[]> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleSelectHint(mode, timeoutMs)} profile_value AS sample_value
+      FROM ${profileColumnSubquery(mode, tableName, quotedColumn, sampleValueLimit, true)}
+    `,
+    timeout: timeoutMs
+  });
+  return (Array.isArray(rows) ? rows as unknown[] : []).map((row) => fieldValue(rowRecord(row), "sample_value", "SAMPLE_VALUE"));
+}
+
+function profileColumnSubquery(
+  mode: CompatibilityMode,
+  tableName: string,
+  quotedColumn: string,
+  limit: number,
+  nonNull = false
+): string {
+  const safeRowLimit = safeLimit(limit);
+  if (mode === "oracle") {
+    const filters = [nonNull ? `${quotedColumn} IS NOT NULL` : undefined, `ROWNUM <= ${safeRowLimit}`].filter(Boolean).join(" AND ");
+    return `(SELECT ${quotedColumn} AS profile_value FROM ${tableName} WHERE ${filters}) ob_profile_sample`;
+  }
+  const where = nonNull ? ` WHERE ${quotedColumn} IS NOT NULL` : "";
+  return `(SELECT ${quotedColumn} AS profile_value FROM ${tableName}${where} LIMIT ${safeRowLimit}) AS ob_profile_sample`;
+}
+
+function oracleSelectHint(mode: CompatibilityMode, timeoutMs: number): string {
+  return mode === "oracle" ? oracleTimeoutHint(timeoutMs) : "";
+}
+
+function isProfileComparableType(dataType: string | undefined): boolean {
+  const normalized = (dataType ?? "").toLowerCase();
+  return !/(blob|clob|long|raw|binary|geometry|json|xml)/.test(normalized);
+}
+
+function isTemporalType(dataType: string | undefined): boolean {
+  return /(date|time|timestamp|year)/i.test(dataType ?? "");
+}
+
+function ratio(count: number, total: number): number {
+  return total > 0 ? Number((count / total).toFixed(6)) : 0;
+}
+
+function safeLimit(value: number): number {
+  return Math.max(1, Math.trunc(value));
 }
 
 async function getMysqlTableStats(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<TableStats> {

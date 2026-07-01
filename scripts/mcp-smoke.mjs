@@ -144,6 +144,10 @@ try {
     name: "ob_get_table_stats",
     arguments: { schema: smokeSchema, table: smokeTable }
   });
+  const columnProfile = await send("tools/call", {
+    name: "ob_profile_columns",
+    arguments: { schema: smokeSchema, table: smokeTable, columns: [smokeIdColumn, smokeMaskedColumn], rowLimit: 5, topValues: 2, sampleValues: 2 }
+  });
   const queryTemplates = await send("tools/call", {
     name: "ob_generate_query",
     arguments: { schema: smokeSchema, table: smokeTable, maxRows: 20 }
@@ -220,6 +224,7 @@ try {
   const tableContextResult = parseToolJson(tableContext);
   const relatedTablesResult = parseToolJson(relatedTables);
   const tableStatsResult = parseToolJson(tableStats);
+  const columnProfileResult = parseToolJson(columnProfile);
   const queryTemplateResult = parseToolJson(queryTemplates);
   const erDiagramResult = parseToolJson(erDiagram);
   const indexRows = parseToolJson(indexes);
@@ -247,6 +252,7 @@ try {
     "ob_get_table_context",
     "ob_find_related_tables",
     "ob_get_table_stats",
+    "ob_profile_columns",
     "ob_generate_query",
     "ob_generate_er_diagram",
     "ob_get_indexes",
@@ -292,6 +298,10 @@ try {
       tableContextResult.sample?.rows?.length > 0,
     relatedTablesOk: Array.isArray(relatedTablesResult.relations),
     tableStatsOk: Number.isInteger(tableStatsResult.counts?.columns),
+    columnProfileOk:
+      columnProfileResult.table === smokeTable &&
+      columnProfileResult.columns.length > 0 &&
+      columnProfileResult.columns.some((column) => column.column === smokeMaskedColumn && column.masked === true),
     queryTemplatesOk:
       queryTemplateResult.executed === false &&
       queryTemplateResult.templates.length > 0 &&
@@ -342,6 +352,7 @@ try {
     !output.tableContextOk ||
     !output.relatedTablesOk ||
     !output.tableStatsOk ||
+    !output.columnProfileOk ||
     !output.queryTemplatesOk ||
     !output.erDiagramOk ||
     !output.partitionsOk ||
