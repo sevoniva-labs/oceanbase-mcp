@@ -19,28 +19,17 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 - Provides a read-only database account permission verification tool.
 - Ships Docker, Kubernetes, Nginx, systemd, and local OpenCode examples.
 
-## Versioned Capabilities
+## Release Timeline
 
-| Version | Capability | Details |
-| --- | --- | --- |
-| v0.3.0 | Read-only gateway foundation | stdio integration, OceanBase MySQL/Oracle connectivity, read-only SQL execution, schema/table metadata, indexes, constraints, partitions, and masked sample rows. |
-| v0.3.0 | Baseline SQL policy | Blocks write/control SQL, multi-statement SQL, dangerous functions, and `SELECT *` by default; caps rows, SQL length, and response size. |
-| v0.4.0 | Production deployment hardening | HTTP mode, bearer token auth, Host allowlist, source IP allowlist, body limits, rate limits, health checks, Prometheus metrics, and JSON audit logs. |
-| v0.4.0 | Pre-release diagnostics | Database permission verification and expanded configuration diagnostics for read-only boundary checks. |
-| v0.5.0 | Developer metadata | Table DDL, table statistics, Oracle object metadata, related-table discovery, and ER diagram generation. |
-| v0.5.0 | SQL assistance | Read-only query templates, query plan analysis, and evidence-based performance advisory reports. |
-| v0.5.0 | Column masking enhancements | Exact column matches, wildcard matches, and automatic sensitive-name detection. |
-| v0.5.1 | OpenCode Agent/Skill | Guides the workflow to inspect metadata, generate read-only SQL, preview risk, page through results, and summarize output. |
-| v0.5.1 | Query workflow improvements | Table context, query preview, paged queries, column metadata, Markdown preview, result warnings, and structured SQL error hints. |
-| v0.5.1 | Column profiling and business glossary | Bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
-| v0.5.1 | Release delivery assets | npm package, SBOM, amd64/arm64 offline images, and source archive for internal builds. |
-| v1.0.0 | Local setup and capability discovery | Generate local config, check OpenCode setup, and expose MCP usage guidance and tool capabilities. |
-| v1.0.0 | Metadata and data dictionary | Schema map, unified search, business-term table discovery, cross-table column search, table summaries, database dictionaries, and table/schema comparison. |
-| v1.0.0 | SQL assistance | Query preparation, structured SELECT builder, SQL linting, SQL rewrite, MySQL/Oracle dialect conversion, error explanation, and query examples. |
-| v1.0.0 | Query experience | In-memory query sessions, paging, query refinement, result summaries, result comparison, and Markdown/CSV previews. |
-| v1.0.0 | Data understanding | Table profiles, enhanced column profiles, value distributions, time-column detection, dimension-column detection, recent-row lookup, and data-quality checks. |
-| v1.0.0 | ER and documentation | ER HTML, entity diagrams, relationship explanations, PlantUML/DOT/Markdown model docs, table docs, schema docs, SQL docs, and onboarding docs. |
-| v1.0.0 | Project SQL assistance | Scan local SQL snippets, report read-only risk, pagination risk, and dynamic SQL hints without modifying project files. |
+This table lists release themes only. Per-tool versioning is in the Tools table below.
+
+| Version | Theme |
+| --- | --- |
+| v0.3.0 | Read-only MCP gateway, OceanBase MySQL/Oracle connectivity, baseline SQL policy, table metadata, and masked sample rows. |
+| v0.4.0 | HTTP deployment, security hardening, Host/IP allowlists, rate limits, health checks, metrics, audit logs, and database permission checks. |
+| v0.5.0 | Developer metadata: table DDL, statistics, Oracle objects, relationship discovery, ER diagrams, plan analysis, and performance advice. |
+| v0.5.1 | OpenCode query workflow: table context, query preview, paged queries, result structure, error hints, column profiling, and business glossary. |
+| v1.0.0 | Local developer assistant scope: init/doctor, unified search, SQL assistance, query sessions, data understanding, ER HTML, documentation, project SQL scanning, and internal delivery. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -214,24 +203,6 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_start_query_session` | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
 | v1.0.0 | `ob_summarize_result` | Summarize already returned rows without reading the database. |
 | v1.0.0 | `ob_validate_sql_snippet` | Validate pasted SQL snippets for read-only policy, dialect, pagination, risk, and visible table or column metadata. |
-
-## Oracle Object Metadata
-
-`ob_list_objects` and `ob_get_object_metadata` support Oracle-compatible `view`, `sequence`, `synonym`, `procedure`, `function`, `package`, and `package_body` objects. Object names are filtered by the same schema and object-name policy used for table metadata.
-
-Procedure, function, and package source is returned as a bounded preview, not as an unrestricted dump. Source previews are capped and passed through sensitive-name redaction before output. Synonym metadata is returned only when the connected database account can see the synonym in `all_synonyms`.
-
-## Query Templates
-
-`ob_generate_query` produces read-only SQL templates for primary-key lookup, pagination, time-range filtering, aggregation, and related-table joins. It returns SQL text, parameter descriptions, notes, and policy checks; it does not execute the generated SQL.
-
-## Performance Reports
-
-`ob_generate_performance_report` runs read-only `EXPLAIN`, collects visible table statistics and index metadata, and returns risk level, evidence, and review recommendations. It does not execute the target SQL and does not output DDL or directly executable index changes.
-
-## Documentation Generation
-
-`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. `ob_generate_onboarding_doc` generates onboarding documentation with core tables, relationships, query entry points, and business glossary hints. These tools do not include sample data values or execute the target query.
 
 ## Internal Builds
 

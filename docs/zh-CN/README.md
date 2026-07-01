@@ -19,28 +19,17 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 - 提供数据库账号权限只读核验工具。
 - 提供 Docker、Kubernetes、Nginx、systemd 和本地 OpenCode 示例。
 
-## 功能版本
+## 版本路线
 
-| 版本 | 功能 | 说明 |
-| --- | --- | --- |
-| v0.3.0 | 基础只读网关 | stdio 接入、OceanBase MySQL/Oracle 模式连接、只读 SQL 执行、schema/table 元数据、索引、约束、分区和脱敏样例数据。 |
-| v0.3.0 | 基础 SQL 策略 | 拒绝写入/控制 SQL、多语句、危险函数和默认 `SELECT *`；限制行数、SQL 长度和返回大小。 |
-| v0.4.0 | 生产部署硬化 | HTTP 模式、Bearer token、Host allowlist、来源 IP allowlist、body 限制、限流、健康检查、Prometheus 指标和 JSON 审计日志。 |
-| v0.4.0 | 上线前诊断 | 数据库账号权限核验和更完整的配置诊断，用于确认只读边界。 |
-| v0.5.0 | 开发辅助元数据 | 表 DDL、表统计、Oracle 对象元数据、相关表发现和 ER 图生成。 |
-| v0.5.0 | SQL 辅助 | 只读 SQL 模板、执行计划分析和基于证据的性能建议报告。 |
-| v0.5.0 | 字段级脱敏增强 | 支持精确字段匹配、通配匹配和自动敏感字段识别。 |
-| v0.5.1 | OpenCode Agent/Skill | 约束查询流程为先查元数据、生成只读 SQL、执行前预览风险、分页查询、总结结果。 |
-| v0.5.1 | 查询体验增强 | 表上下文、查询预览、分页查询、列元数据、Markdown 预览、结果警告和结构化错误提示。 |
-| v0.5.1 | 字段画像和业务字典 | 受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 |
-| v0.5.1 | Release 交付补齐 | npm 包、SBOM、amd64/arm64 离线镜像和源码归档，便于内网编译部署。 |
-| v1.0.0 | 本地初始化和能力发现 | 生成本地配置、检查 OpenCode 接入、提供 MCP 使用指南和工具能力清单。 |
-| v1.0.0 | 元数据和数据字典 | schema map、统一搜索、业务词找表、跨表找字段、表摘要、数据库字典、表和 schema 对比。 |
-| v1.0.0 | SQL 辅助 | 查询准备、结构化 SELECT 构建、SQL lint、SQL 改写、MySQL/Oracle 方言转换、错误解释和查询示例。 |
-| v1.0.0 | 查询体验 | 内存查询会话、翻页、查询细化、结果摘要、结果对比和 Markdown/CSV 预览。 |
-| v1.0.0 | 数据理解 | 表画像、字段画像增强、值分布、时间字段识别、维度字段识别、最近数据查询和数据质量检查。 |
-| v1.0.0 | ER 和文档 | ER HTML、实体图、关系解释、PlantUML/DOT/Markdown 模型文档、表文档、schema 文档、SQL 文档和入门文档。 |
-| v1.0.0 | 项目 SQL 辅助 | 扫描本地 SQL 片段，报告只读风险、分页风险和动态 SQL 提示，不修改业务文件。 |
+这张表只列版本主题；单个工具的版本归属见下方工具列表。
+
+| 版本 | 主题 |
+| --- | --- |
+| v0.3.0 | 建立只读 MCP 网关、OceanBase MySQL/Oracle 连接、基础 SQL 策略、表元数据和脱敏样例数据。 |
+| v0.4.0 | 增加 HTTP 部署、安全加固、Host/IP allowlist、限流、健康检查、指标、审计日志和数据库权限核验。 |
+| v0.5.0 | 补齐开发元数据：表 DDL、统计信息、Oracle 对象、关系发现、ER 图、执行计划分析和性能建议。 |
+| v0.5.1 | 改善 OpenCode 查询流程：表上下文、查询预览、分页查询、结果结构、错误提示、字段画像和业务字典。 |
+| v1.0.0 | 完成本地开发助手能力：初始化/诊断、统一搜索、SQL 辅助、查询会话、数据理解、ER HTML、文档生成、项目 SQL 扫描和内网交付。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -214,24 +203,6 @@ npm run start:http
 | v1.0.0 | `ob_start_query_session` | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 |
 | v1.0.0 | `ob_summarize_result` | 汇总已返回结果，不额外读取数据库。 |
 | v1.0.0 | `ob_validate_sql_snippet` | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 |
-
-## Oracle 对象元数据
-
-`ob_list_objects` 和 `ob_get_object_metadata` 支持 Oracle 兼容模式下的 `view`、`sequence`、`synonym`、`procedure`、`function`、`package` 和 `package_body`。对象名会使用和表元数据相同的 schema、对象名访问策略过滤。
-
-procedure、function、package 的源码只返回有限预览，不返回不受限制的完整源码。源码预览有固定上限，输出前会按敏感字段名称做脱敏。synonym 元数据只有在当前数据库账号能从 `all_synonyms` 看到该 synonym 时才会返回。
-
-## SQL 模板生成
-
-`ob_generate_query` 会生成主键查询、分页查询、时间范围查询、聚合统计和关联表查询模板。输出包含 SQL 文本、参数说明、注意事项和策略检查结果；它不会执行生成的 SQL。
-
-## 性能建议报告
-
-`ob_generate_performance_report` 会执行只读 `EXPLAIN`，读取可见的表统计和索引元数据，并返回风险等级、证据和建议方向。它不会执行目标 SQL，也不会输出 DDL 或可直接执行的索引变更语句。
-
-## 文档生成
-
-`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。`ob_generate_onboarding_doc` 生成面向新开发者的库结构入门文档，包含核心表、关系、查询入口和业务字典提示。以上能力都不包含样例数据值，也不会执行目标查询。
 
 ## 内网编译
 
