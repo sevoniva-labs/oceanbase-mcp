@@ -2858,6 +2858,63 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_generate_mapper_context",
+    {
+      title: "Generate Mapper Context",
+      description: "Generate read-only table and column context for a MyBatis mapper, SQL file, or explicit table.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        sql: z.string().min(1).optional(),
+        filePath: z.string().min(1).optional(),
+        line: z.number().int().positive().optional(),
+        format: z.enum(["json", "markdown"]).optional().default("json"),
+        maxTables: z.number().int().positive().max(10).optional(),
+        maxColumns: z.number().int().positive().max(200).optional()
+      }
+    },
+    async ({ profile, schema, table, sql, filePath, line, format = "json", maxTables, maxColumns }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const source = sql || filePath ? resolveProjectQuerySource(sql, filePath, line) : undefined;
+      const policy = source ? explainSqlPolicy(source.sql, policyContext(selected.config)) : undefined;
+      const maxTableCount = Math.min(maxTables ?? 5, 10);
+      const allTableRefs = mapperContextTableRefs(
+        selected.config,
+        schema,
+        table,
+        policy?.tableRefs ?? [],
+        50
+      );
+      const tableRefs = allTableRefs.slice(0, maxTableCount);
+      if (tableRefs.length === 0) {
+        throw new Error("Pass table, sql, or filePath so mapper context can identify at least one table.");
+      }
+      const tables = [];
+      for (const ref of tableRefs) {
+        tables.push(await buildMapperContextTable(selected, ref.schema, ref.table, Math.min(maxColumns ?? 80, 200)));
+      }
+      const payload = {
+        mode: selected.config.compatibility,
+        source: source?.source,
+        sql: source?.sql,
+        policy,
+        tableCount: tables.length,
+        tables,
+        warnings: uniqueStrings([
+          ...(source?.source.warnings ?? []),
+          ...(allTableRefs.length > tableRefs.length ? ["Table list is capped by maxTables."] : [])
+        ]),
+        markdown: undefined as string | undefined
+      };
+      if (format === "markdown") {
+        payload.markdown = renderMapperContextMarkdown(payload);
+      }
+      return toLimitedResult(payload, selected.config);
+    }
+  );
+
+  registerTool(
     "ob_build_select",
     {
       title: "Build SELECT",
@@ -8017,6 +8074,197 @@ function projectQueryRecommendations(source: ProjectQuerySource): string[] {
     return ["Validate the rendered SQL after dynamic mapper or template conditions are applied."];
   }
   return [];
+}
+
+function mapperContextTableRefs(
+  config: ObConfig,
+  schema: string | undefined,
+  table: string | undefined,
+  sqlRefs: Array<{ schema?: string; table: string }>,
+  maxTables: number
+): Array<{ schema?: string; table: string }> {
+  const refs: Array<{ schema?: string; table: string }> = [];
+  if (table?.trim()) {
+    refs.push(normalizedSnippetTableRef(config, schema, table));
+  }
+  for (const ref of sqlRefs) {
+    refs.push(normalizedSnippetTableRef(config, ref.schema ?? schema, ref.table));
+  }
+  return uniqueTableRefs(refs).slice(0, maxTables);
+}
+
+async function buildMapperContextTable(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string,
+  maxColumns: number
+) {
+  const metadataRef = normalizedSnippetTableRef(selected.config, schema, table);
+  assertTableAccess(metadataRef.schema, metadataRef.table, policyContext(selected.config));
+  const columns = filterColumnMetadata(
+    await withQuerySlot(selected, () =>
+      describeTable(
+        selected.pool,
+        selected.config.compatibility,
+        metadataRef.table,
+        metadataRef.schema,
+        selected.config.queryTimeoutMs
+      )
+    ),
+    selected.config.policy
+  );
+  const constraints = filterColumnMetadata(
+    await withQuerySlot(selected, () =>
+      listConstraints(
+        selected.pool,
+        selected.config.compatibility,
+        metadataRef.table,
+        metadataRef.schema,
+        selected.config.queryTimeoutMs
+      )
+    ),
+    selected.config.policy
+  );
+  const indexes = filterColumnMetadata(
+    await withQuerySlot(selected, () =>
+      listIndexes(
+        selected.pool,
+        selected.config.compatibility,
+        metadataRef.table,
+        metadataRef.schema,
+        selected.config.queryTimeoutMs
+      )
+    ),
+    selected.config.policy
+  );
+  const compactColumns = compactSchemaColumns(columns, constraints, selected.config, metadataRef.schema, metadataRef.table);
+  const columnLimit = Math.max(1, Math.min(maxColumns, 200));
+  return {
+    schema: metadataRef.schema,
+    table: metadataRef.table,
+    visibleColumnCount: compactColumns.length,
+    columnsTruncated: compactColumns.length > columnLimit,
+    columns: compactColumns.slice(0, columnLimit),
+    primaryKeys: schemaMapPrimaryKeyColumns(constraints),
+    uniqueKeys: uniqueKeyGroups(constraints),
+    indexes: mapperIndexSummary(indexes),
+    constraints: mapperConstraintSummary(constraints),
+    notes: mapperContextNotes(compactColumns)
+  };
+}
+
+function mapperIndexSummary(rows: unknown[]): Array<{ name: string; unique?: boolean; columns: string[] }> {
+  const grouped = new Map<string, { unique?: boolean; columns: string[] }>();
+  for (const row of rows) {
+    const record = row as Record<string, unknown>;
+    const name = stringRecordValue(record, "index_name", "INDEX_NAME");
+    const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    if (!name || !column) {
+      continue;
+    }
+    const uniqueness = stringRecordValue(record, "uniqueness", "UNIQUENESS");
+    const nonUnique = numberRecordValue(record, "non_unique", "NON_UNIQUE");
+    const existing = grouped.get(name) ?? { unique: undefined, columns: [] };
+    existing.unique = uniqueness ? uniqueness.toUpperCase() === "UNIQUE" : nonUnique != null ? nonUnique === 0 : existing.unique;
+    existing.columns = uniqueStrings([...existing.columns, column]);
+    grouped.set(name, existing);
+  }
+  return [...grouped.entries()].map(([name, value]) => ({
+    name,
+    unique: value.unique,
+    columns: value.columns
+  })).slice(0, 50);
+}
+
+function mapperConstraintSummary(rows: unknown[]): Array<{ name: string; type?: string; columns: string[] }> {
+  const grouped = new Map<string, { type?: string; columns: string[] }>();
+  for (const row of rows) {
+    const record = row as Record<string, unknown>;
+    const name = stringRecordValue(record, "constraint_name", "CONSTRAINT_NAME");
+    const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    if (!name) {
+      continue;
+    }
+    const existing = grouped.get(name) ?? { type: stringRecordValue(record, "constraint_type", "CONSTRAINT_TYPE"), columns: [] };
+    if (column) {
+      existing.columns = uniqueStrings([...existing.columns, column]);
+    }
+    grouped.set(name, existing);
+  }
+  return [...grouped.entries()].map(([name, value]) => ({
+    name,
+    type: value.type,
+    columns: value.columns
+  })).slice(0, 50);
+}
+
+function mapperContextNotes(columns: Array<{ name: string; roles: string[]; masked: boolean }>): string[] {
+  const notes: string[] = [];
+  const maskedColumns = columns.filter((column) => column.masked).map((column) => column.name);
+  const timeColumns = columns.filter((column) => column.roles.includes("time")).map((column) => column.name);
+  const statusColumns = columns.filter((column) => column.roles.includes("status")).map((column) => column.name);
+  if (maskedColumns.length > 0) {
+    notes.push(`Masked columns: ${maskedColumns.slice(0, 10).join(", ")}.`);
+  }
+  if (timeColumns.length > 0) {
+    notes.push(`Likely time columns: ${timeColumns.slice(0, 10).join(", ")}.`);
+  }
+  if (statusColumns.length > 0) {
+    notes.push(`Likely dimension/status columns: ${statusColumns.slice(0, 10).join(", ")}.`);
+  }
+  return notes;
+}
+
+function renderMapperContextMarkdown(payload: {
+  mode: ObConfig["compatibility"];
+  source?: ProjectQuerySource;
+  sql?: string;
+  tableCount: number;
+  tables: Array<Awaited<ReturnType<typeof buildMapperContextTable>>>;
+  warnings: string[];
+}): string {
+  const lines = ["# OceanBase Mapper Context", "", `Mode: ${payload.mode}`, `Tables: ${payload.tableCount}`, ""];
+  if (payload.source?.type === "file") {
+    lines.push(`Source: ${payload.source.file}:${payload.source.line}`, "");
+  }
+  if (payload.sql) {
+    lines.push("```sql", payload.sql, "```", "");
+  }
+  for (const table of payload.tables) {
+    const title = `${table.schema ? `${table.schema}.` : ""}${table.table}`;
+    lines.push(`## ${title}`, "");
+    if (table.primaryKeys.length > 0) {
+      lines.push(`Primary key: ${table.primaryKeys.join(", ")}`, "");
+    }
+    if (table.indexes.length > 0) {
+      lines.push(`Indexes: ${table.indexes.map((index) => `${index.name}(${index.columns.join(", ")})`).join("; ")}`, "");
+    }
+    lines.push("| Column | Type | Nullable | Roles | Masked | Comment |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const column of table.columns) {
+      lines.push([
+        markdownCell(column.name),
+        markdownCell(column.type ?? ""),
+        column.nullable == null ? "" : column.nullable ? "YES" : "NO",
+        markdownCell(column.roles.join(", ")),
+        column.masked ? "YES" : "NO",
+        markdownCell(column.comment ?? "")
+      ].join(" | ").replace(/^/, "| ").replace(/$/, " |"));
+    }
+    if (table.columnsTruncated) {
+      lines.push("", `More columns exist for ${title}; output was truncated by maxColumns.`);
+    }
+    for (const note of table.notes) {
+      lines.push("", `Note: ${note}`);
+    }
+    lines.push("");
+  }
+  if (payload.warnings.length > 0) {
+    lines.push("## Warnings", "");
+    lines.push(...payload.warnings.map((warning) => `- ${warning}`));
+    lines.push("");
+  }
+  return lines.join("\n");
 }
 
 function firstProjectSqlKeyword(sql: string): string | undefined {
