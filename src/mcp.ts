@@ -47,7 +47,7 @@ import {
 } from "./policy.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "./query-generation.js";
 import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "./runtime.js";
-import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, prepareReadOnlySql } from "./sql.js";
+import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "./sql.js";
 
 const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
@@ -353,6 +353,74 @@ export function createObMcpServer(
         paramCount: sqlParams.length
       });
       return toResult(output);
+    }
+  );
+
+  registerTool(
+    "ob_query_page",
+    {
+      title: "Run Paged Read-Only Query",
+      description: "Run a strictly read-only SELECT/WITH query with server-side pagination.",
+      inputSchema: {
+        ...profileInput,
+        sql: z.string().min(1),
+        params: z.array(sqlParamSchema).optional().default([]),
+        page: z.number().int().positive().optional().default(1),
+        pageSize: z.number().int().positive().max(1_000).optional(),
+        orderBy: z.string().min(1).optional()
+      }
+    },
+    async ({ profile, sql, params = [], page = 1, pageSize, orderBy }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const started = Date.now();
+      const sqlParams = params as SqlParam[];
+      assertSqlInputLimits(sql, sqlParams, selected.config);
+      assertReadOnlySql(sql);
+      assertSqlPolicy(sql, policyContext(selected.config));
+
+      const maxPageSize = Math.max(1, Math.min(selected.config.maxRows > 1 ? selected.config.maxRows - 1 : 1, 1_000));
+      const effectivePageSize = Math.min(pageSize ?? Math.min(50, maxPageSize), maxPageSize);
+      const fetchRows = Math.min(effectivePageSize + 1, selected.config.maxRows);
+      const pagedSql = buildPagedReadOnlySql(sql, selected.config.compatibility, {
+        page,
+        pageSize: effectivePageSize,
+        fetchRows,
+        orderBy
+      });
+      const output = await withQuerySlot(selected, () =>
+        runReadOnlyQuery(
+          selected.pool,
+          selected.config.compatibility,
+          pagedSql,
+          sqlParams,
+          fetchRows,
+          selected.config.queryTimeoutMs,
+          selected.config.enforceReadOnlyTransaction
+        )
+      );
+      assertOutputAllowed(output, selected.config.policy);
+      const rows = output.rows.slice(0, effectivePageSize);
+      const hasMore = output.rows.length > effectivePageSize;
+      const warnings = pagedQueryWarnings(sql, pageSize, effectivePageSize, fetchRows, orderBy);
+      if (output.truncated) {
+        warnings.push("Result was truncated by the configured row limit.");
+      }
+      const result = {
+        sql,
+        pagedSql,
+        paramCount: sqlParams.length,
+        page,
+        pageSize: effectivePageSize,
+        hasMore,
+        truncated: output.truncated || hasMore,
+        columns: output.fields ?? [],
+        rows,
+        warnings,
+        executed: true
+      };
+      assertJsonByteLimit(result, selected.config.maxResultBytes);
+      metrics.recordQueryDuration(Date.now() - started);
+      return toResult(result);
     }
   );
 
@@ -1524,6 +1592,26 @@ function queryPreviewWarnings(
   }
   if (sensitiveColumnRisk.detected) {
     warnings.push("The SQL references fields that look sensitive or are configured for masking.");
+  }
+  return warnings;
+}
+
+function pagedQueryWarnings(
+  sql: string,
+  requestedPageSize: number | undefined,
+  effectivePageSize: number,
+  fetchRows: number,
+  orderBy: string | undefined
+): string[] {
+  const warnings: string[] = [];
+  if (!/\border\s+by\b/i.test(sql) && !orderBy) {
+    warnings.push("No ORDER BY was provided. Page order may be unstable.");
+  }
+  if (requestedPageSize && requestedPageSize !== effectivePageSize) {
+    warnings.push(`pageSize was capped to ${effectivePageSize} by the configured row limit.`);
+  }
+  if (fetchRows === effectivePageSize) {
+    warnings.push("hasMore may be false when the configured row limit does not allow fetching an extra row.");
   }
   return warnings;
 }

@@ -16,6 +16,7 @@ const smokeIdColumn = process.env.OB_SMOKE_ID_COLUMN ?? (isOracle ? "ID" : "id")
 const smokeMaskedColumn = process.env.OB_SMOKE_MASKED_COLUMN ?? (isOracle ? "NAME" : "name");
 const qualifiedTable = `${smokeSchema}.${smokeTable}`;
 const countSql = `SELECT COUNT(${smokeIdColumn}) AS row_count FROM ${qualifiedTable}`;
+const pageSql = `SELECT ${smokeIdColumn} AS smoke_id FROM ${qualifiedTable} ORDER BY ${smokeIdColumn}`;
 const requirePartitions = process.env.OB_SMOKE_REQUIRE_PARTITIONS === "true" || isOracle;
 
 const child = spawn(process.execPath, ["dist/http.js"], {
@@ -98,6 +99,10 @@ try {
   const query = await client.callTool({
     name: "ob_query",
     arguments: { sql: countSql }
+  });
+  const pagedQuery = await client.callTool({
+    name: "ob_query_page",
+    arguments: { sql: pageSql, page: 1, pageSize: 2 }
   });
   const explain = await client.callTool({
     name: "ob_explain",
@@ -227,6 +232,7 @@ try {
   const permissionsResult = parseToolJson(permissions);
   const policyExplainResult = parseToolJson(policyExplain);
   const queryPreviewResult = parseToolJson(queryPreview);
+  const pagedQueryResult = parseToolJson(pagedQuery);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
   const planAnalysisResult = parseToolJson(planAnalysis);
@@ -252,6 +258,7 @@ try {
     "ob_verify_permissions",
     "ob_policy_explain",
     "ob_query_preview",
+    "ob_query_page",
     "ob_analyze_query_plan",
     "ob_generate_performance_report",
     "ob_search_catalog",
@@ -277,6 +284,11 @@ try {
     unauthorizedStatus: unauthorized.status,
     forbiddenIpStatus: forbiddenIp.status,
     query: JSON.parse(query.content[0].text).rows,
+    pagedQueryOk:
+      pagedQueryResult.executed === true &&
+      pagedQueryResult.page === 1 &&
+      pagedQueryResult.pageSize === 2 &&
+      Array.isArray(pagedQueryResult.rows),
     explainRows: explainOutput.rows.length,
     profilesOk: profileResult.defaultProfile === defaultProfile && Boolean(profileResult.profiles?.[defaultProfile]),
     diagnosticsOk: diagnosticsResult.ok === true,
@@ -345,6 +357,7 @@ try {
     !output.permissionsOk ||
     !output.policyExplainBlocked ||
     !output.queryPreviewOk ||
+    !output.pagedQueryOk ||
     !output.planAnalysisOk ||
     !output.performanceReportOk ||
     !output.enterpriseTools ||

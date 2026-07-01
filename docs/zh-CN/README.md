@@ -112,6 +112,7 @@ npm run start:http
 | `ob_policy_explain` | 解释 SQL 是否会被允许。 |
 | `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 |
 | `ob_query` | 执行严格只读 SQL。 |
+| `ob_query_page` | 执行带分页的只读查询。 |
 | `ob_list_schemas` | 列出可见 schema/database。 |
 | `ob_list_tables` | 列出可见表。 |
 | `ob_describe_table` | 返回列元数据。 |

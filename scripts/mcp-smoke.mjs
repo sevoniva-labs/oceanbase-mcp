@@ -9,6 +9,7 @@ const smokeIdColumn = process.env.OB_SMOKE_ID_COLUMN ?? (isOracle ? "ID" : "id")
 const smokeMaskedColumn = process.env.OB_SMOKE_MASKED_COLUMN ?? (isOracle ? "NAME" : "name");
 const qualifiedTable = `${smokeSchema}.${smokeTable}`;
 const countSql = `SELECT COUNT(${smokeIdColumn}) AS row_count FROM ${qualifiedTable}`;
+const pageSql = `SELECT ${smokeIdColumn} AS smoke_id FROM ${qualifiedTable} ORDER BY ${smokeIdColumn}`;
 const selectOneSql = isOracle ? "SELECT 1 AS mcp_ok FROM DUAL" : "SELECT 1 AS mcp_ok";
 const requirePartitions = process.env.OB_SMOKE_REQUIRE_PARTITIONS === "true" || isOracle;
 
@@ -85,6 +86,10 @@ try {
   const query = await send("tools/call", {
     name: "ob_query",
     arguments: { sql: selectOneSql, maxRows: 5 }
+  });
+  const pagedQuery = await send("tools/call", {
+    name: "ob_query_page",
+    arguments: { sql: pageSql, page: 1, pageSize: 2 }
   });
   const explain = await send("tools/call", {
     name: "ob_explain",
@@ -205,6 +210,7 @@ try {
   const permissionsResult = parseToolJson(permissions);
   const policyExplainResult = parseToolJson(policyExplain);
   const queryPreviewResult = parseToolJson(queryPreview);
+  const pagedQueryResult = parseToolJson(pagedQuery);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
   const planAnalysisResult = parseToolJson(planAnalysis);
@@ -229,6 +235,7 @@ try {
     "ob_verify_permissions",
     "ob_policy_explain",
     "ob_query_preview",
+    "ob_query_page",
     "ob_analyze_query_plan",
     "ob_generate_performance_report",
     "ob_search_catalog",
@@ -261,6 +268,11 @@ try {
       ["low", "medium", "high"].includes(queryPreviewResult.analysis?.riskLevel),
     pingOk: JSON.parse(ping.content[0].text).ok === true,
     queryRows: JSON.parse(query.content[0].text).rows,
+    pagedQueryOk:
+      pagedQueryResult.executed === true &&
+      pagedQueryResult.page === 1 &&
+      pagedQueryResult.pageSize === 2 &&
+      Array.isArray(pagedQueryResult.rows),
     explainRows: explainOutput.rows.length,
     planAnalysisOk: ["low", "medium", "high"].includes(planAnalysisResult.analysis?.riskLevel),
     performanceReportOk:
@@ -314,6 +326,7 @@ try {
     !output.policyExplainBlocked ||
     !output.queryPreviewOk ||
     !output.pingOk ||
+    !output.pagedQueryOk ||
     !output.enterpriseTools ||
     !output.resourcesOk ||
     !output.planAnalysisOk ||

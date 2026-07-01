@@ -28,6 +28,13 @@ export interface SqlLimitOptions {
   maxParamCount: number;
 }
 
+export interface PagedSqlOptions {
+  page: number;
+  pageSize: number;
+  fetchRows: number;
+  orderBy?: string;
+}
+
 export function assertSqlInputLimits(sql: string, params: SqlParam[], options: SqlLimitOptions): void {
   if (sql.length > options.maxSqlLength) {
     throw new Error(`SQL length ${sql.length} exceeds configured limit ${options.maxSqlLength}.`);
@@ -123,6 +130,49 @@ export function buildExplainSql(sql: string): string {
     return normalized;
   }
   return `EXPLAIN ${normalized}`;
+}
+
+export function buildPagedReadOnlySql(sql: string, mode: CompatibilityMode, options: PagedSqlOptions): string {
+  const normalized = trimTrailingSemicolons(trimSql(sql));
+  if (!normalized) {
+    throw new Error("SQL cannot be empty.");
+  }
+  const code = codeOnly(normalized);
+  const keyword = firstKeywordFromCode(code);
+  if (keyword !== "select" && keyword !== "with") {
+    throw new Error("Paged queries require SELECT or WITH SQL.");
+  }
+  if (hasPaginationClause(code)) {
+    throw new Error("Paged query input must not already contain LIMIT, OFFSET/FETCH, or ROWNUM pagination.");
+  }
+  const hasOrderBy = /\border\s+by\b/i.test(code);
+  const orderBy = options.orderBy?.trim();
+  if (orderBy && hasOrderBy) {
+    throw new Error("Do not pass orderBy when SQL already contains ORDER BY.");
+  }
+  if (orderBy) {
+    assertSafeOrderByClause(orderBy);
+  }
+
+  const orderClause = orderBy && !hasOrderBy ? ` ORDER BY ${orderBy}` : "";
+  const offset = (options.page - 1) * options.pageSize;
+  if (mode === "oracle") {
+    return `${normalized}${orderClause} OFFSET ${offset} ROWS FETCH NEXT ${options.fetchRows} ROWS ONLY`;
+  }
+  return `${normalized}${orderClause} LIMIT ${options.fetchRows} OFFSET ${offset}`;
+}
+
+export function hasPaginationClause(sql: string): boolean {
+  return /\blimit\s+\d+/i.test(sql) || /\boffset\s+\d+\s+rows\b/i.test(sql) || /\bfetch\s+(?:first|next)\s+\d+\s+rows\b/i.test(sql) || /\brownum\b/i.test(sql);
+}
+
+export function assertSafeOrderByClause(orderBy: string): void {
+  const identifier = String.raw`(?:` + "`[^`]+`" + String.raw`|"(?:""|[^"])+"|[A-Za-z_][\w$]*)`;
+  const item = String.raw`${identifier}(?:\s*\.\s*${identifier}){0,2}(?:\s+(?:ASC|DESC))?(?:\s+NULLS\s+(?:FIRST|LAST))?`;
+  const pattern = new RegExp(String.raw`^\s*${item}(?:\s*,\s*${item})*\s*$`, "i");
+  if (!pattern.test(orderBy)) {
+    throw new Error("orderBy must contain only identifiers, optional ASC/DESC, optional NULLS FIRST/LAST, and commas.");
+  }
 }
 
 function trimSql(sql: string): string {

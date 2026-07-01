@@ -6,6 +6,7 @@ import {
   assertSingleStatement,
   assertSqlInputLimits,
   buildExplainSql,
+  buildPagedReadOnlySql,
   prepareReadOnlySql
 } from "../dist/sql.js";
 
@@ -65,4 +66,32 @@ test("prepareReadOnlySql adds conservative row caps to SELECT statements", () =>
 test("buildExplainSql normalizes trailing semicolons", () => {
   assert.equal(buildExplainSql("SELECT 1;"), "EXPLAIN SELECT 1");
   assert.equal(buildExplainSql("EXPLAIN SELECT 1;"), "EXPLAIN SELECT 1");
+});
+
+test("buildPagedReadOnlySql appends dialect-specific pagination", () => {
+  assert.equal(
+    buildPagedReadOnlySql("SELECT id FROM biz_test.orders", "mysql", {
+      page: 2,
+      pageSize: 10,
+      fetchRows: 11,
+      orderBy: "id DESC"
+    }),
+    "SELECT id FROM biz_test.orders ORDER BY id DESC LIMIT 11 OFFSET 10"
+  );
+  assert.equal(
+    buildPagedReadOnlySql("SELECT ID FROM OB_USER.ORDERS ORDER BY ID", "oracle", {
+      page: 3,
+      pageSize: 5,
+      fetchRows: 6
+    }),
+    "SELECT ID FROM OB_USER.ORDERS ORDER BY ID OFFSET 10 ROWS FETCH NEXT 6 ROWS ONLY"
+  );
+  assert.throws(
+    () => buildPagedReadOnlySql("SELECT id FROM biz_test.orders LIMIT 10", "mysql", { page: 1, pageSize: 5, fetchRows: 6 }),
+    /must not already contain/
+  );
+  assert.throws(
+    () => buildPagedReadOnlySql("SELECT id FROM biz_test.orders", "mysql", { page: 1, pageSize: 5, fetchRows: 6, orderBy: "SLEEP(1)" }),
+    /orderBy must contain/
+  );
 });

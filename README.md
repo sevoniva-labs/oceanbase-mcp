@@ -88,6 +88,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_policy_explain` | 解释 SQL 是否会被允许。 | Explain whether SQL would be allowed. |
 | `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 | Preview read-only policy and plan risk before execution, without returning data. |
 | `ob_query` | 执行严格只读 SQL。 | Run strict read-only SQL. |
+| `ob_query_page` | 执行带分页的只读查询。 | Run a paged read-only query. |
 | `ob_list_schemas` | 列出可见 schema/database。 | List visible schemas/databases. |
 | `ob_list_tables` | 列出可见表。 | List visible tables. |
 | `ob_describe_table` | 返回列元数据。 | Return column metadata. |
