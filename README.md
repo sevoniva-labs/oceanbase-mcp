@@ -113,6 +113,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_query_refine` | v1.0.0 | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 | Build refined read-only SELECT SQL from a query session without executing it. |
 | `ob_summarize_result` | v1.0.0 | 汇总已返回结果，不额外读取数据库。 | Summarize already returned rows without reading the database. |
 | `ob_compare_query_results` | v1.0.0 | 比较两份已返回结果，不额外读取数据库。 | Compare two already returned query results without reading the database. |
+| `ob_export_result_preview` | v1.0.0 | 生成 Markdown/CSV 结果预览字符串，不落盘。 | Generate Markdown/CSV result preview text without writing files. |
 | `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | 列出可见表。 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | 返回列元数据。 | Return column metadata. |

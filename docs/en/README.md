@@ -144,6 +144,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_query_refine` | v1.0.0 | Build refined read-only SELECT SQL from a query session without executing it. |
 | `ob_summarize_result` | v1.0.0 | Summarize already returned rows without reading the database. |
 | `ob_compare_query_results` | v1.0.0 | Compare two already returned query results without reading the database. |
+| `ob_export_result_preview` | v1.0.0 | Generate Markdown/CSV result preview text without writing files. |
 | `ob_list_schemas` | v0.3.0 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | Return column metadata. |

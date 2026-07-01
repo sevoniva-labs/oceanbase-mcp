@@ -912,6 +912,39 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_export_result_preview",
+    {
+      title: "Export Result Preview",
+      description: "Generate a bounded Markdown or CSV preview string from already returned rows without writing files.",
+      inputSchema: {
+        ...profileInput,
+        rows: z.array(z.record(z.string(), z.unknown())).max(1_000),
+        columns: z.array(resultSummaryColumnSchema).max(200).optional(),
+        format: z.enum(["markdown", "csv"]).optional().default("markdown"),
+        maxRows: z.number().int().positive().max(1_000).optional()
+      }
+    },
+    async ({ profile, rows, columns, format = "markdown", maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const preview = buildResultPreview(
+        rows as Array<Record<string, unknown>>,
+        columns ?? [],
+        format,
+        Math.min(maxRows ?? 50, 1_000),
+        selected.config
+      );
+      return toLimitedResult(
+        {
+          format,
+          ...preview,
+          executed: false
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_list_schemas",
     {
       title: "List Schemas",
@@ -5442,6 +5475,77 @@ function compareResultWarnings(
     warnings.push("Masked columns are compared by counts only; raw values are not returned.");
   }
   return warnings;
+}
+
+function buildResultPreview(
+  rows: Array<Record<string, unknown>>,
+  columns: ResultSummaryColumn[],
+  format: "markdown" | "csv",
+  maxRows: number,
+  config: ObConfig
+) {
+  const columnInfos = resultPreviewColumns(rows, columns, config);
+  const columnNames = columnInfos.map((column) => column.name);
+  const visibleRows = rows.slice(0, maxRows);
+  const maskedRows = maskQueryRows(visibleRows, columnInfos);
+  const text = format === "csv"
+    ? renderCsvPreview(maskedRows, columnNames)
+    : renderMarkdownPreview(maskedRows, columnNames);
+  const warnings: string[] = [];
+  const maskedColumns = columnInfos.filter((column) => column.masked).map((column) => column.name);
+  if (maskedColumns.length > 0) {
+    warnings.push(`Masked preview columns: ${maskedColumns.join(", ")}.`);
+  }
+  if (rows.length > visibleRows.length) {
+    warnings.push(`Preview was limited to ${visibleRows.length} of ${rows.length} rows.`);
+  }
+  if (columnNames.length > 50 && format === "markdown") {
+    warnings.push("Markdown preview displays up to 12 columns; use CSV for wider previews.");
+  }
+  return {
+    rowCount: rows.length,
+    returnedRows: visibleRows.length,
+    columns: columnInfos,
+    text,
+    warnings
+  };
+}
+
+function resultPreviewColumns(
+  rows: Array<Record<string, unknown>>,
+  columns: ResultSummaryColumn[],
+  config: ObConfig
+): Array<{ name: string; table?: string; schema?: string; masked: boolean }> {
+  const metadata = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  return resultSummaryColumnNames(rows, columns).map((name) => {
+    const column = metadata.get(name.toLowerCase());
+    return {
+      name,
+      table: column?.table,
+      schema: column?.schema,
+      masked: Boolean(column?.masked) || shouldMaskColumnValue(name, config, column?.schema, column?.table)
+    };
+  });
+}
+
+function renderCsvPreview(rows: unknown[], columnNames: string[]): string {
+  if (columnNames.length === 0) {
+    return "";
+  }
+  const header = columnNames.map(csvCell).join(",");
+  const body = rows.map((row) => {
+    const record = row && typeof row === "object" && !Array.isArray(row) ? row as Record<string, unknown> : {};
+    return columnNames.map((column) => csvCell(formatPreviewValue(record[column]))).join(",");
+  });
+  return [header, ...body].join("\n");
+}
+
+function csvCell(value: string): string {
+  const normalized = value.replace(/\r?\n/g, " ");
+  if (/[",\n\r]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, "\"\"")}"`;
+  }
+  return normalized;
 }
 
 function cleanOptionalString(value: string | undefined): string | undefined {

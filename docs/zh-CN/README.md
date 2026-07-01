@@ -144,6 +144,7 @@ npm run start:http
 | `ob_query_refine` | v1.0.0 | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 |
 | `ob_summarize_result` | v1.0.0 | 汇总已返回结果，不额外读取数据库。 |
 | `ob_compare_query_results` | v1.0.0 | 比较两份已返回结果，不额外读取数据库。 |
+| `ob_export_result_preview` | v1.0.0 | 生成 Markdown/CSV 结果预览字符串，不落盘。 |
 | `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 |
 | `ob_list_tables` | v0.3.0 | 列出可见表。 |
 | `ob_describe_table` | v0.3.0 | 返回列元数据。 |
