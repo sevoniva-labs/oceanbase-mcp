@@ -192,6 +192,7 @@ Sorted by Since version in ascending order; tools with the same version are grou
 | v1.0.0 | `ob_generate_mapper_context` | Generate table and column context for mapper or SQL files without modifying code. |
 | v1.0.0 | `ob_find_unknown_columns_in_sql` | Find unknown tables or columns in SQL with visible metadata-based candidates. |
 | v1.0.0 | `ob_generate_table_doc` | Generate Markdown or JSON documentation for one table without sample values. |
+| v1.0.0 | `ob_generate_schema_doc` | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
 | v1.0.0 | `ob_rewrite_sql` | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | v1.0.0 | `ob_convert_sql_dialect` | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | v1.0.0 | `ob_explain_error` | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
@@ -217,7 +218,7 @@ Procedure, function, and package source is returned as a bounded preview, not as
 
 ## Documentation Generation
 
-`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. It does not include sample data values.
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. Neither includes sample data values.
 
 ## Resources
 

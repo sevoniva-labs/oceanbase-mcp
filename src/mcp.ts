@@ -3227,6 +3227,60 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_generate_schema_doc",
+    {
+      title: "Generate Schema Documentation",
+      description: "Generate bounded JSON or Markdown documentation for visible tables in one schema.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        tablePattern: z.string().optional(),
+        format: tableDocumentFormatSchema.optional().default("markdown"),
+        maxTables: z.number().int().positive().max(100).optional(),
+        maxColumnsPerTable: z.number().int().positive().max(80).optional(),
+        includeRelationships: z.boolean().optional().default(true),
+        relationshipLimit: z.number().int().positive().max(50).optional(),
+        title: z.string().min(1).max(120).optional()
+      }
+    },
+    async ({
+      profile,
+      schema,
+      tablePattern,
+      format = "markdown",
+      maxTables,
+      maxColumnsPerTable,
+      includeRelationships = true,
+      relationshipLimit,
+      title
+    }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const document = await buildSchemaDocument(selected, {
+        schema,
+        tablePattern,
+        maxTables: maxTables ?? 20,
+        maxColumnsPerTable: maxColumnsPerTable ?? 20,
+        includeRelationships,
+        relationshipLimit: relationshipLimit ?? 10
+      });
+      return toLimitedResult(
+        {
+          format,
+          mode: selected.config.compatibility,
+          schema: document.schema,
+          tablePattern: document.tablePattern,
+          generatedAt: document.generatedAt,
+          executed: false,
+          document,
+          markdown: format === "markdown" ? renderSchemaDocumentMarkdown(document, title) : undefined,
+          warnings: document.warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_generate_er_diagram",
     {
       title: "Generate ER Diagram",
@@ -4182,6 +4236,120 @@ function renderTableDocumentMarkdown(document: Awaited<ReturnType<typeof buildTa
         }
         lines.push("");
       }
+    }
+  }
+  lines.push("## Notes", "");
+  for (const warning of document.warnings) {
+    lines.push(`- ${warning}`);
+  }
+  return lines.join("\n");
+}
+
+async function buildSchemaDocument(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  input: {
+    schema?: string;
+    tablePattern?: string;
+    maxTables: number;
+    maxColumnsPerTable: number;
+    includeRelationships: boolean;
+    relationshipLimit: number;
+  }
+) {
+  const effectiveSchema = metadataSchema(selected.config, input.schema);
+  if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
+    throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+  }
+  const tableLimit = Math.min(input.maxTables, 100);
+  const columnLimit = Math.min(input.maxColumnsPerTable, 80);
+  const rawTables = await withQuerySlot(selected, () =>
+    listSchemaMapTables(
+      selected.pool,
+      selected.config.compatibility,
+      effectiveSchema,
+      input.tablePattern,
+      tableLimit + 1,
+      selected.config.queryTimeoutMs
+    )
+  );
+  const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
+  const tables = [];
+  for (const tableInfo of visibleTables) {
+    tables.push(await buildSchemaMapTableSummary(
+      selected,
+      tableInfo,
+      true,
+      columnLimit,
+      input.includeRelationships,
+      input.relationshipLimit
+    ));
+  }
+  const warnings = uniqueStrings([
+    "Schema documentation is based on metadata visible to the active MCP policy.",
+    "No sample data values are included.",
+    rawTables.length > tableLimit ? `Only the first ${tableLimit} visible tables are included.` : "",
+    tables.some((table) => table.columnsTruncated) ? `Some tables have more than ${columnLimit} visible columns; columns were truncated.` : ""
+  ]);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    mode: selected.config.compatibility,
+    schema: effectiveSchema,
+    tablePattern: input.tablePattern ?? null,
+    maxTables: tableLimit,
+    maxColumnsPerTable: columnLimit,
+    includeRelationships: input.includeRelationships,
+    tableCount: tables.length,
+    truncated: rawTables.length > tableLimit,
+    tables,
+    warnings
+  };
+}
+
+function renderSchemaDocumentMarkdown(document: Awaited<ReturnType<typeof buildSchemaDocument>>, title?: string): string {
+  const lines = [
+    `# ${title ?? `Schema Documentation: ${document.schema ?? "default"}`}`,
+    "",
+    `Generated at: ${document.generatedAt}`,
+    "",
+    `Mode: ${document.mode}`,
+    `Schema: ${document.schema ?? "default"}`,
+    `Tables: ${document.tableCount}`,
+    ""
+  ];
+  if (document.tablePattern) {
+    lines.push(`Table pattern: ${document.tablePattern}`, "");
+  }
+  lines.push("## Tables", "");
+  if (document.tables.length === 0) {
+    lines.push("No visible tables matched the requested scope.", "");
+  }
+  for (const table of document.tables) {
+    const qualifiedName = `${table.schema ? `${table.schema}.` : ""}${table.table}`;
+    lines.push(`### ${qualifiedName}`, "");
+    if (table.comment) {
+      lines.push(`Comment: ${table.comment}`, "");
+    }
+    if (table.rowEstimate) {
+      lines.push(`Row estimate: ${table.rowEstimate.value} (${table.rowEstimate.source})`, "");
+    }
+    lines.push(`Primary keys: ${table.primaryKeys.length > 0 ? table.primaryKeys.map(markdownCell).join(", ") : "None visible."}`);
+    lines.push(`Key fields: ${table.keyFields.length > 0 ? table.keyFields.map(markdownCell).join(", ") : "None detected."}`);
+    lines.push(`Time fields: ${table.timeFields.length > 0 ? table.timeFields.map(markdownCell).join(", ") : "None detected."}`);
+    lines.push(`Status fields: ${table.statusFields.length > 0 ? table.statusFields.map(markdownCell).join(", ") : "None detected."}`, "");
+    if (table.columns && table.columns.length > 0) {
+      lines.push("| Column | Type | Nullable | Roles | Masked | Comment |");
+      lines.push("| --- | --- | --- | --- | --- | --- |");
+      for (const column of table.columns) {
+        lines.push(`| ${markdownCell(column.name)} | ${markdownCell(column.type ?? "")} | ${column.nullable == null ? "" : column.nullable ? "YES" : "NO"} | ${markdownCell(column.roles.join(", "))} | ${column.masked ? "YES" : "NO"} | ${markdownCell(column.comment ?? "")} |`);
+      }
+      if (table.columnsTruncated) {
+        lines.push("", `Columns were truncated by maxColumnsPerTable (${document.maxColumnsPerTable}).`);
+      }
+      lines.push("");
+    }
+    if (table.relationSummary) {
+      lines.push(`Relationships: outbound ${table.relationSummary.outbound}, inbound ${table.relationSummary.inbound}, inferred ${table.relationSummary.inferred}.`, "");
     }
   }
   lines.push("## Notes", "");
