@@ -120,6 +120,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_find_columns` | v1.0.0 | 按字段名、注释、类型、表名模式或业务词查找字段。 | Find visible columns by name, comment, type, table pattern, or business term. |
 | `ob_get_table_summary` | v1.0.0 | 汇总单表用途推断、关键字段、关系和查询入口。 | Summarize one table with inferred purpose, key fields, relationships, and query entry points. |
 | `ob_compare_tables` | v1.0.0 | 比较两张表的字段、索引、约束和分区差异。 | Compare two visible tables by columns, indexes, constraints, and partitions. |
+| `ob_compare_schemas` | v1.0.0 | 比较两个 schema 的表清单和受限表结构差异。 | Compare two visible schemas by table list and bounded table metadata differences. |
 | `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle 对象。 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |

@@ -34,6 +34,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_find_columns", since: "v1.0.0", group: "metadata", mode: "all", description: "Find visible columns by name, comment, type, table pattern, or business term." },
   { name: "ob_get_table_summary", since: "v1.0.0", group: "metadata", mode: "all", description: "Summarize one table with inferred purpose, key fields, relationships, and query entry points." },
   { name: "ob_compare_tables", since: "v1.0.0", group: "metadata", mode: "all", description: "Compare two visible tables by columns, indexes, constraints, and partitions." },
+  { name: "ob_compare_schemas", since: "v1.0.0", group: "metadata", mode: "all", description: "Compare two visible schemas by table list and bounded table metadata differences." },
   { name: "ob_get_table_schema", since: "v0.3.0", group: "metadata", mode: "all", description: "Return policy-filtered table schema." },
   { name: "ob_get_table_ddl", since: "v0.5.0", group: "metadata", mode: "all", description: "Return native or structured table DDL metadata." },
   { name: "ob_get_table_context", since: "v0.5.1", group: "metadata", mode: "all", description: "Return table context for SQL drafting and data inspection." },

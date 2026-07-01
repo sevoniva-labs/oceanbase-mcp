@@ -151,6 +151,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_find_columns` | v1.0.0 | Find visible columns by name, comment, type, table pattern, or business term. |
 | `ob_get_table_summary` | v1.0.0 | Summarize one table with inferred purpose, key fields, relationships, and query entry points. |
 | `ob_compare_tables` | v1.0.0 | Compare two visible tables by columns, indexes, constraints, and partitions. |
+| `ob_compare_schemas` | v1.0.0 | Compare two visible schemas by table list and bounded table metadata differences. |
 | `ob_list_objects` | v0.5.0 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | `ob_get_object_metadata` | v0.5.0 | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | v0.3.0 | Return policy-filtered table schema. |

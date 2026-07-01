@@ -731,6 +731,75 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_compare_schemas",
+    {
+      title: "Compare Schemas",
+      description: "Compare two visible schemas by table list and bounded per-table metadata differences.",
+      inputSchema: {
+        ...profileInput,
+        leftSchema: z.string().min(1),
+        rightSchema: z.string().min(1),
+        tablePattern: z.string().optional(),
+        maxTables: z.number().int().positive().max(200).optional(),
+        compareCommonTables: z.number().int().positive().max(50).optional()
+      }
+    },
+    async ({ profile, leftSchema, rightSchema, tablePattern, maxTables, compareCommonTables }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      if (!isSchemaAllowed(leftSchema, selected.config.policy)) {
+        throw new Error(`Schema "${leftSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+      if (!isSchemaAllowed(rightSchema, selected.config.policy)) {
+        throw new Error(`Schema "${rightSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+      const tableLimit = Math.min(maxTables ?? 100, 200);
+      const leftVisibleTables = filterSchemaMapTables(
+        await withQuerySlot(selected, () =>
+          listSchemaMapTables(selected.pool, selected.config.compatibility, leftSchema, tablePattern, tableLimit + 1, selected.config.queryTimeoutMs)
+        ),
+        selected.config
+      );
+      const rightVisibleTables = filterSchemaMapTables(
+        await withQuerySlot(selected, () =>
+          listSchemaMapTables(selected.pool, selected.config.compatibility, rightSchema, tablePattern, tableLimit + 1, selected.config.queryTimeoutMs)
+        ),
+        selected.config
+      );
+      const leftTables = leftVisibleTables.slice(0, tableLimit);
+      const rightTables = rightVisibleTables.slice(0, tableLimit);
+      const comparison = await compareSchemaMetadata(
+        selected,
+        leftSchema,
+        rightSchema,
+        leftTables,
+        rightTables,
+        Math.min(compareCommonTables ?? 20, 50)
+      );
+      const warnings = [...comparison.warnings];
+      const leftTableListTruncated = leftVisibleTables.length > tableLimit;
+      const rightTableListTruncated = rightVisibleTables.length > tableLimit;
+      if (leftTableListTruncated || rightTableListTruncated) {
+        warnings.push("At least one schema has more visible tables than maxTables; narrow tablePattern or raise maxTables within the configured limit.");
+      }
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          leftSchema,
+          rightSchema,
+          tablePattern: tablePattern ?? null,
+          maxTables: tableLimit,
+          ...comparison,
+          leftTableListTruncated,
+          rightTableListTruncated,
+          warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_explain",
     {
       title: "Explain Query",
@@ -2348,6 +2417,68 @@ function compareTableMetadata(
       "Comparison uses metadata visible to the active MCP policy; hidden columns or objects are not included."
     ]
   };
+}
+
+async function compareSchemaMetadata(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  leftSchema: string,
+  rightSchema: string,
+  leftTables: SchemaMapTable[],
+  rightTables: SchemaMapTable[],
+  commonCompareLimit: number
+) {
+  const leftByName = new Map(leftTables.map((table) => [normalizeTableName(selected.config.compatibility, table.table), table]));
+  const rightByName = new Map(rightTables.map((table) => [normalizeTableName(selected.config.compatibility, table.table), table]));
+  const leftOnlyTables = [...leftByName.entries()]
+    .filter(([key]) => !rightByName.has(key))
+    .map(([, table]) => table);
+  const rightOnlyTables = [...rightByName.entries()]
+    .filter(([key]) => !leftByName.has(key))
+    .map(([, table]) => table);
+  const commonNames = [...leftByName.keys()].filter((key) => rightByName.has(key)).sort();
+  const comparedTables = [];
+  for (const key of commonNames.slice(0, commonCompareLimit)) {
+    const leftTable = leftByName.get(key)!;
+    const rightTable = rightByName.get(key)!;
+    const leftMetadata = await withQuerySlot(selected, () =>
+      getTableDdlMetadata(selected.pool, selected.config.compatibility, leftTable.table, leftSchema, selected.config.queryTimeoutMs)
+    );
+    const rightMetadata = await withQuerySlot(selected, () =>
+      getTableDdlMetadata(selected.pool, selected.config.compatibility, rightTable.table, rightSchema, selected.config.queryTimeoutMs)
+    );
+    const diff = compareTableMetadata(selected.config, leftMetadata, rightMetadata);
+    if (hasTableMetadataDiff(diff)) {
+      comparedTables.push(diff);
+    }
+  }
+  return {
+    leftTableCount: leftTables.length,
+    rightTableCount: rightTables.length,
+    commonTableCount: commonNames.length,
+    comparedCommonTables: Math.min(commonNames.length, commonCompareLimit),
+    comparisonTruncated: commonNames.length > commonCompareLimit,
+    leftOnlyTables,
+    rightOnlyTables,
+    changedTables: comparedTables,
+    warnings: [
+      "Schema comparison is bounded by maxTables and compareCommonTables.",
+      "Only metadata visible to the active MCP policy is included."
+    ]
+  };
+}
+
+function hasTableMetadataDiff(diff: ReturnType<typeof compareTableMetadata>): boolean {
+  return (
+    diff.columns.leftOnly.length > 0 ||
+    diff.columns.rightOnly.length > 0 ||
+    diff.columns.changed.length > 0 ||
+    diff.indexes.leftOnly.length > 0 ||
+    diff.indexes.rightOnly.length > 0 ||
+    diff.constraints.leftOnly.length > 0 ||
+    diff.constraints.rightOnly.length > 0 ||
+    diff.partitions.leftOnly.length > 0 ||
+    diff.partitions.rightOnly.length > 0
+  );
 }
 
 function compareColumnMetadata(
