@@ -38,6 +38,7 @@ import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPl
 import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { captureMetadataSnapshot } from "./metadata-capture.js";
+import { compareMetadataSnapshots } from "./metadata-change.js";
 import { metrics } from "./metrics.js";
 import { analyzeQueryPlan } from "./plan-analysis.js";
 import { buildPerformanceReport } from "./performance-report.js";
@@ -87,6 +88,7 @@ const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
 const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
 const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
 const dataDictionaryFormatSchema = z.enum(["json", "markdown", "html"]);
+const metadataSnapshotInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -1271,6 +1273,31 @@ export function createObMcpServer(
         maxRelationships
       });
       return toLimitedResult(snapshot, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_compare_metadata_snapshots",
+    {
+      title: "Compare Metadata Snapshots",
+      description: "Compare two metadata-only snapshots and return evidence-based structural changes.",
+      inputSchema: {
+        ...profileInput,
+        beforeSnapshot: metadataSnapshotInputSchema,
+        afterSnapshot: metadataSnapshotInputSchema,
+        changedOnly: z.boolean().optional().default(true),
+        riskOnly: z.boolean().optional().default(false),
+        summaryOnly: z.boolean().optional().default(false)
+      }
+    },
+    async ({ profile, beforeSnapshot, afterSnapshot, changedOnly = true, riskOnly = false, summaryOnly = false }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const comparison = compareMetadataSnapshots(beforeSnapshot, afterSnapshot, {
+        changedOnly,
+        riskOnly,
+        summaryOnly
+      });
+      return toLimitedResult(comparison, selected.config);
     }
   );
 

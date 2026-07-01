@@ -189,6 +189,70 @@ export interface BuildMetadataSnapshotInput {
   warnings?: string[];
 }
 
+export interface CompareMetadataSnapshotsOptions {
+  changedOnly?: boolean;
+  riskOnly?: boolean;
+  summaryOnly?: boolean;
+}
+
+export interface MetadataSnapshotChange {
+  category: "schema" | "table" | "column" | "index" | "constraint" | "partition" | "oracle_object" | "relationship";
+  changeType: "added" | "removed" | "modified";
+  severity: "low" | "medium" | "high";
+  breaking: boolean;
+  affectedObject: {
+    schema?: string;
+    table?: string;
+    column?: string;
+    name?: string;
+    objectName?: string;
+    objectType?: string;
+  };
+  evidence: string[];
+  before?: unknown;
+  after?: unknown;
+  changes?: Array<{ field: string; before: unknown; after: unknown }>;
+}
+
+export interface MetadataSnapshotComparison {
+  comparisonVersion: string;
+  before: MetadataSnapshotComparisonSide;
+  after: MetadataSnapshotComparisonSide;
+  fingerprintEqual: boolean;
+  options: Required<CompareMetadataSnapshotsOptions>;
+  summary: {
+    totalChanges: number;
+    breakingChanges: number;
+    byCategory: Record<string, number>;
+    bySeverity: Record<string, number>;
+  };
+  changes: {
+    schemas: MetadataSnapshotChange[];
+    tables: MetadataSnapshotChange[];
+    columns: MetadataSnapshotChange[];
+    indexes: MetadataSnapshotChange[];
+    constraints: MetadataSnapshotChange[];
+    partitions: MetadataSnapshotChange[];
+    oracleObjects: MetadataSnapshotChange[];
+    relationships: MetadataSnapshotChange[];
+  };
+  breakingChanges: MetadataSnapshotChange[];
+  warnings: string[];
+  executed: false;
+}
+
+export interface MetadataSnapshotComparisonSide {
+  snapshotVersion?: string;
+  capturedAt?: string;
+  profile?: string;
+  compatibility?: CompatibilityMode;
+  fingerprint?: string;
+  tableCount: number;
+  objectCount: number;
+  relationshipCount: number;
+  scope?: MetadataSnapshotScope;
+}
+
 export function buildMetadataSnapshot(input: BuildMetadataSnapshotInput): MetadataSnapshot {
   const tables = input.tables.map((table) => normalizeSnapshotTable(input.compatibility, table));
   const oracleObjects = (input.oracleObjects ?? []).map((object) =>
@@ -252,8 +316,581 @@ export function buildMetadataSnapshot(input: BuildMetadataSnapshotInput): Metada
   };
 }
 
+export function parseMetadataSnapshotInput(value: MetadataSnapshot | string | Record<string, unknown>, name: string): MetadataSnapshot {
+  const parsed = typeof value === "string" ? JSON.parse(value) : value;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${name} must be a metadata snapshot object or JSON string.`);
+  }
+  const record = parsed as Partial<MetadataSnapshot>;
+  if (!Array.isArray(record.tables) || !Array.isArray(record.oracleObjects) || !Array.isArray(record.relationships)) {
+    throw new Error(`${name} is not a valid metadata snapshot.`);
+  }
+  return record as MetadataSnapshot;
+}
+
+export function compareMetadataSnapshots(
+  beforeInput: MetadataSnapshot | string | Record<string, unknown>,
+  afterInput: MetadataSnapshot | string | Record<string, unknown>,
+  options: CompareMetadataSnapshotsOptions = {}
+): MetadataSnapshotComparison {
+  const before = parseMetadataSnapshotInput(beforeInput, "before");
+  const after = parseMetadataSnapshotInput(afterInput, "after");
+  const effectiveOptions = {
+    changedOnly: options.changedOnly ?? true,
+    riskOnly: options.riskOnly ?? false,
+    summaryOnly: options.summaryOnly ?? false
+  };
+  const mode = after.compatibility ?? before.compatibility ?? "mysql";
+  const warnings = uniqueStrings([
+    before.compatibility !== after.compatibility ? "Snapshots use different compatibility modes; identifier comparison uses the after snapshot mode." : "",
+    before.snapshotVersion !== after.snapshotVersion ? "Snapshots use different snapshot versions." : "",
+    before.truncated?.tables || before.truncated?.columns || before.truncated?.objects || before.truncated?.relationships ? "Before snapshot is truncated; diff may be incomplete." : "",
+    after.truncated?.tables || after.truncated?.columns || after.truncated?.objects || after.truncated?.relationships ? "After snapshot is truncated; diff may be incomplete." : "",
+    "Diff is based only on metadata present in the two snapshots."
+  ]);
+
+  const changes = {
+    schemas: compareSchemas(mode, before, after),
+    tables: compareTables(mode, before, after),
+    columns: compareTableChildren(mode, before, after, "column"),
+    indexes: compareTableChildren(mode, before, after, "index"),
+    constraints: compareTableChildren(mode, before, after, "constraint"),
+    partitions: compareTableChildren(mode, before, after, "partition"),
+    oracleObjects: compareOracleObjects(mode, before, after),
+    relationships: compareRelationships(before, after)
+  };
+  const filteredChanges = filterComparisonChanges(changes, effectiveOptions);
+  const flat = flattenComparisonChanges(filteredChanges);
+  const summary = summarizeComparisonChanges(flat);
+
+  return {
+    comparisonVersion: METADATA_SNAPSHOT_VERSION,
+    before: comparisonSide(before),
+    after: comparisonSide(after),
+    fingerprintEqual: Boolean(before.fingerprint && before.fingerprint === after.fingerprint),
+    options: effectiveOptions,
+    summary,
+    changes: effectiveOptions.summaryOnly ? emptyComparisonChanges() : filteredChanges,
+    breakingChanges: flat.filter((change) => change.breaking),
+    warnings,
+    executed: false
+  };
+}
+
 export function stableHash(value: unknown): string {
   return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function compareSchemas(mode: CompatibilityMode, before: MetadataSnapshot, after: MetadataSnapshot): MetadataSnapshotChange[] {
+  const beforeSchemas = new Map(before.schemas.map((schema) => [normalizeIdentifier(mode, schema.schema ?? ""), schema]));
+  const afterSchemas = new Map(after.schemas.map((schema) => [normalizeIdentifier(mode, schema.schema ?? ""), schema]));
+  const changes: MetadataSnapshotChange[] = [];
+  for (const [key, beforeSchema] of beforeSchemas) {
+    if (!afterSchemas.has(key)) {
+      changes.push({
+        category: "schema",
+        changeType: "removed",
+        severity: "high",
+        breaking: true,
+        affectedObject: { schema: beforeSchema.schema },
+        evidence: [`Schema ${beforeSchema.schema ?? "(default)"} was present before and missing after.`],
+        before: beforeSchema
+      });
+    }
+  }
+  for (const [key, afterSchema] of afterSchemas) {
+    if (!beforeSchemas.has(key)) {
+      changes.push({
+        category: "schema",
+        changeType: "added",
+        severity: "low",
+        breaking: false,
+        affectedObject: { schema: afterSchema.schema },
+        evidence: [`Schema ${afterSchema.schema ?? "(default)"} was added in the after snapshot.`],
+        after: afterSchema
+      });
+    }
+  }
+  return changes;
+}
+
+function compareTables(mode: CompatibilityMode, before: MetadataSnapshot, after: MetadataSnapshot): MetadataSnapshotChange[] {
+  const beforeTables = tableMap(mode, before.tables);
+  const afterTables = tableMap(mode, after.tables);
+  const changes: MetadataSnapshotChange[] = [];
+  for (const [key, beforeTable] of beforeTables) {
+    const afterTable = afterTables.get(key);
+    if (!afterTable) {
+      changes.push({
+        category: "table",
+        changeType: "removed",
+        severity: "high",
+        breaking: true,
+        affectedObject: { schema: beforeTable.schema, table: beforeTable.table },
+        evidence: [`Table ${qualifiedName(beforeTable.schema, beforeTable.table)} was removed.`],
+        before: tableSummaryForDiff(beforeTable)
+      });
+      continue;
+    }
+    if (beforeTable.fingerprint === afterTable.fingerprint) {
+      continue;
+    }
+    const tableChanges = changedFields(beforeTable, afterTable, ["tableType", "engine", "comment"]);
+    if (tableChanges.length > 0) {
+      changes.push({
+        category: "table",
+        changeType: "modified",
+        severity: "low",
+        breaking: false,
+        affectedObject: { schema: afterTable.schema, table: afterTable.table },
+        evidence: tableChanges.map((change) => `Table ${qualifiedName(afterTable.schema, afterTable.table)} changed ${change.field}.`),
+        before: tableSummaryForDiff(beforeTable),
+        after: tableSummaryForDiff(afterTable),
+        changes: tableChanges
+      });
+    }
+  }
+  for (const [key, afterTable] of afterTables) {
+    if (!beforeTables.has(key)) {
+      changes.push({
+        category: "table",
+        changeType: "added",
+        severity: "low",
+        breaking: false,
+        affectedObject: { schema: afterTable.schema, table: afterTable.table },
+        evidence: [`Table ${qualifiedName(afterTable.schema, afterTable.table)} was added.`],
+        after: tableSummaryForDiff(afterTable)
+      });
+    }
+  }
+  return changes;
+}
+
+function compareTableChildren(
+  mode: CompatibilityMode,
+  before: MetadataSnapshot,
+  after: MetadataSnapshot,
+  kind: "column" | "index" | "constraint" | "partition"
+): MetadataSnapshotChange[] {
+  const beforeTables = tableMap(mode, before.tables);
+  const afterTables = tableMap(mode, after.tables);
+  const changes: MetadataSnapshotChange[] = [];
+  for (const [key, beforeTable] of beforeTables) {
+    const afterTable = afterTables.get(key);
+    if (!afterTable || beforeTable.fingerprint === afterTable.fingerprint) {
+      continue;
+    }
+    const beforeItems = childMap(mode, beforeTable, kind);
+    const afterItems = childMap(mode, afterTable, kind);
+    for (const [itemKey, beforeItem] of beforeItems) {
+      const afterItem = afterItems.get(itemKey);
+      if (!afterItem) {
+        changes.push(removedChildChange(kind, beforeTable, beforeItem));
+        continue;
+      }
+      const itemChanges = childChangedFields(kind, beforeItem, afterItem);
+      if (itemChanges.length > 0) {
+        changes.push(modifiedChildChange(kind, afterTable, beforeItem, afterItem, itemChanges));
+      }
+    }
+    for (const [itemKey, afterItem] of afterItems) {
+      if (!beforeItems.has(itemKey)) {
+        changes.push(addedChildChange(kind, afterTable, afterItem));
+      }
+    }
+  }
+  return changes;
+}
+
+function compareOracleObjects(mode: CompatibilityMode, before: MetadataSnapshot, after: MetadataSnapshot): MetadataSnapshotChange[] {
+  const beforeObjects = oracleObjectMap(mode, before.oracleObjects);
+  const afterObjects = oracleObjectMap(mode, after.oracleObjects);
+  const changes: MetadataSnapshotChange[] = [];
+  for (const [key, beforeObject] of beforeObjects) {
+    const afterObject = afterObjects.get(key);
+    if (!afterObject) {
+      changes.push({
+        category: "oracle_object",
+        changeType: "removed",
+        severity: "high",
+        breaking: true,
+        affectedObject: { schema: beforeObject.schema, objectName: beforeObject.objectName, objectType: beforeObject.objectType },
+        evidence: [`Oracle object ${qualifiedName(beforeObject.schema, beforeObject.objectName)} (${beforeObject.objectType}) was removed.`],
+        before: oracleObjectSummaryForDiff(beforeObject)
+      });
+      continue;
+    }
+    if (beforeObject.fingerprint === afterObject.fingerprint) {
+      continue;
+    }
+    const objectChanges = changedFields(beforeObject, afterObject, ["status", "lastDdlTime", "details", "columns", "arguments", "sourceFingerprint"]);
+    changes.push({
+      category: "oracle_object",
+      changeType: "modified",
+      severity: afterObject.status && afterObject.status !== "VALID" ? "high" : "medium",
+      breaking: afterObject.status ? afterObject.status !== "VALID" : false,
+      affectedObject: { schema: afterObject.schema, objectName: afterObject.objectName, objectType: afterObject.objectType },
+      evidence: objectChanges.map((change) => `Oracle object ${qualifiedName(afterObject.schema, afterObject.objectName)} changed ${change.field}.`),
+      before: oracleObjectSummaryForDiff(beforeObject),
+      after: oracleObjectSummaryForDiff(afterObject),
+      changes: objectChanges
+    });
+  }
+  for (const [key, afterObject] of afterObjects) {
+    if (!beforeObjects.has(key)) {
+      changes.push({
+        category: "oracle_object",
+        changeType: "added",
+        severity: "low",
+        breaking: false,
+        affectedObject: { schema: afterObject.schema, objectName: afterObject.objectName, objectType: afterObject.objectType },
+        evidence: [`Oracle object ${qualifiedName(afterObject.schema, afterObject.objectName)} (${afterObject.objectType}) was added.`],
+        after: oracleObjectSummaryForDiff(afterObject)
+      });
+    }
+  }
+  return changes;
+}
+
+function compareRelationships(before: MetadataSnapshot, after: MetadataSnapshot): MetadataSnapshotChange[] {
+  const beforeRelationships = new Map(before.relationships.map((relationship) => [relationship.fingerprint, relationship]));
+  const afterRelationships = new Map(after.relationships.map((relationship) => [relationship.fingerprint, relationship]));
+  const changes: MetadataSnapshotChange[] = [];
+  for (const [key, beforeRelationship] of beforeRelationships) {
+    if (!afterRelationships.has(key)) {
+      changes.push({
+        category: "relationship",
+        changeType: "removed",
+        severity: "medium",
+        breaking: false,
+        affectedObject: {
+          schema: beforeRelationship.sourceSchema,
+          table: beforeRelationship.sourceTable,
+          name: relationshipLabel(beforeRelationship)
+        },
+        evidence: [`Relationship ${relationshipLabel(beforeRelationship)} was removed from the after snapshot.`],
+        before: beforeRelationship
+      });
+    }
+  }
+  for (const [key, afterRelationship] of afterRelationships) {
+    if (!beforeRelationships.has(key)) {
+      changes.push({
+        category: "relationship",
+        changeType: "added",
+        severity: "low",
+        breaking: false,
+        affectedObject: {
+          schema: afterRelationship.sourceSchema,
+          table: afterRelationship.sourceTable,
+          name: relationshipLabel(afterRelationship)
+        },
+        evidence: [`Relationship ${relationshipLabel(afterRelationship)} was added in the after snapshot.`],
+        after: afterRelationship
+      });
+    }
+  }
+  return changes;
+}
+
+function comparisonSide(snapshot: MetadataSnapshot): MetadataSnapshotComparisonSide {
+  return {
+    snapshotVersion: snapshot.snapshotVersion,
+    capturedAt: snapshot.capturedAt,
+    profile: snapshot.profile,
+    compatibility: snapshot.compatibility,
+    fingerprint: snapshot.fingerprint,
+    tableCount: snapshot.tableCount,
+    objectCount: snapshot.objectCount,
+    relationshipCount: snapshot.relationshipCount,
+    scope: snapshot.scope
+  };
+}
+
+function filterComparisonChanges(
+  changes: MetadataSnapshotComparison["changes"],
+  options: Required<CompareMetadataSnapshotsOptions>
+): MetadataSnapshotComparison["changes"] {
+  const filter = (items: MetadataSnapshotChange[]) =>
+    options.riskOnly ? items.filter((item) => item.breaking || item.severity === "high" || item.severity === "medium") : items;
+  return {
+    schemas: filter(changes.schemas),
+    tables: filter(changes.tables),
+    columns: filter(changes.columns),
+    indexes: filter(changes.indexes),
+    constraints: filter(changes.constraints),
+    partitions: filter(changes.partitions),
+    oracleObjects: filter(changes.oracleObjects),
+    relationships: filter(changes.relationships)
+  };
+}
+
+function emptyComparisonChanges(): MetadataSnapshotComparison["changes"] {
+  return {
+    schemas: [],
+    tables: [],
+    columns: [],
+    indexes: [],
+    constraints: [],
+    partitions: [],
+    oracleObjects: [],
+    relationships: []
+  };
+}
+
+function flattenComparisonChanges(changes: MetadataSnapshotComparison["changes"]): MetadataSnapshotChange[] {
+  return [
+    ...changes.schemas,
+    ...changes.tables,
+    ...changes.columns,
+    ...changes.indexes,
+    ...changes.constraints,
+    ...changes.partitions,
+    ...changes.oracleObjects,
+    ...changes.relationships
+  ];
+}
+
+function summarizeComparisonChanges(changes: MetadataSnapshotChange[]): MetadataSnapshotComparison["summary"] {
+  const byCategory: Record<string, number> = {};
+  const bySeverity: Record<string, number> = {};
+  for (const change of changes) {
+    byCategory[change.category] = (byCategory[change.category] ?? 0) + 1;
+    bySeverity[change.severity] = (bySeverity[change.severity] ?? 0) + 1;
+  }
+  return {
+    totalChanges: changes.length,
+    breakingChanges: changes.filter((change) => change.breaking).length,
+    byCategory,
+    bySeverity
+  };
+}
+
+function tableMap(mode: CompatibilityMode, tables: MetadataSnapshotTable[]): Map<string, MetadataSnapshotTable> {
+  return new Map(tables.map((table) => [tableRefKey(mode, table.schema, table.table), table]));
+}
+
+function oracleObjectMap(mode: CompatibilityMode, objects: MetadataSnapshotOracleObject[]): Map<string, MetadataSnapshotOracleObject> {
+  return new Map(objects.map((object) => [
+    [
+      normalizeIdentifier(mode, object.schema ?? ""),
+      normalizeIdentifier(mode, object.objectName),
+      normalizeIdentifier(mode, object.objectType)
+    ].join("."),
+    object
+  ]));
+}
+
+function childMap(
+  mode: CompatibilityMode,
+  table: MetadataSnapshotTable,
+  kind: "column" | "index" | "constraint" | "partition"
+): Map<string, unknown> {
+  if (kind === "column") {
+    return new Map(table.columns.map((column) => [normalizeIdentifier(mode, column.name), column]));
+  }
+  if (kind === "index") {
+    return new Map(table.indexes.map((index) => [normalizeIdentifier(mode, index.name), index]));
+  }
+  if (kind === "constraint") {
+    return new Map(table.constraints.map((constraint) => [normalizeIdentifier(mode, constraint.name), constraint]));
+  }
+  return new Map(table.partitions.map((partition) => [normalizeIdentifier(mode, partitionLabel(partition)), partition]));
+}
+
+function removedChildChange(
+  kind: "column" | "index" | "constraint" | "partition",
+  table: MetadataSnapshotTable,
+  item: unknown
+): MetadataSnapshotChange {
+  const name = childName(kind, item);
+  const severity = removedChildSeverity(kind, item);
+  return {
+    category: childCategory(kind),
+    changeType: "removed",
+    severity,
+    breaking: kind === "column" || severity === "high",
+    affectedObject: { schema: table.schema, table: table.table, column: kind === "column" ? name : undefined, name },
+    evidence: [`${childLabel(kind)} ${qualifiedName(table.schema, table.table)}.${name} was removed.`],
+    before: item
+  };
+}
+
+function addedChildChange(
+  kind: "column" | "index" | "constraint" | "partition",
+  table: MetadataSnapshotTable,
+  item: unknown
+): MetadataSnapshotChange {
+  const name = childName(kind, item);
+  const severity = addedChildSeverity(kind, item);
+  return {
+    category: childCategory(kind),
+    changeType: "added",
+    severity,
+    breaking: kind === "column" && isRequiredColumn(item),
+    affectedObject: { schema: table.schema, table: table.table, column: kind === "column" ? name : undefined, name },
+    evidence: [`${childLabel(kind)} ${qualifiedName(table.schema, table.table)}.${name} was added.`],
+    after: item
+  };
+}
+
+function modifiedChildChange(
+  kind: "column" | "index" | "constraint" | "partition",
+  table: MetadataSnapshotTable,
+  before: unknown,
+  after: unknown,
+  changes: Array<{ field: string; before: unknown; after: unknown }>
+): MetadataSnapshotChange {
+  const name = childName(kind, after);
+  const severity = modifiedChildSeverity(kind, changes);
+  return {
+    category: childCategory(kind),
+    changeType: "modified",
+    severity,
+    breaking: severity === "high",
+    affectedObject: { schema: table.schema, table: table.table, column: kind === "column" ? name : undefined, name },
+    evidence: changes.map((change) => `${childLabel(kind)} ${qualifiedName(table.schema, table.table)}.${name} changed ${change.field}.`),
+    before,
+    after,
+    changes
+  };
+}
+
+function childChangedFields(
+  kind: "column" | "index" | "constraint" | "partition",
+  before: unknown,
+  after: unknown
+): Array<{ field: string; before: unknown; after: unknown }> {
+  if (kind === "column") {
+    return changedFields(before, after, ["type", "nullable", "defaultValue", "comment", "key"]);
+  }
+  if (kind === "index") {
+    return changedFields(before, after, ["unique", "type", "columns"]);
+  }
+  if (kind === "constraint") {
+    return changedFields(before, after, ["type", "columns", "referencedSchema", "referencedTable", "referencedColumns"]);
+  }
+  return changedFields(before, after, ["method", "expression", "description", "tablespace"]);
+}
+
+function changedFields(
+  before: unknown,
+  after: unknown,
+  fields: string[]
+): Array<{ field: string; before: unknown; after: unknown }> {
+  const beforeRecord = before && typeof before === "object" ? before as Record<string, unknown> : {};
+  const afterRecord = after && typeof after === "object" ? after as Record<string, unknown> : {};
+  return fields
+    .filter((field) => stableStringify(beforeRecord[field]) !== stableStringify(afterRecord[field]))
+    .map((field) => ({ field, before: beforeRecord[field], after: afterRecord[field] }));
+}
+
+function childCategory(kind: "column" | "index" | "constraint" | "partition"): MetadataSnapshotChange["category"] {
+  if (kind === "column") {
+    return "column";
+  }
+  if (kind === "index") {
+    return "index";
+  }
+  if (kind === "constraint") {
+    return "constraint";
+  }
+  return "partition";
+}
+
+function childLabel(kind: "column" | "index" | "constraint" | "partition"): string {
+  return kind[0].toUpperCase() + kind.slice(1);
+}
+
+function childName(kind: "column" | "index" | "constraint" | "partition", item: unknown): string {
+  const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
+  if (kind === "column" || kind === "index" || kind === "constraint") {
+    return String(record.name ?? "");
+  }
+  return [record.name, record.subpartitionName].filter((value) => typeof value === "string" && value.trim()).join(".") || "(partition)";
+}
+
+function partitionLabel(partition: MetadataSnapshotPartition): string {
+  return [partition.name, partition.subpartitionName].filter(Boolean).join(".") || "(partition)";
+}
+
+function removedChildSeverity(kind: "column" | "index" | "constraint" | "partition", item: unknown): MetadataSnapshotChange["severity"] {
+  if (kind === "column") {
+    return "high";
+  }
+  if (kind === "constraint") {
+    return importantConstraint(item) ? "high" : "medium";
+  }
+  return "medium";
+}
+
+function addedChildSeverity(kind: "column" | "index" | "constraint" | "partition", item: unknown): MetadataSnapshotChange["severity"] {
+  if (kind === "column" && isRequiredColumn(item)) {
+    return "medium";
+  }
+  return "low";
+}
+
+function modifiedChildSeverity(
+  kind: "column" | "index" | "constraint" | "partition",
+  changes: Array<{ field: string; before: unknown; after: unknown }>
+): MetadataSnapshotChange["severity"] {
+  if (kind === "column" && changes.some((change) => ["type", "nullable", "defaultValue"].includes(change.field))) {
+    return "high";
+  }
+  if (kind === "constraint" || kind === "partition") {
+    return "medium";
+  }
+  if (kind === "index" && changes.some((change) => change.field === "columns" || change.field === "unique")) {
+    return "medium";
+  }
+  return "low";
+}
+
+function isRequiredColumn(item: unknown): boolean {
+  const record = item && typeof item === "object" ? item as Partial<MetadataSnapshotColumn> : {};
+  return record.nullable === false && record.defaultValue == null;
+}
+
+function importantConstraint(item: unknown): boolean {
+  const record = item && typeof item === "object" ? item as Partial<MetadataSnapshotConstraint> : {};
+  const type = String(record.type ?? "").toUpperCase();
+  return ["PRIMARY KEY", "P", "UNIQUE", "U", "R", "FOREIGN KEY", "NOT_NULL"].includes(type);
+}
+
+function tableSummaryForDiff(table: MetadataSnapshotTable): Record<string, unknown> {
+  return {
+    schema: table.schema,
+    table: table.table,
+    tableType: table.tableType,
+    engine: table.engine,
+    comment: table.comment,
+    columnCount: table.columns.length,
+    indexCount: table.indexes.length,
+    constraintCount: table.constraints.length,
+    partitionCount: table.partitions.length,
+    fingerprint: table.fingerprint
+  };
+}
+
+function oracleObjectSummaryForDiff(object: MetadataSnapshotOracleObject): Record<string, unknown> {
+  return {
+    schema: object.schema,
+    objectName: object.objectName,
+    objectType: object.objectType,
+    status: object.status,
+    lastDdlTime: object.lastDdlTime,
+    sourceFingerprint: object.sourceFingerprint,
+    fingerprint: object.fingerprint
+  };
+}
+
+function relationshipLabel(relationship: MetadataSnapshotRelationship): string {
+  return `${qualifiedName(relationship.sourceSchema, relationship.sourceTable)}(${relationship.sourceColumns.join(",")}) -> ${qualifiedName(relationship.targetSchema, relationship.targetTable)}(${relationship.targetColumns.join(",")})`;
+}
+
+function qualifiedName(schema: string | undefined, name: string): string {
+  return schema ? `${schema}.${name}` : name;
 }
 
 function normalizeSnapshotTable(mode: CompatibilityMode, input: MetadataSnapshotTableInput): MetadataSnapshotTable {
