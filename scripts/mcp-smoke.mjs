@@ -8,6 +8,7 @@ const smokeSearch = process.env.OB_SMOKE_SEARCH ?? smokeTable;
 const smokeIdColumn = process.env.OB_SMOKE_ID_COLUMN ?? (isOracle ? "ID" : "id");
 const smokeMaskedColumn = process.env.OB_SMOKE_MASKED_COLUMN ?? (isOracle ? "NAME" : "name");
 const qualifiedTable = `${smokeSchema}.${smokeTable}`;
+const countSql = `SELECT COUNT(${smokeIdColumn}) AS row_count FROM ${qualifiedTable}`;
 const selectOneSql = isOracle ? "SELECT 1 AS mcp_ok FROM DUAL" : "SELECT 1 AS mcp_ok";
 const requirePartitions = process.env.OB_SMOKE_REQUIRE_PARTITIONS === "true" || isOracle;
 
@@ -88,6 +89,10 @@ try {
   const planAnalysis = await send("tools/call", {
     name: "ob_analyze_query_plan",
     arguments: { sql: selectOneSql, maxRows: 20 }
+  });
+  const performanceReport = await send("tools/call", {
+    name: "ob_generate_performance_report",
+    arguments: { sql: countSql, maxRows: 20 }
   });
   const catalog = await send("tools/call", {
     name: "ob_search_catalog",
@@ -194,6 +199,7 @@ try {
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
   const planAnalysisResult = parseToolJson(planAnalysis);
+  const performanceReportResult = parseToolJson(performanceReport);
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
   const relatedTablesResult = parseToolJson(relatedTables);
@@ -213,6 +219,7 @@ try {
     "ob_verify_permissions",
     "ob_policy_explain",
     "ob_analyze_query_plan",
+    "ob_generate_performance_report",
     "ob_search_catalog",
     "ob_list_objects",
     "ob_get_object_metadata",
@@ -239,6 +246,10 @@ try {
     queryRows: JSON.parse(query.content[0].text).rows,
     explainRows: explainOutput.rows.length,
     planAnalysisOk: ["low", "medium", "high"].includes(planAnalysisResult.analysis?.riskLevel),
+    performanceReportOk:
+      performanceReportResult.executed === false &&
+      ["low", "medium", "high"].includes(performanceReportResult.report?.riskLevel) &&
+      performanceReportResult.tables.length > 0,
     catalogRows: catalogRows.length,
     objectListOk: isOracle ? objectListResult.objects.length > 0 : objectListResult.warnings?.length > 0,
     objectMetadataOk: !isOracle || objectMetadataResult?.schema === smokeSchema,
@@ -283,6 +294,7 @@ try {
     !output.enterpriseTools ||
     !output.resourcesOk ||
     !output.planAnalysisOk ||
+    !output.performanceReportOk ||
     output.catalogRows < 1 ||
     !output.objectListOk ||
     !output.objectMetadataOk ||

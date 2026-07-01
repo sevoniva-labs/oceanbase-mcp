@@ -30,6 +30,7 @@ import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
 import { analyzeQueryPlan } from "./plan-analysis.js";
+import { buildPerformanceReport } from "./performance-report.js";
 import {
   assertOutputAllowed,
   assertObjectAccess,
@@ -424,6 +425,91 @@ export function createObMcpServer(
         {
           sql,
           analysis: analyzeQueryPlan(plan, sql),
+          plan
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
+    "ob_generate_performance_report",
+    {
+      title: "Generate Performance Report",
+      description: "Generate a read-only SQL performance advisory report from EXPLAIN, table statistics, and index metadata.",
+      inputSchema: {
+        ...profileInput,
+        sql: z.string().min(1),
+        params: z.array(sqlParamSchema).optional().default([]),
+        maxRows: z.number().int().positive().max(10_000).optional()
+      }
+    },
+    async ({ profile, sql, params = [], maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const sqlParams = params as SqlParam[];
+      assertSqlInputLimits(sql, sqlParams, selected.config);
+      assertReadOnlySql(sql);
+      assertSqlPolicy(sql, policyContext(selected.config));
+      const policy = explainSqlPolicy(sql, policyContext(selected.config));
+      const explainSql = buildExplainSql(sql);
+      const started = Date.now();
+      const plan = await withQuerySlot(selected, () =>
+        runReadOnlyQuery(
+          selected.pool,
+          selected.config.compatibility,
+          explainSql,
+          sqlParams,
+          effectiveRowLimit(maxRows, selected.config),
+          selected.config.queryTimeoutMs,
+          selected.config.enforceReadOnlyTransaction
+        )
+      );
+      metrics.recordQueryDuration(Date.now() - started);
+      const planAnalysis = analyzeQueryPlan(plan, sql);
+      const tableContexts = [];
+      for (const ref of uniqueTableRefs(policy.tableRefs).slice(0, 5)) {
+        const metadataRef = metadataTableRef(selected.config, ref.schema, ref.table);
+        assertTableAccess(metadataRef.schema, metadataRef.table, policyContext(selected.config));
+        const stats = await withQuerySlot(selected, () =>
+          getTableStats(
+            selected.pool,
+            selected.config.compatibility,
+            metadataRef.table,
+            metadataRef.schema,
+            selected.config.queryTimeoutMs
+          )
+        );
+        const indexes = filterColumnMetadata(
+          await withQuerySlot(selected, () =>
+            listIndexes(
+              selected.pool,
+              selected.config.compatibility,
+              metadataRef.table,
+              metadataRef.schema,
+              selected.config.queryTimeoutMs
+            )
+          ),
+          selected.config.policy
+        );
+        tableContexts.push({
+          schema: metadataRef.schema,
+          table: metadataRef.table,
+          stats,
+          indexes
+        });
+      }
+      return toLimitedResult(
+        {
+          sql,
+          executed: false,
+          report: buildPerformanceReport(planAnalysis, tableContexts),
+          planAnalysis,
+          tables: tableContexts.map((item) => ({
+            schema: item.schema,
+            table: item.table,
+            stats: item.stats,
+            indexRows: item.indexes.length
+          })),
           plan
         },
         selected.config
@@ -1141,6 +1227,27 @@ function numberRecordValue(record: Record<string, unknown>, ...keys: string[]): 
 
 function metadataSchema(config: ObConfig, schema: string | undefined): string | undefined {
   return schema ?? config.database ?? (config.policy.allowedSchemas.length === 1 ? config.policy.allowedSchemas[0] : undefined);
+}
+
+function metadataTableRef(config: ObConfig, schema: string | undefined, table: string): { schema?: string; table: string } {
+  return {
+    schema: metadataSchema(config, schema),
+    table
+  };
+}
+
+function uniqueTableRefs(refs: Array<{ schema?: string; table: string }>): Array<{ schema?: string; table: string }> {
+  const output: Array<{ schema?: string; table: string }> = [];
+  const seen = new Set<string>();
+  for (const ref of refs) {
+    const key = `${ref.schema ?? ""}.${ref.table}`.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    output.push(ref);
+  }
+  return output;
 }
 
 export function effectiveRowLimit(requested: number | undefined, config: ObConfig): number {

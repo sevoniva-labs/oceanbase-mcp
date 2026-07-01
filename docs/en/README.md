@@ -112,6 +112,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_describe_table` | Return column metadata. |
 | `ob_explain` | Run `EXPLAIN` for read-only SQL. |
 | `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
+| `ob_generate_performance_report` | Generate a read-only performance advisory report from EXPLAIN and metadata. |
 | `ob_search_catalog` | Search schemas, tables, and columns. |
 | `ob_list_objects` | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | `ob_get_object_metadata` | Return bounded metadata and source preview for one Oracle object. |
@@ -135,6 +136,10 @@ Procedure, function, and package source is returned as a bounded preview, not as
 ## Query Templates
 
 `ob_generate_query` produces read-only SQL templates for primary-key lookup, pagination, time-range filtering, aggregation, and related-table joins. It returns SQL text, parameter descriptions, notes, and policy checks; it does not execute the generated SQL.
+
+## Performance Reports
+
+`ob_generate_performance_report` runs read-only `EXPLAIN`, collects visible table statistics and index metadata, and returns risk level, evidence, and review recommendations. It does not execute the target SQL and does not output DDL or directly executable index changes.
 
 ## Resources
 

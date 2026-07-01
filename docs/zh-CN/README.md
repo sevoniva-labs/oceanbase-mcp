@@ -112,6 +112,7 @@ npm run start:http
 | `ob_describe_table` | 返回列元数据。 |
 | `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 |
 | `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
+| `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
 | `ob_search_catalog` | 搜索 schema、表和列。 |
 | `ob_list_objects` | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 |
@@ -135,6 +136,10 @@ procedure、function、package 的源码只返回有限预览，不返回不受�
 ## SQL 模板生成
 
 `ob_generate_query` 会生成主键查询、分页查询、时间范围查询、聚合统计和关联表查询模板。输出包含 SQL 文本、参数说明、注意事项和策略检查结果；它不会执行生成的 SQL。
+
+## 性能建议报告
+
+`ob_generate_performance_report` 会执行只读 `EXPLAIN`，读取可见的表统计和索引元数据，并返回风险等级、证据和建议方向。它不会执行目标 SQL，也不会输出 DDL 或可直接执行的索引变更语句。
 
 ## 资源
 
