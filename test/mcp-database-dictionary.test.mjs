@@ -42,6 +42,47 @@ test("ob_get_database_dictionary returns Oracle JSON dictionary", async () => {
   assert.equal(output.markdown, undefined);
 });
 
+test("ob_generate_data_dictionary renders MySQL HTML", async () => {
+  const config = loadConfig({ OB_ALLOWED_SCHEMAS: "biz_test" });
+  const server = createObMcpServer(runtime(config, mysqlPool()));
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_data_dictionary, {
+    schema: "biz_test",
+    format: "html",
+    maxTables: 5,
+    maxColumnsPerTable: 5,
+    title: "Local Dictionary"
+  }, {});
+  const output = JSON.parse(result.content[0].text);
+
+  assert.equal(output.format, "html");
+  assert.equal(output.contentType, "text/html");
+  assert.equal(output.executed, false);
+  assert.match(output.html, /<title>Local Dictionary<\/title>/);
+  assert.match(output.html, /orders table/);
+  assert.match(output.html, /No sample data values are included/);
+});
+
+test("ob_generate_data_dictionary returns Oracle JSON dictionary", async () => {
+  const config = loadConfig({
+    OB_COMPATIBILITY: "oracle",
+    OB_ALLOWED_SCHEMAS: "APP"
+  });
+  const server = createObMcpServer(runtime(config, oraclePool()));
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_data_dictionary, {
+    schema: "APP",
+    format: "json",
+    maxTables: 5
+  }, {});
+  const output = JSON.parse(result.content[0].text);
+
+  assert.equal(output.format, "json");
+  assert.equal(output.dictionary.tables[0].schema, "APP");
+  assert.equal(output.html, undefined);
+  assert.equal(output.markdown, undefined);
+});
+
 function runtime(config, pool) {
   return {
     defaultProfile: "default",

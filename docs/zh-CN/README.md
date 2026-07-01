@@ -172,6 +172,7 @@ npm run start:http
 | v1.0.0 | `ob_export_result_preview` | 生成 Markdown/CSV 结果预览字符串，不落盘。 |
 | v1.0.0 | `ob_get_schema_map` | 返回紧凑的 schema、表、关键字段和关系摘要。 |
 | v1.0.0 | `ob_get_database_dictionary` | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 |
+| v1.0.0 | `ob_generate_data_dictionary` | 生成 JSON、Markdown 或简版 HTML 数据字典。 |
 | v1.0.0 | `ob_search_everything` | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 |
 | v1.0.0 | `ob_find_tables_by_business_term` | 按业务词返回候选表、依据和关联表摘要。 |
 | v1.0.0 | `ob_find_columns` | 按字段名、注释、类型、表名模式或业务词查找字段。 |
@@ -218,7 +219,7 @@ procedure、function、package 的源码只返回有限预览，不返回不受�
 
 ## 文档生成
 
-`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。两者都不包含样例数据值。
+`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。以上能力都不包含样例数据值。
 
 ## 资源
 

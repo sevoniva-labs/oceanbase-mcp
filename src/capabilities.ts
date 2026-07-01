@@ -36,6 +36,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_describe_table", since: "v0.3.0", group: "metadata", mode: "all", description: "Return column metadata." },
   { name: "ob_get_schema_map", since: "v1.0.0", group: "metadata", mode: "all", description: "Return compact schema, table, key-field, and relationship summaries." },
   { name: "ob_get_database_dictionary", since: "v1.0.0", group: "metadata", mode: "all", description: "Generate bounded JSON or Markdown data dictionaries from visible metadata." },
+  { name: "ob_generate_data_dictionary", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON, Markdown, or simple HTML data dictionaries from visible metadata." },
   { name: "ob_search_catalog", since: "v0.3.0", group: "metadata", mode: "all", description: "Search schemas, tables, and columns." },
   { name: "ob_search_everything", since: "v1.0.0", group: "metadata", mode: "all", description: "Search schemas, tables, columns, comments, and business terms with evidence." },
   { name: "ob_search_business_glossary", since: "v0.5.1", group: "metadata", mode: "all", description: "Search visible business-term mappings." },

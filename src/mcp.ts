@@ -85,6 +85,7 @@ const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-comp
 const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
 const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
 const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
+const dataDictionaryFormatSchema = z.enum(["json", "markdown", "html"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -1147,6 +1148,66 @@ export function createObMcpServer(
         warnings
       };
       return toLimitedResult(output, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_generate_data_dictionary",
+    {
+      title: "Generate Data Dictionary",
+      description: "Generate bounded JSON, Markdown, or simple HTML data dictionary output from visible metadata.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        tablePattern: z.string().optional(),
+        format: dataDictionaryFormatSchema.optional().default("markdown"),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxColumnsPerTable: z.number().int().positive().max(100).optional(),
+        title: z.string().min(1).max(120).optional()
+      }
+    },
+    async ({ profile, schema, tablePattern, format = "markdown", maxTables, maxColumnsPerTable, title }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
+        throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+      const tableLimit = Math.min(maxTables ?? 30, 200);
+      const columnLimit = Math.min(maxColumnsPerTable ?? 50, 100);
+      const rawTables = await withQuerySlot(selected, () =>
+        listSchemaMapTables(
+          selected.pool,
+          selected.config.compatibility,
+          effectiveSchema,
+          tablePattern,
+          tableLimit + 1,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
+      const dictionary = await buildDatabaseDictionary(selected, visibleTables, columnLimit);
+      const warnings = uniqueStrings([
+        rawTables.length > tableLimit ? `Only the first ${tableLimit} visible tables are included. Narrow schema or tablePattern for a smaller dictionary.` : "",
+        dictionary.tables.some((table) => table.columnsTruncated) ? `Some tables have more than ${columnLimit} visible columns; columns were truncated.` : "",
+        "Data dictionary output is based on metadata visible to the active MCP policy.",
+        "No sample data values are included."
+      ]);
+      return toLimitedResult(
+        {
+          format,
+          mode: selected.config.compatibility,
+          schema: effectiveSchema ?? null,
+          tablePattern: tablePattern ?? null,
+          tableCount: dictionary.tables.length,
+          dictionary,
+          markdown: format === "markdown" ? renderDatabaseDictionaryMarkdown(dictionary) : undefined,
+          html: format === "html" ? renderDataDictionaryHtml(dictionary, title) : undefined,
+          contentType: format === "html" ? "text/html" : undefined,
+          warnings,
+          executed: false
+        },
+        selected.config
+      );
     }
   );
 
@@ -3998,6 +4059,71 @@ function renderDatabaseDictionaryMarkdown(dictionary: {
     lines.push("");
   }
   return lines.join("\n");
+}
+
+function renderDataDictionaryHtml(dictionary: Parameters<typeof renderDatabaseDictionaryMarkdown>[0], title?: string): string {
+  const body = dictionary.tables.map((table) => {
+    const qualifiedName = `${table.schema ? `${table.schema}.` : ""}${table.table}`;
+    const rows = table.columns.map((column) => `
+      <tr>
+        <td>${escapeInlineHtml(column.name)}</td>
+        <td>${escapeInlineHtml(column.type ?? "")}</td>
+        <td>${column.nullable == null ? "" : column.nullable ? "YES" : "NO"}</td>
+        <td>${escapeInlineHtml(column.roles.join(", "))}</td>
+        <td>${column.masked ? "YES" : "NO"}</td>
+        <td>${escapeInlineHtml(column.comment ?? "")}</td>
+      </tr>
+    `).join("");
+    const comment = table.comment ? `<p class="comment">${escapeInlineHtml(table.comment)}</p>` : "";
+    const rowEstimate = table.rowEstimate ? `<p>Row estimate: ${table.rowEstimate.value} (${escapeInlineHtml(table.rowEstimate.source)})</p>` : "";
+    const primaryKeys = table.primaryKeys.length > 0 ? `<p>Primary key: ${escapeInlineHtml(table.primaryKeys.join(", "))}</p>` : "";
+    const truncated = table.columnsTruncated ? `<p class="warn">Columns were truncated by maxColumnsPerTable.</p>` : "";
+    return `
+      <section>
+        <h2>${escapeInlineHtml(qualifiedName)}</h2>
+        ${comment}
+        ${rowEstimate}
+        ${primaryKeys}
+        <table>
+          <thead>
+            <tr><th>Column</th><th>Type</th><th>Nullable</th><th>Roles</th><th>Masked</th><th>Comment</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        ${truncated}
+      </section>
+    `;
+  }).join("\n");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeInlineHtml(title ?? "OceanBase Data Dictionary")}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 32px; color: #17202a; }
+    h1 { font-size: 28px; margin-bottom: 4px; }
+    h2 { font-size: 20px; margin-top: 28px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #d7dde5; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f3f6f8; }
+    .meta, .comment, .warn { color: #5b6673; }
+  </style>
+</head>
+<body>
+  <h1>${escapeInlineHtml(title ?? "OceanBase Data Dictionary")}</h1>
+  <p class="meta">Generated at: ${escapeInlineHtml(dictionary.generatedAt)}. Tables: ${dictionary.tables.length}. No sample data values are included.</p>
+  ${body}
+</body>
+</html>`;
+}
+
+function escapeInlineHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 async function buildTableDocument(

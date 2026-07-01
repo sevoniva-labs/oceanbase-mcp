@@ -172,6 +172,7 @@ Sorted by Since version in ascending order; tools with the same version are grou
 | v1.0.0 | `ob_export_result_preview` | Generate Markdown/CSV result preview text without writing files. |
 | v1.0.0 | `ob_get_schema_map` | Return compact schema, table, key-field, and relationship summaries. |
 | v1.0.0 | `ob_get_database_dictionary` | Generate bounded JSON or Markdown data dictionaries from visible metadata. |
+| v1.0.0 | `ob_generate_data_dictionary` | Generate JSON, Markdown, or simple HTML data dictionaries. |
 | v1.0.0 | `ob_search_everything` | Search schemas, tables, columns, comments, and business terms with evidence. |
 | v1.0.0 | `ob_find_tables_by_business_term` | Find candidate tables for a business term with evidence and related tables. |
 | v1.0.0 | `ob_find_columns` | Find visible columns by name, comment, type, table pattern, or business term. |
@@ -218,7 +219,7 @@ Procedure, function, and package source is returned as a bounded preview, not as
 
 ## Documentation Generation
 
-`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. Neither includes sample data values.
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. These tools do not include sample data values.
 
 ## Resources
 
