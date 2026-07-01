@@ -166,6 +166,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_rewrite_sql` | v1.0.0 | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | `ob_convert_sql_dialect` | v1.0.0 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | `ob_explain_error` | v1.0.0 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
+| `ob_generate_query_examples` | v1.0.0 | Generate common read-only query examples from table context without executing SQL. |
 | `ob_generate_query` | v0.5.0 | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | v0.5.0 | Generate Mermaid and JSON ER metadata from allowed tables. |
 | `ob_get_indexes` | v0.3.0 | Return table index metadata. |

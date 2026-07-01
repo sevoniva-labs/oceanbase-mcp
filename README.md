@@ -135,6 +135,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_rewrite_sql` | v1.0.0 | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | `ob_convert_sql_dialect` | v1.0.0 | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | `ob_explain_error` | v1.0.0 | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
+| `ob_generate_query_examples` | v1.0.0 | 基于表上下文生成常用只读查询示例，不执行 SQL。 | Generate common read-only query examples from table context without executing SQL. |
 | `ob_generate_query` | v0.5.0 | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 | Generate Mermaid and JSON ER metadata from allowed tables. |
 | `ob_get_indexes` | v0.3.0 | 返回表索引元数据。 | Return table index metadata. |
