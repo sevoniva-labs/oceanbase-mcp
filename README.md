@@ -105,6 +105,9 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_query_preview` | v0.5.1 | 执行前预览只读策略和执行计划风险，不返回数据。 | Preview read-only policy and plan risk before execution, without returning data. |
 | `ob_query` | v0.3.0 | 执行严格只读 SQL；v0.5.1 起返回列元数据、Markdown 预览和警告。 | Run strict read-only SQL; returns column metadata, Markdown preview, and warnings since v0.5.1. |
 | `ob_query_page` | v0.5.1 | 执行带分页的只读查询。 | Run a paged read-only query. |
+| `ob_start_query_session` | v1.0.0 | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
+| `ob_get_query_session` | v1.0.0 | 读取查询上下文，不暴露已存参数值。 | Read a query session context without exposing stored parameter values. |
+| `ob_close_query_session` | v1.0.0 | 关闭内存查询上下文。 | Close an in-memory query session. |
 | `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | 列出可见表。 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | 返回列元数据。 | Return column metadata. |

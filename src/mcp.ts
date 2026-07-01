@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
@@ -74,6 +76,8 @@ const profileInput = {
 };
 const SENSITIVE_SAMPLE_PATTERN =
   /(password|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|credential|session|cookie|email|phone|mobile|id[_-]?card|ssn)/i;
+const QUERY_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
+const MAX_QUERY_SESSIONS = 100;
 const QUERY_TERM_STOPWORDS = new Set([
   "show",
   "list",
@@ -98,6 +102,38 @@ const QUERY_TERM_STOPWORDS = new Set([
   "数量"
 ]);
 
+interface QuerySessionState {
+  id: string;
+  profile: string;
+  mode: ObConfig["compatibility"];
+  createdAt: string;
+  updatedAt: string;
+  expiresAt: string;
+  businessTerm?: string;
+  schema?: string;
+  table?: string;
+  columns: string[];
+  sql?: string;
+  params: SqlParam[];
+  page: number;
+  pageSize?: number;
+  orderBy?: string;
+  warnings: string[];
+  masking: {
+    maskedColumns: string[];
+    sensitiveColumns: string[];
+  };
+  resultState: {
+    rowCount?: number;
+    hasMore?: boolean;
+    truncated?: boolean;
+  };
+}
+
+type RuntimeWithQuerySessions = GatewayRuntime & {
+  querySessions?: Map<string, QuerySessionState>;
+};
+
 export interface McpRequestContext {
   principal?: AuthPrincipal;
   requestId?: string;
@@ -110,6 +146,7 @@ export function createObMcpServer(
   httpConfig?: HttpConfig,
   context: McpRequestContext = { transport: "stdio" }
 ): McpServer {
+  const querySessions = ensureQuerySessionStore(runtime);
   const server = new McpServer({
     name: "ob-mcp",
     version: SERVER_VERSION
@@ -529,6 +566,132 @@ export function createObMcpServer(
       assertJsonByteLimit(result, selected.config.maxResultBytes);
       metrics.recordQueryDuration(Date.now() - started);
       return toResult(result);
+    }
+  );
+
+  registerTool(
+    "ob_start_query_session",
+    {
+      title: "Start Query Session",
+      description: "Create an in-memory read-only query context for follow-up paging, refinement, and summarization.",
+      inputSchema: {
+        ...profileInput,
+        businessTerm: z.string().optional(),
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        columns: z.array(z.string().min(1)).max(100).optional().default([]),
+        sql: z.string().optional(),
+        params: z.array(sqlParamSchema).optional().default([]),
+        page: z.number().int().positive().optional().default(1),
+        pageSize: z.number().int().positive().max(1_000).optional(),
+        orderBy: z.string().optional(),
+        warnings: z.array(z.string().min(1)).max(50).optional().default([])
+      }
+    },
+    async ({ profile, businessTerm, schema, table, columns = [], sql, params = [], page = 1, pageSize, orderBy, warnings = [] }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      const sessionColumns = validateQuerySessionColumns(columns, effectiveSchema, table, selected.config);
+      if (table) {
+        assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      } else if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
+        throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+
+      const sqlParams = params as SqlParam[];
+      const trimmedSql = sql?.trim();
+      let policy: ReturnType<typeof explainSqlPolicy> | undefined;
+      let shape: ReturnType<typeof queryShape> | undefined;
+      const sessionWarnings = [...warnings];
+      if (trimmedSql) {
+        assertSqlInputLimits(trimmedSql, sqlParams, selected.config);
+        assertReadOnlySql(trimmedSql);
+        assertSqlPolicy(trimmedSql, policyContext(selected.config));
+        policy = explainSqlPolicy(trimmedSql, policyContext(selected.config));
+        shape = queryShape(trimmedSql, selected.config.compatibility);
+        if (!shape.hasOrderBy && !orderBy) {
+          sessionWarnings.push("No ORDER BY is recorded for this session. Paged follow-up queries may have unstable ordering.");
+        }
+      }
+
+      const now = new Date();
+      const session: QuerySessionState = {
+        id: `qs_${randomUUID()}`,
+        profile: selected.profile,
+        mode: selected.config.compatibility,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + QUERY_SESSION_TTL_MS).toISOString(),
+        businessTerm: cleanOptionalString(businessTerm),
+        schema: effectiveSchema,
+        table: cleanOptionalString(table),
+        columns: sessionColumns,
+        sql: trimmedSql,
+        params: sqlParams,
+        page,
+        pageSize,
+        orderBy: cleanOptionalString(orderBy),
+        warnings: uniqueStrings(sessionWarnings),
+        masking: querySessionMasking(sessionColumns, effectiveSchema, table, selected.config),
+        resultState: {}
+      };
+      querySessions.set(session.id, session);
+      pruneQuerySessions(querySessions);
+      return toLimitedResult(
+        {
+          ...publicQuerySession(session),
+          policy,
+          shape,
+          executed: false
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
+    "ob_get_query_session",
+    {
+      title: "Get Query Session",
+      description: "Return a read-only query session context without exposing stored parameter values.",
+      inputSchema: {
+        ...profileInput,
+        sessionId: z.string().min(1)
+      }
+    },
+    async ({ profile, sessionId }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const session = getQuerySessionForProfile(querySessions, sessionId, selected.profile);
+      return toLimitedResult(publicQuerySession(session), selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_close_query_session",
+    {
+      title: "Close Query Session",
+      description: "Close an in-memory query session for the selected profile.",
+      inputSchema: {
+        ...profileInput,
+        sessionId: z.string().min(1)
+      }
+    },
+    async ({ profile, sessionId }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const session = getQuerySessionForProfile(querySessions, sessionId, selected.profile);
+      querySessions.delete(session.id);
+      return toLimitedResult(
+        {
+          sessionId: session.id,
+          closed: true,
+          profile: session.profile,
+          mode: session.mode
+        },
+        selected.config
+      );
     }
   );
 
@@ -4464,6 +4627,110 @@ function queryPreviewWarnings(
     warnings.push("The SQL references fields that look sensitive or are configured for masking.");
   }
   return warnings;
+}
+
+function ensureQuerySessionStore(runtime: GatewayRuntime): Map<string, QuerySessionState> {
+  const shared = runtime as RuntimeWithQuerySessions;
+  if (!shared.querySessions) {
+    shared.querySessions = new Map();
+  }
+  return shared.querySessions;
+}
+
+function cleanupQuerySessions(store: Map<string, QuerySessionState>) {
+  const now = Date.now();
+  for (const [id, session] of store.entries()) {
+    if (Date.parse(session.expiresAt) <= now) {
+      store.delete(id);
+    }
+  }
+}
+
+function pruneQuerySessions(store: Map<string, QuerySessionState>) {
+  if (store.size <= MAX_QUERY_SESSIONS) {
+    return;
+  }
+  const sessions = [...store.values()].sort((left, right) =>
+    Date.parse(left.updatedAt) - Date.parse(right.updatedAt)
+  );
+  for (const session of sessions.slice(0, store.size - MAX_QUERY_SESSIONS)) {
+    store.delete(session.id);
+  }
+}
+
+function getQuerySessionForProfile(
+  store: Map<string, QuerySessionState>,
+  sessionId: string,
+  profile: string
+): QuerySessionState {
+  const session = store.get(sessionId);
+  if (!session) {
+    throw new Error(`Query session "${sessionId}" was not found or has expired.`);
+  }
+  if (session.profile !== profile) {
+    throw new Error(`Query session "${sessionId}" does not belong to profile "${profile}".`);
+  }
+  return session;
+}
+
+function validateQuerySessionColumns(
+  columns: string[],
+  schema: string | undefined,
+  table: string | undefined,
+  config: ObConfig
+): string[] {
+  const output = uniqueStrings(columns.map((column) => column.trim()).filter(Boolean));
+  for (const column of output) {
+    if (isDeniedColumn(column, config.policy)) {
+      throw new Error(`Column "${column}" is blocked by OB_DENIED_COLUMNS.`);
+    }
+  }
+  if (table) {
+    assertTableAccess(schema, table, policyContext(config));
+  }
+  return output;
+}
+
+function querySessionMasking(
+  columns: string[],
+  schema: string | undefined,
+  table: string | undefined,
+  config: ObConfig
+) {
+  const maskedColumns = columns.filter((column) => isMaskedColumn(column, config.policy, schema, table));
+  const sensitiveColumns = columns.filter((column) => SENSITIVE_SAMPLE_PATTERN.test(column));
+  return {
+    maskedColumns: uniqueStrings(maskedColumns),
+    sensitiveColumns: uniqueStrings(sensitiveColumns)
+  };
+}
+
+function publicQuerySession(session: QuerySessionState) {
+  return {
+    sessionId: session.id,
+    profile: session.profile,
+    mode: session.mode,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    expiresAt: session.expiresAt,
+    businessTerm: session.businessTerm ?? null,
+    schema: session.schema ?? null,
+    table: session.table ?? null,
+    columns: session.columns,
+    sql: session.sql ?? null,
+    paramCount: session.params.length,
+    page: session.page,
+    pageSize: session.pageSize ?? null,
+    orderBy: session.orderBy ?? null,
+    warnings: session.warnings,
+    masking: session.masking,
+    resultState: session.resultState
+  };
+}
+
+function cleanOptionalString(value: string | undefined): string | undefined {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : undefined;
 }
 
 function queryExampleFromTemplate(

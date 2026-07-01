@@ -136,6 +136,9 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_query_preview` | v0.5.1 | Preview read-only policy and plan risk before execution, without returning data. |
 | `ob_query` | v0.3.0 | Run strict read-only SQL; returns column metadata, Markdown preview, and warnings since v0.5.1. |
 | `ob_query_page` | v0.5.1 | Run a paged read-only query. |
+| `ob_start_query_session` | v1.0.0 | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
+| `ob_get_query_session` | v1.0.0 | Read a query session context without exposing stored parameter values. |
+| `ob_close_query_session` | v1.0.0 | Close an in-memory query session. |
 | `ob_list_schemas` | v0.3.0 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | Return column metadata. |
