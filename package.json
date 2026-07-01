@@ -1,7 +1,7 @@
 {
   "name": "ob-mcp",
-  "version": "0.5.1",
-  "description": "Enterprise read-only MCP gateway for connecting OpenCode and other MCP clients to OceanBase.",
+  "version": "1.0.0",
+  "description": "Read-only MCP gateway and local developer assistant for OceanBase.",
   "homepage": "https://github.com/sevoniva/oceanbase-mcp#readme",
   "repository": {
     "type": "git",

@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本，例如 v0.3.0"
+        description: "发布版本，例如 v1.0.0"
         required: true
         type: string
       prerelease:
@@ -41,7 +41,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必须是 vX.Y.Z，例如 v0.3.0" >&2
+            echo "版本必须是 vX.Y.Z，例如 v1.0.0" >&2
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -233,18 +233,18 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release focuses on daily OceanBase query workflows in OpenCode. It adds metadata-first query guidance, safer query previews, paged result browsing, clearer result output, structured SQL error hints, column profiling, and an optional business glossary. The server remains strictly read-only.
+          This release completes the local OceanBase Developer Assistant scope for OpenCode. It improves metadata discovery, read-only SQL assistance, paged query workflows, ER diagrams, data dictionaries, project SQL scanning, local setup checks, and internal delivery assets. The server remains strictly read-only.
 
           ## 新增能力
 
-          - OpenCode OceanBase Developer Assistant Agent/Skill：约束查询流程为“先查元数据，再生成只读 SQL，执行前预览风险，最后分页查看结果”。
-          - `ob_get_table_context`：返回字段、注释、类型、主键、索引、约束、分区、估算行数、相关表、查询模板和脱敏样例数据。
-          - `ob_query_preview`：执行前检查只读策略、涉及对象、敏感字段、`EXPLAIN` 风险、缺少 `LIMIT` 和潜在全表扫描。
-          - `ob_query_page`：提供受限分页查询，返回 `rows`、`columns`、分页信息、截断状态和排序稳定性提示。
-          - 查询结果增强：`ob_query` 和 `ob_query_page` 返回列元数据、脱敏标记、Markdown 预览和结果警告。
-          - SQL 错误提示：覆盖表/字段不存在、schema 不允许、Oracle 大小写、分页语法、权限不足和策略拒绝等常见问题。
-          - `ob_profile_columns`：返回字段空值比例、distinct、top values、min/max、时间范围和脱敏样例值。
-          - 业务字典：支持把业务词映射到 schema/table/column，用于搜索和提示，不扩大数据库访问权限。
+          - 本地初始化和诊断：`ob-mcp init`、`ob-mcp doctor`、`ob_check_opencode_setup`、`ob_get_usage_guide`、`ob_list_capabilities`。
+          - 元数据和字典：schema map、统一搜索、业务词找表、跨表找字段、表摘要、数据库字典、表和 schema 对比。
+          - SQL 辅助：查询准备、结构化 SELECT 构建、SQL lint、SQL 改写、MySQL/Oracle 方言转换、错误解释和查询示例。
+          - 查询体验：内存查询会话、上一页/下一页、查询细化、结果摘要、结果对比和 Markdown/CSV 预览。
+          - 数据理解：表画像、字段画像增强、值分布、时间字段识别、维度字段识别、最近数据查询和数据质量检查。
+          - ER 图：Mermaid、JSON、HTML static/interactive/compact/detailed、实体图、关系解释、Markdown/PlantUML/DOT 文档和 CLI 导出。
+          - 项目代码辅助：`ob-mcp scan-sql`、SQL 片段校验、项目 SQL 解释、mapper 上下文和未知字段候选。
+          - 文档生成：表文档、schema 文档、数据字典、SQL 文档和新开发者入门文档。
           - 内网交付：Release 附带源码归档，可在内网 npm 制品库环境中编译运行。
 
           ## Delivery Assets
@@ -271,8 +271,8 @@ jobs:
 
           ## 验证要求
 
-          - OceanBase MySQL 模式 smoke test 通过。
-          - OceanBase Oracle 模式 smoke test 通过。
+          - OceanBase MySQL 模式 smoke test 覆盖核心 1.0 能力。
+          - OceanBase Oracle 模式 smoke test 覆盖核心 1.0 能力。
           - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
 
           ## 生产注意事项
