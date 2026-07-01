@@ -22,6 +22,7 @@ import {
   type SqlParam
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
+import { buildErDiagram, type ErEntity } from "./er.js";
 import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
@@ -524,6 +525,148 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_generate_er_diagram",
+    {
+      title: "Generate ER Diagram",
+      description: "Generate Mermaid and JSON ER metadata from allowed OceanBase table metadata and relationships.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        maxTables: z.number().int().positive().max(50).optional()
+      }
+    },
+    async ({ profile, schema, table, depth, maxTables }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      const tableLimit = Math.min(maxTables ?? (table ? 20 : 12), 50);
+      const depthLimit = depth ?? 1;
+      if (table) {
+        assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      } else if (!effectiveSchema) {
+        throw new Error("Pass schema or table when generating an ER diagram without a configured default schema.");
+      }
+
+      const refs = new Map<string, { schema?: string; table: string }>();
+      const relationships: TableRelationship[] = [];
+      if (table) {
+        addTableRef(refs, selected.config.compatibility, effectiveSchema, table, tableLimit);
+        const result = await withQuerySlot(selected, () =>
+          findRelatedTables(
+            selected.pool,
+            selected.config.compatibility,
+            table,
+            effectiveSchema,
+            depthLimit,
+            tableLimit * 4,
+            selected.config.queryTimeoutMs
+          )
+        );
+        for (const relation of result.relations.filter((item) =>
+          isRelationshipAllowed(item, selected.config)
+        )) {
+          relationships.push(relation);
+          addTableRef(refs, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit);
+          addTableRef(refs, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit);
+        }
+      } else {
+        const rows = filterTables(
+          await withQuerySlot(selected, () =>
+            listTables(
+              selected.pool,
+              selected.config.compatibility,
+              effectiveSchema,
+              tableLimit,
+              selected.config.queryTimeoutMs
+            )
+          ),
+          selected.config.policy
+        );
+        for (const row of rows) {
+          const ref = tableRefFromMetadata(row, effectiveSchema);
+          if (ref) {
+            addTableRef(refs, selected.config.compatibility, ref.schema, ref.table, tableLimit);
+          }
+        }
+        for (const ref of refs.values()) {
+          const result = await withQuerySlot(selected, () =>
+            findRelatedTables(
+              selected.pool,
+              selected.config.compatibility,
+              ref.table,
+              ref.schema,
+              1,
+              tableLimit * 4,
+              selected.config.queryTimeoutMs
+            )
+          );
+          for (const relation of result.relations.filter((item) =>
+            isRelationshipAllowed(item, selected.config)
+          )) {
+            relationships.push(relation);
+          }
+        }
+      }
+
+      const entities: ErEntity[] = [];
+      for (const ref of refs.values()) {
+        const columns = filterColumnMetadata(
+          await withQuerySlot(selected, () =>
+            describeTable(
+              selected.pool,
+              selected.config.compatibility,
+              ref.table,
+              ref.schema,
+              selected.config.queryTimeoutMs
+            )
+          ),
+          selected.config.policy
+        );
+        const constraints = filterColumnMetadata(
+          await withQuerySlot(selected, () =>
+            listConstraints(
+              selected.pool,
+              selected.config.compatibility,
+              ref.table,
+              ref.schema,
+              selected.config.queryTimeoutMs
+            )
+          ),
+          selected.config.policy
+        );
+        entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, columns, constraints));
+      }
+
+      const entityKeys = new Set(
+        [...refs.values()].map((ref) => tableRefKey(selected.config.compatibility, ref.schema, ref.table))
+      );
+      const diagramRelationships = dedupeRelationships(selected.config.compatibility, relationships).filter(
+        (relation) =>
+          entityKeys.has(tableRefKey(selected.config.compatibility, relation.sourceSchema, relation.sourceTable)) &&
+          entityKeys.has(tableRefKey(selected.config.compatibility, relation.targetSchema, relation.targetTable))
+      );
+      const diagram = buildErDiagram(selected.config.compatibility, entities, diagramRelationships);
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: effectiveSchema,
+          rootTable: table ?? null,
+          maxTables: tableLimit,
+          tableCount: entities.length,
+          relationshipCount: diagramRelationships.length,
+          mermaid: diagram.mermaid,
+          diagram: {
+            entities: diagram.entities,
+            relationships: diagram.relationships
+          }
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_get_indexes",
     {
       title: "Get Table Indexes",
@@ -650,6 +793,135 @@ function isRelationshipAllowed(relation: TableRelationship, config: ObConfig): b
   return [...relation.sourceColumns, ...relation.targetColumns].every(
     (column) => !isDeniedColumn(column, config.policy)
   );
+}
+
+function addTableRef(
+  refs: Map<string, { schema?: string; table: string }>,
+  mode: ObConfig["compatibility"],
+  schema: string | undefined,
+  table: string,
+  limit: number
+): void {
+  if (refs.size >= limit) {
+    return;
+  }
+  refs.set(tableRefKey(mode, schema, table), { schema, table: mode === "oracle" ? table.toUpperCase() : table });
+}
+
+function tableRefFromMetadata(
+  row: unknown,
+  fallbackSchema: string | undefined
+): { schema?: string; table: string } | undefined {
+  const record = row as Record<string, unknown>;
+  const table = stringRecordValue(record, "table_name", "TABLE_NAME");
+  if (!table) {
+    return undefined;
+  }
+  return {
+    schema:
+      stringRecordValue(record, "table_schema", "TABLE_SCHEMA", "owner", "OWNER", "table_owner", "TABLE_OWNER") ??
+      fallbackSchema,
+    table
+  };
+}
+
+function erEntityFromMetadata(
+  mode: ObConfig["compatibility"],
+  schema: string | undefined,
+  table: string,
+  columns: unknown[],
+  constraints: unknown[]
+): ErEntity {
+  const primaryKeys = new Set(primaryKeyColumns(mode, constraints));
+  return {
+    schema,
+    table,
+    columns: columns.map((row) => {
+      const record = row as Record<string, unknown>;
+      const name = stringRecordValue(record, "column_name", "COLUMN_NAME") ?? "column";
+      const nullable = stringRecordValue(record, "is_nullable", "IS_NULLABLE", "nullable", "NULLABLE");
+      return {
+        name,
+        type: columnTypeLabel(mode, record),
+        primaryKey: primaryKeys.has(normalizeTableName(mode, name)),
+        nullable: nullable ? !["NO", "N"].includes(nullable.toUpperCase()) : undefined
+      };
+    })
+  };
+}
+
+function primaryKeyColumns(mode: ObConfig["compatibility"], constraints: unknown[]): string[] {
+  return constraints
+    .filter((row) => {
+      const type = stringRecordValue(row as Record<string, unknown>, "constraint_type", "CONSTRAINT_TYPE");
+      return type === "PRIMARY KEY" || type === "P";
+    })
+    .map((row) => stringRecordValue(row as Record<string, unknown>, "column_name", "COLUMN_NAME"))
+    .filter((value): value is string => Boolean(value))
+    .map((value) => normalizeTableName(mode, value));
+}
+
+function columnTypeLabel(mode: ObConfig["compatibility"], record: Record<string, unknown>): string | undefined {
+  const mysqlType = stringRecordValue(record, "column_type", "COLUMN_TYPE");
+  if (mysqlType) {
+    return mysqlType;
+  }
+  const dataType = stringRecordValue(record, "data_type", "DATA_TYPE");
+  const length = numberRecordValue(record, "data_length", "DATA_LENGTH");
+  if (
+    mode === "oracle" &&
+    dataType &&
+    length &&
+    ["CHAR", "NCHAR", "VARCHAR2", "NVARCHAR2", "RAW"].includes(dataType)
+  ) {
+    return `${dataType}(${length})`;
+  }
+  return dataType;
+}
+
+function dedupeRelationships(mode: ObConfig["compatibility"], relationships: TableRelationship[]): TableRelationship[] {
+  const output: TableRelationship[] = [];
+  const keys = new Set<string>();
+  for (const relationship of relationships) {
+    const key = [
+      relationship.relationType,
+      tableRefKey(mode, relationship.sourceSchema, relationship.sourceTable),
+      relationship.sourceColumns.map((column) => normalizeTableName(mode, column)).join(","),
+      tableRefKey(mode, relationship.targetSchema, relationship.targetTable),
+      relationship.targetColumns.map((column) => normalizeTableName(mode, column)).join(",")
+    ].join(":");
+    if (!keys.has(key)) {
+      keys.add(key);
+      output.push(relationship);
+    }
+  }
+  return output;
+}
+
+function tableRefKey(mode: ObConfig["compatibility"], schema: string | undefined, table: string): string {
+  return `${schema ? normalizeTableName(mode, schema) : ""}.${normalizeTableName(mode, table)}`;
+}
+
+function normalizeTableName(mode: ObConfig["compatibility"], value: string): string {
+  return mode === "oracle" ? value.trim().toUpperCase() : value.trim().toLowerCase();
+}
+
+function stringRecordValue(record: Record<string, unknown>, ...keys: string[]): string | undefined {
+  const value = keys.map((key) => record[key]).find((item) => typeof item === "string" && item.trim());
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
+function numberRecordValue(record: Record<string, unknown>, ...keys: string[]): number | undefined {
+  const value = keys
+    .map((key) => record[key])
+    .find((item) => typeof item === "number" || typeof item === "string");
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
+    return Number(value);
+  }
+  return undefined;
 }
 
 function metadataSchema(config: ObConfig, schema: string | undefined): string | undefined {

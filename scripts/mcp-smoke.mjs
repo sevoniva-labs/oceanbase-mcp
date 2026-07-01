@@ -99,6 +99,10 @@ try {
     name: "ob_find_related_tables",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, limit: 20 }
   });
+  const erDiagram = await send("tools/call", {
+    name: "ob_generate_er_diagram",
+    arguments: { schema: smokeSchema, table: smokeTable, depth: 1, maxTables: 10 }
+  });
   const indexes = await send("tools/call", {
     name: "ob_get_indexes",
     arguments: { schema: smokeSchema, table: smokeTable }
@@ -161,6 +165,7 @@ try {
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
   const relatedTablesResult = parseToolJson(relatedTables);
+  const erDiagramResult = parseToolJson(erDiagram);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
   const partitionRows = parseToolJson(partitions);
@@ -177,6 +182,7 @@ try {
     "ob_get_table_schema",
     "ob_get_table_ddl",
     "ob_find_related_tables",
+    "ob_generate_er_diagram",
     "ob_get_indexes",
     "ob_get_constraints",
     "ob_get_partitions",
@@ -197,6 +203,7 @@ try {
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
     relatedTablesOk: Array.isArray(relatedTablesResult.relations),
+    erDiagramOk: typeof erDiagramResult.mermaid === "string" && erDiagramResult.mermaid.includes("erDiagram"),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
     partitionRows: partitionRows.length,
@@ -232,6 +239,7 @@ try {
     output.tableSchemaRows < 1 ||
     !output.tableDdlOk ||
     !output.relatedTablesOk ||
+    !output.erDiagramOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
     !output.blockedWrite ||
