@@ -87,6 +87,7 @@ opencode run "Use the oceanbase MCP server to run SELECT 1 AS ok and return only
 更多文档：
 
 - [接入 OpenCode](opencode.md)
+- [CLI](cli.md)
 - [配置说明](configuration.md)
 - [部署指南](deployment.md)
 - [架构说明](architecture.md)

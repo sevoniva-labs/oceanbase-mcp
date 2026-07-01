@@ -16,6 +16,7 @@ OceanBase MCP is read-only by design. It has no write tool, rejects write/contro
 | --- | --- | --- |
 | 起步 / Start here | [快速开始](docs/zh-CN/README.md) | [Quick start](docs/en/README.md) |
 | OpenCode 接入 / OpenCode | [接入 OpenCode](docs/zh-CN/opencode.md) | [OpenCode setup](docs/en/opencode.md) |
+| CLI / CLI | [CLI](docs/zh-CN/cli.md) | [CLI](docs/en/cli.md) |
 | 配置 / Configuration | [配置说明](docs/zh-CN/configuration.md) | [Configuration](docs/en/configuration.md) |
 | 部署 / Deployment | [部署指南](docs/zh-CN/deployment.md) | [Deployment](docs/en/deployment.md) |
 | 架构 / Architecture | [架构说明](docs/zh-CN/architecture.md) | [Architecture](docs/en/architecture.md) |
@@ -58,6 +59,10 @@ npm run start
 随后使用 `opencode.jsonc` 或 [examples](examples) 目录中的示例接入 OpenCode。
 
 Then configure OpenCode with `opencode.jsonc` or one of the files under [examples](examples).
+
+新项目可以使用 `ob-mcp init --mode mysql --schema <schema>` 生成 `.env`、`opencode.jsonc`、OpenCode agent/skill 和业务字典模板。
+
+For a new local project, use `ob-mcp init --mode mysql --schema <schema>` to create `.env`, `opencode.jsonc`, OpenCode agent/skill files, and a business glossary template.
 
 ## Production Minimum / 生产最小配置
 

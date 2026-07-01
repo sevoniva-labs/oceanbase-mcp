@@ -87,6 +87,7 @@ opencode run "Use the oceanbase MCP server to run SELECT 1 AS ok and return only
 More examples:
 
 - [OpenCode setup](opencode.md)
+- [CLI](cli.md)
 - [Configuration](configuration.md)
 - [Deployment](deployment.md)
 - [Architecture](architecture.md)
