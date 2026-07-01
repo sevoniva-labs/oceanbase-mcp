@@ -35,6 +35,11 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v0.5.1 | 字段画像和业务字典 | 受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 |
 | v0.5.1 | Release 交付补齐 | npm 包、SBOM、amd64/arm64 离线镜像和源码归档，便于内网编译部署。 |
 | v1.0.0 | 本地初始化和能力发现 | 生成本地配置、检查 OpenCode 接入、提供 MCP 使用指南和工具能力清单。 |
+| v1.0.0 | 元数据和数据字典 | schema map、统一搜索、业务词找表、跨表找字段、表摘要、数据库字典、表和 schema 对比。 |
+| v1.0.0 | SQL 辅助 | 查询准备、结构化 SELECT 构建、SQL lint、SQL 改写、MySQL/Oracle 方言转换、错误解释和查询示例。 |
+| v1.0.0 | 查询体验 | 内存查询会话、翻页、查询细化、结果摘要、结果对比和 Markdown/CSV 预览。 |
+| v1.0.0 | 数据理解 | 表画像、字段画像增强、值分布、时间字段识别、维度字段识别、最近数据查询和数据质量检查。 |
+| v1.0.0 | ER 和文档 | ER HTML、实体图、关系解释、PlantUML/DOT/Markdown 模型文档、表文档、schema 文档、SQL 文档和入门文档。 |
 | v1.0.0 | 项目 SQL 辅助 | 扫描本地 SQL 片段，报告只读风险、分页风险和动态 SQL 提示，不修改业务文件。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
@@ -91,6 +96,9 @@ opencode run "Use the oceanbase MCP server to run SELECT 1 AS ok and return only
 - [接入 OpenCode](opencode.md)
 - [CLI](cli.md)
 - [配置说明](configuration.md)
+- [SQL 辅助](sql-assistant.md)
+- [ER 图](er.md)
+- [数据字典与文档生成](data-dictionary.md)
 - [部署指南](deployment.md)
 - [架构说明](architecture.md)
 - [安全基线](security.md)
@@ -224,6 +232,31 @@ procedure、function、package 的源码只返回有限预览，不返回不受�
 ## 文档生成
 
 `ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。`ob_generate_onboarding_doc` 生成面向新开发者的库结构入门文档，包含核心表、关系、查询入口和业务字典提示。以上能力都不包含样例数据值，也不会执行目标查询。
+
+## 内网编译
+
+Release 附带源码归档，适合放入内网后通过内部 npm 制品库编译运行：
+
+```bash
+tar -xzf ob-mcp-1.0.0-source.tar.gz
+cd ob-mcp-1.0.0
+npm ci
+npm run build
+npm run start
+```
+
+源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+
+## Release 资产
+
+| 资产 | 用途 |
+| --- | --- |
+| `ob-mcp-1.0.0.tgz` | npm 包。 |
+| `ob-mcp-1.0.0-source.tar.gz` | 源码归档，用于内网编译。 |
+| `sbom.cdx.json` | CycloneDX SBOM。 |
+| `oceanbase-mcp-1.0.0-amd64.tar.gz` | amd64 离线镜像。 |
+| `oceanbase-mcp-1.0.0-arm64.tar.gz` | arm64 离线镜像。 |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.0.0` | GHCR 镜像 tag。 |
 
 ## 资源
 

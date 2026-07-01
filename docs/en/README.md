@@ -35,6 +35,11 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 | v0.5.1 | Column profiling and business glossary | Bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
 | v0.5.1 | Release delivery assets | npm package, SBOM, amd64/arm64 offline images, and source archive for internal builds. |
 | v1.0.0 | Local setup and capability discovery | Generate local config, check OpenCode setup, and expose MCP usage guidance and tool capabilities. |
+| v1.0.0 | Metadata and data dictionary | Schema map, unified search, business-term table discovery, cross-table column search, table summaries, database dictionaries, and table/schema comparison. |
+| v1.0.0 | SQL assistance | Query preparation, structured SELECT builder, SQL linting, SQL rewrite, MySQL/Oracle dialect conversion, error explanation, and query examples. |
+| v1.0.0 | Query experience | In-memory query sessions, paging, query refinement, result summaries, result comparison, and Markdown/CSV previews. |
+| v1.0.0 | Data understanding | Table profiles, enhanced column profiles, value distributions, time-column detection, dimension-column detection, recent-row lookup, and data-quality checks. |
+| v1.0.0 | ER and documentation | ER HTML, entity diagrams, relationship explanations, PlantUML/DOT/Markdown model docs, table docs, schema docs, SQL docs, and onboarding docs. |
 | v1.0.0 | Project SQL assistance | Scan local SQL snippets, report read-only risk, pagination risk, and dynamic SQL hints without modifying project files. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
@@ -91,6 +96,9 @@ More examples:
 - [OpenCode setup](opencode.md)
 - [CLI](cli.md)
 - [Configuration](configuration.md)
+- [SQL assistance](sql-assistant.md)
+- [ER diagrams](er.md)
+- [Data dictionary and docs](data-dictionary.md)
 - [Deployment](deployment.md)
 - [Architecture](architecture.md)
 - [Security baseline](security.md)
@@ -224,6 +232,31 @@ Procedure, function, and package source is returned as a bounded preview, not as
 ## Documentation Generation
 
 `ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. `ob_generate_onboarding_doc` generates onboarding documentation with core tables, relationships, query entry points, and business glossary hints. These tools do not include sample data values or execute the target query.
+
+## Internal Builds
+
+Release assets include a source archive for internal builds with an internal npm registry:
+
+```bash
+tar -xzf ob-mcp-1.0.0-source.tar.gz
+cd ob-mcp-1.0.0
+npm ci
+npm run build
+npm run start
+```
+
+The source archive excludes `node_modules` and `dist`. The internal npm registry must provide the dependencies locked by `package-lock.json`.
+
+## Release Assets
+
+| Asset | Purpose |
+| --- | --- |
+| `ob-mcp-1.0.0.tgz` | npm package. |
+| `ob-mcp-1.0.0-source.tar.gz` | Source archive for internal builds. |
+| `sbom.cdx.json` | CycloneDX SBOM. |
+| `oceanbase-mcp-1.0.0-amd64.tar.gz` | amd64 offline image. |
+| `oceanbase-mcp-1.0.0-arm64.tar.gz` | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.0.0` | GHCR image tag. |
 
 ## Resources
 
