@@ -643,6 +643,61 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_get_database_dictionary",
+    {
+      title: "Get Database Dictionary",
+      description: "Generate a bounded JSON or Markdown data dictionary from visible table and column metadata.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        tablePattern: z.string().optional(),
+        format: z.enum(["json", "markdown"]).optional().default("json"),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxColumnsPerTable: z.number().int().positive().max(100).optional()
+      }
+    },
+    async ({ profile, schema, tablePattern, format = "json", maxTables, maxColumnsPerTable }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
+        throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+      const tableLimit = Math.min(maxTables ?? 30, 200);
+      const columnLimit = Math.min(maxColumnsPerTable ?? 50, 100);
+      const rawTables = await withQuerySlot(selected, () =>
+        listSchemaMapTables(
+          selected.pool,
+          selected.config.compatibility,
+          effectiveSchema,
+          tablePattern,
+          tableLimit + 1,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
+      const dictionary = await buildDatabaseDictionary(selected, visibleTables, columnLimit);
+      const warnings = [];
+      if (rawTables.length > tableLimit) {
+        warnings.push(`Only the first ${tableLimit} visible tables are included. Narrow schema or tablePattern for a smaller dictionary.`);
+      }
+      if (dictionary.tables.some((table) => table.columnsTruncated)) {
+        warnings.push(`Some tables have more than ${columnLimit} visible columns; columns were truncated.`);
+      }
+      const output = {
+        format,
+        mode: selected.config.compatibility,
+        schema: effectiveSchema ?? null,
+        tablePattern: tablePattern ?? null,
+        tableCount: dictionary.tables.length,
+        dictionary,
+        markdown: format === "markdown" ? renderDatabaseDictionaryMarkdown(dictionary) : undefined,
+        warnings
+      };
+      return toLimitedResult(output, selected.config);
+    }
+  );
+
+  registerTool(
     "ob_explain",
     {
       title: "Explain Query",
@@ -2128,6 +2183,110 @@ function uniqueStrings(values: string[]): string[] {
     output.push(value);
   }
   return output;
+}
+
+async function buildDatabaseDictionary(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  tables: SchemaMapTable[],
+  maxColumnsPerTable: number
+) {
+  const dictionaryTables = [];
+  for (const tableInfo of tables) {
+    const schema = metadataSchema(selected.config, tableInfo.schema);
+    assertTableAccess(schema, tableInfo.table, policyContext(selected.config));
+    const columns = filterColumnMetadata(
+      await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, tableInfo.table, schema, selected.config.queryTimeoutMs)
+      ),
+      selected.config.policy
+    );
+    const constraints = filterColumnMetadata(
+      await withQuerySlot(selected, () =>
+        listConstraints(selected.pool, selected.config.compatibility, tableInfo.table, schema, selected.config.queryTimeoutMs)
+      ),
+      selected.config.policy
+    );
+    const compactColumns = compactSchemaColumns(columns, constraints, selected.config, schema, tableInfo.table);
+    dictionaryTables.push({
+      schema,
+      table: tableInfo.table,
+      comment: tableInfo.comment,
+      rowEstimate: tableInfo.rowEstimate,
+      primaryKeys: schemaMapPrimaryKeyColumns(constraints),
+      columns: compactColumns.slice(0, maxColumnsPerTable).map((column) => ({
+        name: column.name,
+        type: column.type,
+        nullable: column.nullable,
+        comment: column.comment,
+        roles: column.roles,
+        masked: column.masked
+      })),
+      columnsTruncated: compactColumns.length > maxColumnsPerTable
+    });
+  }
+  return {
+    generatedAt: new Date().toISOString(),
+    tables: dictionaryTables
+  };
+}
+
+function renderDatabaseDictionaryMarkdown(dictionary: {
+  generatedAt: string;
+  tables: Array<{
+    schema?: string;
+    table: string;
+    comment?: string;
+    rowEstimate?: { value: number; exact: false; source: string };
+    primaryKeys: string[];
+    columns: Array<{
+      name: string;
+      type?: string;
+      nullable?: boolean;
+      comment?: string;
+      roles: string[];
+      masked: boolean;
+    }>;
+    columnsTruncated: boolean;
+  }>;
+}): string {
+  const lines = [
+    "# OceanBase Data Dictionary",
+    "",
+    `Generated at: ${dictionary.generatedAt}`,
+    "",
+    `Tables: ${dictionary.tables.length}`,
+    ""
+  ];
+  for (const table of dictionary.tables) {
+    const title = `${table.schema ? `${table.schema}.` : ""}${table.table}`;
+    lines.push(`## ${title}`, "");
+    if (table.comment) {
+      lines.push(`Comment: ${table.comment}`, "");
+    }
+    if (table.rowEstimate) {
+      lines.push(`Row estimate: ${table.rowEstimate.value} (${table.rowEstimate.source})`, "");
+    }
+    if (table.primaryKeys.length > 0) {
+      lines.push(`Primary key: ${table.primaryKeys.join(", ")}`, "");
+    }
+    lines.push("| Column | Type | Nullable | Roles | Masked | Comment |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const column of table.columns) {
+      lines.push([
+        markdownCell(column.name),
+        markdownCell(column.type ?? ""),
+        column.nullable == null ? "" : column.nullable ? "YES" : "NO",
+        markdownCell(column.roles.join(", ")),
+        column.masked ? "YES" : "NO",
+        markdownCell(column.comment ?? "")
+      ].join(" | ").replace(/^/, "| ").replace(/$/, " |"));
+    }
+    if (table.columnsTruncated) {
+      lines.push("", `More columns exist for ${title}; output was truncated by maxColumnsPerTable.`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
 }
 
 async function findSchemaMapTableInfo(
