@@ -43,6 +43,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_profile_columns", since: "v0.5.1", group: "data_understanding", mode: "all", description: "Return bounded column profiles with sensitive values masked." },
   { name: "ob_prepare_query", since: "v1.0.0", group: "sql", mode: "all", description: "Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata." },
   { name: "ob_build_select", since: "v1.0.0", group: "sql", mode: "all", description: "Build parameterized read-only SELECT statements from validated structured input." },
+  { name: "ob_lint_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk." },
   { name: "ob_generate_query", since: "v0.5.0", group: "sql", mode: "all", description: "Generate read-only SQL templates from metadata." },
   { name: "ob_explain", since: "v0.3.0", group: "performance", mode: "all", description: "Run EXPLAIN for read-only SQL." },
   { name: "ob_analyze_query_plan", since: "v0.5.0", group: "performance", mode: "all", description: "Return evidence-based plan findings." },
