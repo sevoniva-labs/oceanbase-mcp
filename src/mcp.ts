@@ -56,6 +56,16 @@ import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "./runt
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "./sql.js";
 
 const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const buildSelectFilterSchema = z.object({
+  column: z.string().min(1),
+  operator: z.enum(["eq", "ne", "gt", "gte", "lt", "lte", "like", "in", "between", "is_null", "is_not_null"]),
+  value: z.union([sqlParamSchema, z.array(sqlParamSchema)]).optional()
+});
+const buildSelectOrderBySchema = z.object({
+  column: z.string().min(1),
+  direction: z.enum(["asc", "desc"]).optional(),
+  nulls: z.enum(["first", "last"]).optional()
+});
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
 const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
 const profileInput = {
@@ -1804,6 +1814,60 @@ export function createObMcpServer(
           ],
           executed: false,
           warnings: uniqueStrings(warnings)
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
+    "ob_build_select",
+    {
+      title: "Build SELECT",
+      description: "Build a parameterized read-only SELECT from validated table, columns, filters, ordering, and pagination without executing it.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().min(1),
+        columns: z.array(z.string().min(1)).min(1).max(100).optional(),
+        filters: z.array(buildSelectFilterSchema).max(50).optional(),
+        orderBy: z.array(buildSelectOrderBySchema).max(20).optional(),
+        pageSize: z.number().int().positive().max(10_000).optional(),
+        page: z.number().int().positive().max(100_000).optional()
+      }
+    },
+    async ({ profile, schema, table, columns, filters, orderBy, pageSize, page }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      const normalizedTable = selected.config.compatibility === "oracle" ? table.trim().toUpperCase() : table.trim();
+      assertTableAccess(effectiveSchema, normalizedTable, policyContext(selected.config));
+      const rows = filterColumnMetadata(
+        await withQuerySlot(selected, () =>
+          describeTable(selected.pool, selected.config.compatibility, normalizedTable, effectiveSchema, selected.config.queryTimeoutMs)
+        ),
+        selected.config.policy
+      );
+      const built = buildStructuredSelect(
+        selected.config,
+        effectiveSchema,
+        normalizedTable,
+        rows,
+        {
+          columns,
+          filters: filters ?? [],
+          orderBy: orderBy ?? [],
+          pageSize,
+          page
+        }
+      );
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: effectiveSchema ?? null,
+          table: normalizedTable,
+          ...built,
+          executed: false
         },
         selected.config
       );
@@ -3754,6 +3818,258 @@ function extractHanQueryTerms(value: string): string[] {
 function isUsefulQueryTerm(value: string): boolean {
   const normalized = normalizeGlossaryText(value);
   return normalized.length >= 2 && !QUERY_TERM_STOPWORDS.has(normalized);
+}
+
+type BuildSelectFilter = z.infer<typeof buildSelectFilterSchema>;
+type BuildSelectOrderBy = z.infer<typeof buildSelectOrderBySchema>;
+
+function buildStructuredSelect(
+  config: ObConfig,
+  schema: string | undefined,
+  table: string,
+  columnRows: unknown[],
+  input: {
+    columns?: string[];
+    filters: BuildSelectFilter[];
+    orderBy: BuildSelectOrderBy[];
+    pageSize?: number;
+    page?: number;
+  }
+) {
+  const warnings: string[] = [];
+  const columns = buildSelectColumnInfos(config, schema, table, columnRows);
+  if (columns.length === 0) {
+    throw new Error("No visible columns are available for this table under the active MCP policy.");
+  }
+  const selectedColumns = selectBuildColumns(config, columns, input.columns, warnings);
+  const where = buildSelectWhereClause(config, columns, input.filters);
+  const orderClause = buildSelectOrderClause(config, columns, input.orderBy, warnings);
+  const safePageSize = effectiveRowLimit(input.pageSize ?? Math.min(config.maxRows, 50), config);
+  const safePage = input.page ?? 1;
+  const offset = (safePage - 1) * safePageSize;
+  const tableRef = sqlQualifiedTable(config.compatibility, schema, table);
+  const selectList = selectedColumns.map((column) => sqlQuoteIdentifier(config.compatibility, column.name)).join(", ");
+  const baseSql = [
+    `SELECT ${selectList}`,
+    `FROM ${tableRef}`,
+    where.clause ? `WHERE ${where.clause}` : undefined,
+    orderClause
+  ].filter((part): part is string => Boolean(part)).join(" ");
+  const paginationSql = config.compatibility === "oracle"
+    ? `${baseSql} OFFSET ? ROWS FETCH NEXT ? ROWS ONLY`
+    : `${baseSql} LIMIT ? OFFSET ?`;
+  const paginationParams: SqlParam[] = config.compatibility === "oracle"
+    ? [offset, safePageSize]
+    : [safePageSize, offset];
+  const params = [...where.params, ...paginationParams];
+  const paramHints = [
+    ...where.paramHints,
+    ...(config.compatibility === "oracle"
+      ? [
+          { name: "offset", type: "number", value: offset, description: "Rows to skip." },
+          { name: "pageSize", type: "number", value: safePageSize, description: "Rows to return, capped by OB_MAX_ROWS." }
+        ]
+      : [
+          { name: "pageSize", type: "number", value: safePageSize, description: "Rows to return, capped by OB_MAX_ROWS." },
+          { name: "offset", type: "number", value: offset, description: "Rows to skip." }
+        ])
+  ];
+  const policy = explainGeneratedQuery(paginationSql, params.length, config);
+
+  return {
+    sql: paginationSql,
+    params,
+    paramHints,
+    columns: selectedColumns.map((column) => ({
+      name: column.name,
+      type: column.type,
+      nullable: column.nullable,
+      masked: column.masked
+    })),
+    filters: input.filters,
+    orderBy: input.orderBy,
+    pagination: {
+      page: safePage,
+      pageSize: safePageSize,
+      offset,
+      dialect: config.compatibility
+    },
+    policy,
+    warnings
+  };
+}
+
+function buildSelectColumnInfos(
+  config: ObConfig,
+  schema: string | undefined,
+  table: string,
+  rows: unknown[]
+): Array<{ name: string; type?: string; nullable?: boolean; comment?: string; masked: boolean }> {
+  return rows
+    .map((row) => profileColumnMetadata(row, config.compatibility))
+    .filter((column): column is { name: string; dataType?: string; nullable?: boolean; comment?: string } => Boolean(column))
+    .map((column) => ({
+      name: column.name,
+      type: column.dataType,
+      nullable: column.nullable,
+      comment: column.comment,
+      masked: shouldMaskColumnValue(column.name, config, schema, table)
+    }));
+}
+
+function selectBuildColumns(
+  config: ObConfig,
+  available: Array<{ name: string; type?: string; nullable?: boolean; comment?: string; masked: boolean }>,
+  requested: string[] | undefined,
+  warnings: string[]
+) {
+  if (requested && requested.length > 0) {
+    return requested.map((column) => getBuildColumn(config, available, column));
+  }
+  const unmasked = available.filter((column) => !column.masked).slice(0, 12);
+  const selected = unmasked.length > 0 ? unmasked : available.slice(0, 12);
+  if (available.length > selected.length) {
+    warnings.push(`Only the first ${selected.length} visible columns are included by default. Pass columns for a specific projection.`);
+  }
+  if (unmasked.length === 0 && selected.some((column) => column.masked)) {
+    warnings.push("Default projection contains masked columns because no unmasked visible columns were available.");
+  }
+  return selected;
+}
+
+function buildSelectWhereClause(
+  config: ObConfig,
+  available: Array<{ name: string; type?: string; nullable?: boolean; comment?: string; masked: boolean }>,
+  filters: BuildSelectFilter[]
+) {
+  const clauses: string[] = [];
+  const params: SqlParam[] = [];
+  const paramHints: Array<{ name: string; column: string; operator: string; value?: SqlParam; description: string }> = [];
+  for (const filter of filters) {
+    const column = getBuildColumn(config, available, filter.column);
+    const columnRef = sqlQuoteIdentifier(config.compatibility, column.name);
+    const operator = filter.operator;
+    if (operator === "is_null" || operator === "is_not_null") {
+      clauses.push(`${columnRef} IS ${operator === "is_null" ? "" : "NOT "}NULL`);
+      continue;
+    }
+    if (operator === "in") {
+      const values = assertSqlParamArray(filter.value, filter.column, operator);
+      if (values.length === 0 || values.length > 100) {
+        throw new Error("IN filters require between 1 and 100 values.");
+      }
+      clauses.push(`${columnRef} IN (${values.map(() => "?").join(", ")})`);
+      for (const value of values) {
+        params.push(value);
+        paramHints.push({ name: filter.column, column: column.name, operator, value, description: "IN-list value." });
+      }
+      continue;
+    }
+    if (operator === "between") {
+      const values = assertSqlParamArray(filter.value, filter.column, operator);
+      if (values.length !== 2) {
+        throw new Error("BETWEEN filters require exactly two values.");
+      }
+      clauses.push(`${columnRef} BETWEEN ? AND ?`);
+      for (const value of values) {
+        params.push(value);
+        paramHints.push({ name: filter.column, column: column.name, operator, value, description: "BETWEEN boundary value." });
+      }
+      continue;
+    }
+    const value = assertSingleSqlParam(filter.value, filter.column, operator);
+    clauses.push(`${columnRef} ${sqlOperator(operator)} ?`);
+    params.push(value);
+    paramHints.push({ name: filter.column, column: column.name, operator, value, description: "Filter value." });
+  }
+  return {
+    clause: clauses.join(" AND "),
+    params,
+    paramHints
+  };
+}
+
+function buildSelectOrderClause(
+  config: ObConfig,
+  available: Array<{ name: string; type?: string; nullable?: boolean; comment?: string; masked: boolean }>,
+  orderBy: BuildSelectOrderBy[],
+  warnings: string[]
+): string | undefined {
+  if (orderBy.length === 0) {
+    warnings.push("No ORDER BY was provided. Page order may be unstable.");
+    return undefined;
+  }
+  const items = orderBy.map((item) => {
+    const column = getBuildColumn(config, available, item.column);
+    const direction = item.direction ? ` ${item.direction.toUpperCase()}` : "";
+    const nulls = item.nulls ? ` NULLS ${item.nulls.toUpperCase()}` : "";
+    return `${sqlQuoteIdentifier(config.compatibility, column.name)}${direction}${nulls}`;
+  });
+  return `ORDER BY ${items.join(", ")}`;
+}
+
+function getBuildColumn(
+  config: ObConfig,
+  available: Array<{ name: string; type?: string; nullable?: boolean; comment?: string; masked: boolean }>,
+  column: string
+) {
+  const normalized = normalizeTableName(config.compatibility, column);
+  const match = available.find((item) => normalizeTableName(config.compatibility, item.name) === normalized);
+  if (!match) {
+    throw new Error(`Column "${column}" is not visible on this table under the active MCP policy.`);
+  }
+  return match;
+}
+
+function assertSingleSqlParam(value: unknown, column: string, operator: string): SqlParam {
+  if (Array.isArray(value)) {
+    throw new Error(`Filter "${column}" with operator "${operator}" expects a single value.`);
+  }
+  if (value === undefined) {
+    throw new Error(`Filter "${column}" with operator "${operator}" requires a value.`);
+  }
+  return value as SqlParam;
+}
+
+function assertSqlParamArray(value: unknown, column: string, operator: string): SqlParam[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`Filter "${column}" with operator "${operator}" expects an array value.`);
+  }
+  return value as SqlParam[];
+}
+
+function sqlOperator(operator: BuildSelectFilter["operator"]): string {
+  switch (operator) {
+    case "eq":
+      return "=";
+    case "ne":
+      return "<>";
+    case "gt":
+      return ">";
+    case "gte":
+      return ">=";
+    case "lt":
+      return "<";
+    case "lte":
+      return "<=";
+    case "like":
+      return "LIKE";
+    default:
+      throw new Error(`Unsupported filter operator "${operator}".`);
+  }
+}
+
+function sqlQualifiedTable(mode: ObConfig["compatibility"], schema: string | undefined, table: string): string {
+  return schema
+    ? `${sqlQuoteIdentifier(mode, mode === "oracle" ? schema.trim().toUpperCase() : schema.trim())}.${sqlQuoteIdentifier(mode, table)}`
+    : sqlQuoteIdentifier(mode, table);
+}
+
+function sqlQuoteIdentifier(mode: ObConfig["compatibility"], value: string): string {
+  if (mode === "oracle") {
+    return `"${value.replace(/"/g, "\"\"")}"`;
+  }
+  return `\`${value.replace(/`/g, "``")}\``;
 }
 
 async function attachRelatedTablesToCandidates(

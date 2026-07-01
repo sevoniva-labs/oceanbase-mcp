@@ -161,6 +161,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_table_stats` | v0.5.0 | Return table row estimates, counts, and storage statistics. |
 | `ob_profile_columns` | v0.5.1 | Return bounded-sample column profiles with sensitive values masked. |
 | `ob_prepare_query` | v1.0.0 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
+| `ob_build_select` | v1.0.0 | Build parameterized read-only SELECT statements from validated structured input. |
 | `ob_generate_query` | v0.5.0 | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | v0.5.0 | Generate Mermaid and JSON ER metadata from allowed tables. |
 | `ob_get_indexes` | v0.3.0 | Return table index metadata. |
