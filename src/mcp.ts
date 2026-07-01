@@ -7,6 +7,7 @@ import {
   describeTable,
   findRelatedTables,
   getTableDdlMetadata,
+  getTableStats,
   listConstraints,
   listIndexes,
   listPartitions,
@@ -565,6 +566,28 @@ export function createObMcpServer(
         },
         selected.config
       );
+    }
+  );
+
+  registerTool(
+    "ob_get_table_stats",
+    {
+      title: "Get Table Statistics",
+      description: "Return table-level optimizer statistics and metadata counts for an allowed OceanBase table.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional()
+      }
+    },
+    async ({ profile, table, schema }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const stats = await withQuerySlot(selected, () =>
+        getTableStats(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      return toLimitedResult(stats, selected.config);
     }
   );
 

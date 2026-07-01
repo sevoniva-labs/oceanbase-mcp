@@ -73,6 +73,30 @@ export interface RelatedTablesResult {
   relations: TableRelationship[];
 }
 
+export interface TableStats {
+  mode: CompatibilityMode;
+  schema?: string;
+  table: string;
+  rowEstimate?: {
+    value: number;
+    exact: false;
+    source: string;
+  };
+  counts: {
+    columns: number;
+    indexes: number;
+    constraints: number;
+    partitions: number;
+  };
+  storage?: {
+    dataBytes?: number;
+    indexBytes?: number;
+    blocks?: number;
+  };
+  analyzedAt?: string;
+  warnings: string[];
+}
+
 interface QueryOptions {
   sql: string;
   values?: SqlParam[];
@@ -424,6 +448,26 @@ export async function findRelatedTables(
   };
 }
 
+export async function getTableStats(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  table: string,
+  schema: string | undefined,
+  timeoutMs: number
+): Promise<TableStats> {
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  if (mode === "mysql" && !resolvedSchema) {
+    throw new Error("No MySQL database is selected. Pass the schema argument to ob_get_table_stats.");
+  }
+  const resolvedTable = mode === "oracle" ? table.trim().toUpperCase() : table.trim();
+  return mode === "oracle"
+    ? getOracleTableStats(pool, resolvedSchema, resolvedTable, timeoutMs)
+    : getMysqlTableStats(pool, resolvedSchema!, resolvedTable, timeoutMs);
+}
+
 export async function searchCatalog(
   pool: ObPool,
   mode: CompatibilityMode,
@@ -754,6 +798,185 @@ export async function sampleRows(
       ? `SELECT ${oracleTimeoutHint(timeoutMs)} * FROM (SELECT ${columnList} FROM ${tableName}) WHERE ROWNUM <= ${limit + 1}`
       : `SELECT ${columnList} FROM ${tableName} LIMIT ${limit + 1}`;
   return runQuery(pool, sql, [], limit, timeoutMs);
+}
+
+async function getMysqlTableStats(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<TableStats> {
+  const [tableRows] = await pool.query({
+    sql: `
+      SELECT table_schema, table_name, table_rows, data_length, index_length, update_time
+      FROM information_schema.tables
+      WHERE table_schema = ?
+        AND table_name = ?
+    `,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  const tableRecord = firstRecord(tableRows);
+  return {
+    mode: "mysql",
+    schema,
+    table,
+    rowEstimate: tableRecord && numberField(tableRecord, "table_rows", "TABLE_ROWS") != null
+      ? {
+          value: numberField(tableRecord, "table_rows", "TABLE_ROWS")!,
+          exact: false,
+          source: "information_schema.tables.table_rows"
+        }
+      : undefined,
+    counts: {
+      columns: await mysqlCount(pool, "information_schema.columns", "table_schema", "table_name", schema, table, timeoutMs),
+      indexes: await mysqlDistinctCount(
+        pool,
+        "information_schema.statistics",
+        "index_name",
+        "table_schema",
+        "table_name",
+        schema,
+        table,
+        timeoutMs
+      ),
+      constraints: await mysqlDistinctCount(
+        pool,
+        "information_schema.table_constraints",
+        "constraint_name",
+        "table_schema",
+        "table_name",
+        schema,
+        table,
+        timeoutMs
+      ),
+      partitions: await mysqlPartitionCount(pool, schema, table, timeoutMs)
+    },
+    storage: tableRecord
+      ? {
+          dataBytes: numberField(tableRecord, "data_length", "DATA_LENGTH"),
+          indexBytes: numberField(tableRecord, "index_length", "INDEX_LENGTH")
+        }
+      : undefined,
+    analyzedAt: stringField(tableRecord ?? {}, "update_time", "UPDATE_TIME"),
+    warnings: ["Row count is an optimizer estimate, not an exact COUNT(*)."]
+  };
+}
+
+async function getOracleTableStats(
+  pool: ObPool,
+  schema: string | undefined,
+  table: string,
+  timeoutMs: number
+): Promise<TableStats> {
+  const [tableRows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, num_rows, blocks, last_analyzed
+      FROM all_tables
+      WHERE (? IS NULL OR owner = ?)
+        AND table_name = ?
+    `,
+    values: [schema ?? null, schema ?? null, table],
+    timeout: timeoutMs
+  });
+  const tableRecord = firstRecord(tableRows);
+  const owner = stringField(tableRecord ?? {}, "owner", "OWNER") ?? schema;
+  return {
+    mode: "oracle",
+    schema: owner,
+    table,
+    rowEstimate: tableRecord && numberField(tableRecord, "num_rows", "NUM_ROWS") != null
+      ? {
+          value: numberField(tableRecord, "num_rows", "NUM_ROWS")!,
+          exact: false,
+          source: "all_tables.num_rows"
+        }
+      : undefined,
+    counts: {
+      columns: await oracleCount(pool, "all_tab_columns", "owner", "table_name", owner, table, timeoutMs),
+      indexes: await oracleCount(pool, "all_indexes", "owner", "table_name", owner, table, timeoutMs),
+      constraints: await oracleCount(pool, "all_constraints", "owner", "table_name", owner, table, timeoutMs),
+      partitions: await oracleCount(pool, "all_tab_partitions", "table_owner", "table_name", owner, table, timeoutMs)
+    },
+    storage: tableRecord
+      ? {
+          blocks: numberField(tableRecord, "blocks", "BLOCKS")
+        }
+      : undefined,
+    analyzedAt: stringField(tableRecord ?? {}, "last_analyzed", "LAST_ANALYZED"),
+    warnings: ["Row count is optimizer statistics, not an exact COUNT(*)."]
+  };
+}
+
+async function mysqlCount(
+  pool: ObPool,
+  source: string,
+  schemaColumn: string,
+  tableColumn: string,
+  schema: string,
+  table: string,
+  timeoutMs: number
+): Promise<number> {
+  const [rows] = await pool.query({
+    sql: `SELECT COUNT(*) AS item_count FROM ${source} WHERE ${schemaColumn} = ? AND ${tableColumn} = ?`,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return numberField(firstRecord(rows) ?? {}, "item_count", "ITEM_COUNT") ?? 0;
+}
+
+async function mysqlDistinctCount(
+  pool: ObPool,
+  source: string,
+  distinctColumn: string,
+  schemaColumn: string,
+  tableColumn: string,
+  schema: string,
+  table: string,
+  timeoutMs: number
+): Promise<number> {
+  const [rows] = await pool.query({
+    sql: `SELECT COUNT(DISTINCT ${distinctColumn}) AS item_count FROM ${source} WHERE ${schemaColumn} = ? AND ${tableColumn} = ?`,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return numberField(firstRecord(rows) ?? {}, "item_count", "ITEM_COUNT") ?? 0;
+}
+
+async function mysqlPartitionCount(pool: ObPool, schema: string, table: string, timeoutMs: number): Promise<number> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT COUNT(*) AS item_count
+      FROM information_schema.partitions
+      WHERE table_schema = ?
+        AND table_name = ?
+        AND partition_name IS NOT NULL
+    `,
+    values: [schema, table],
+    timeout: timeoutMs
+  });
+  return numberField(firstRecord(rows) ?? {}, "item_count", "ITEM_COUNT") ?? 0;
+}
+
+async function oracleCount(
+  pool: ObPool,
+  source: string,
+  schemaColumn: string,
+  tableColumn: string,
+  schema: string | undefined,
+  table: string,
+  timeoutMs: number
+): Promise<number> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS item_count
+      FROM ${source}
+      WHERE (? IS NULL OR ${schemaColumn} = ?)
+        AND ${tableColumn} = ?
+    `,
+    values: [schema ?? null, schema ?? null, table],
+    timeout: timeoutMs
+  });
+  return numberField(firstRecord(rows) ?? {}, "item_count", "ITEM_COUNT") ?? 0;
+}
+
+function firstRecord(rows: QueryResult): Record<string, unknown> | undefined {
+  return Array.isArray(rows) && rows[0] && typeof rows[0] === "object" ? (rows[0] as Record<string, unknown>) : undefined;
 }
 
 async function discoverRelationshipsForTable(

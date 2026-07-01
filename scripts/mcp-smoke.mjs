@@ -103,6 +103,10 @@ try {
     name: "ob_find_related_tables",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, limit: 20 }
   });
+  const tableStats = await send("tools/call", {
+    name: "ob_get_table_stats",
+    arguments: { schema: smokeSchema, table: smokeTable }
+  });
   const erDiagram = await send("tools/call", {
     name: "ob_generate_er_diagram",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, maxTables: 10 }
@@ -170,6 +174,7 @@ try {
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
   const relatedTablesResult = parseToolJson(relatedTables);
+  const tableStatsResult = parseToolJson(tableStats);
   const erDiagramResult = parseToolJson(erDiagram);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
@@ -188,6 +193,7 @@ try {
     "ob_get_table_schema",
     "ob_get_table_ddl",
     "ob_find_related_tables",
+    "ob_get_table_stats",
     "ob_generate_er_diagram",
     "ob_get_indexes",
     "ob_get_constraints",
@@ -210,6 +216,7 @@ try {
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
     relatedTablesOk: Array.isArray(relatedTablesResult.relations),
+    tableStatsOk: Number.isInteger(tableStatsResult.counts?.columns),
     erDiagramOk: typeof erDiagramResult.mermaid === "string" && erDiagramResult.mermaid.includes("erDiagram"),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
@@ -247,6 +254,7 @@ try {
     output.tableSchemaRows < 1 ||
     !output.tableDdlOk ||
     !output.relatedTablesOk ||
+    !output.tableStatsOk ||
     !output.erDiagramOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
