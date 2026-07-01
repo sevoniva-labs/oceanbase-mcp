@@ -46,6 +46,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_get_table_summary", since: "v1.0.0", group: "metadata", mode: "all", description: "Summarize one table with inferred purpose, key fields, relationships, and query entry points." },
   { name: "ob_compare_tables", since: "v1.0.0", group: "metadata", mode: "all", description: "Compare two visible tables by columns, indexes, constraints, and partitions." },
   { name: "ob_compare_schemas", since: "v1.0.0", group: "metadata", mode: "all", description: "Compare two visible schemas by table list and bounded table metadata differences." },
+  { name: "ob_capture_metadata_snapshot", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Capture bounded metadata-only snapshots for offline diff and impact analysis." },
   { name: "ob_get_table_schema", since: "v0.3.0", group: "metadata", mode: "all", description: "Return policy-filtered table schema." },
   { name: "ob_get_table_ddl", since: "v0.5.0", group: "metadata", mode: "all", description: "Return native or structured table DDL metadata." },
   { name: "ob_get_table_context", since: "v0.5.1", group: "metadata", mode: "all", description: "Return table context for SQL drafting and data inspection." },
