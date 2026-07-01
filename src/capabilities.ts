@@ -60,6 +60,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_build_select", since: "v1.0.0", group: "sql", mode: "all", description: "Build parameterized read-only SELECT statements from validated structured input." },
   { name: "ob_lint_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk." },
   { name: "ob_validate_sql_snippet", since: "v1.0.0", group: "sql", mode: "all", description: "Validate pasted SQL snippets for policy, dialect, pagination, risk, and visible table or column metadata." },
+  { name: "ob_explain_project_query", since: "v1.0.0", group: "sql", mode: "all", description: "Explain project SQL from text or a local file without executing it." },
   { name: "ob_rewrite_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Rewrite SELECT/WITH SQL into a safer read-only form without executing it." },
   { name: "ob_convert_sql_dialect", since: "v1.0.0", group: "sql", mode: "all", description: "Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations." },
   { name: "ob_explain_error", since: "v1.0.0", group: "sql", mode: "all", description: "Explain SQL errors with policy context and visible metadata hints without executing SQL." },

@@ -19,7 +19,7 @@ export interface ScanSqlOptions {
 export interface SqlScanFinding {
   file: string;
   line: number;
-  source: "sql_file" | "xml_mapper" | "code_string";
+  source: SqlScanSource;
   language: string;
   statementType: string;
   readOnlyCandidate: boolean;
@@ -50,17 +50,19 @@ export interface SqlScanReport {
   };
 }
 
+export type SqlScanSource = "sql_file" | "xml_mapper" | "code_string";
+
+export interface SqlScanSnippet {
+  line: number;
+  source: SqlScanSource;
+  sql: string;
+  dynamic: boolean;
+}
+
 interface CandidateFile {
   absPath: string;
   relPath: string;
   ext: string;
-}
-
-interface RawSnippet {
-  line: number;
-  source: SqlScanFinding["source"];
-  sql: string;
-  dynamic: boolean;
 }
 
 const DEFAULT_EXTENSIONS = [".sql", ".xml", ".ts", ".js", ".java"];
@@ -186,6 +188,10 @@ export function scanSqlProject(options: ScanSqlOptions = {}): SqlScanReport {
   };
 }
 
+export function extractSqlSnippetsFromContent(ext: string, content: string): SqlScanSnippet[] {
+  return extractSqlSnippets(normalizeExtension(ext), content);
+}
+
 export function renderScanSqlText(report: SqlScanReport): string {
   const lines = [
     `root: ${report.root}`,
@@ -275,7 +281,7 @@ function walkCandidatePath(
   files.push({ absPath, relPath, ext });
 }
 
-function extractSqlSnippets(ext: string, content: string): RawSnippet[] {
+function extractSqlSnippets(ext: string, content: string): SqlScanSnippet[] {
   if (ext === ".sql") {
     return splitSqlStatements(content).map((item) => ({
       line: lineNumberAt(content, item.index),
@@ -290,8 +296,8 @@ function extractSqlSnippets(ext: string, content: string): RawSnippet[] {
   return extractCodeStringSql(content);
 }
 
-function extractXmlMapperSql(content: string): RawSnippet[] {
-  const snippets: RawSnippet[] = [];
+function extractXmlMapperSql(content: string): SqlScanSnippet[] {
+  const snippets: SqlScanSnippet[] = [];
   const pattern = /<(select|insert|update|delete)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   for (const match of content.matchAll(pattern)) {
     const body = match[2] ?? "";
@@ -309,8 +315,8 @@ function extractXmlMapperSql(content: string): RawSnippet[] {
   return snippets;
 }
 
-function extractCodeStringSql(content: string): RawSnippet[] {
-  const snippets: RawSnippet[] = [];
+function extractCodeStringSql(content: string): SqlScanSnippet[] {
+  const snippets: SqlScanSnippet[] = [];
   const stringPattern = /`(?:\\[\s\S]|[^`\\])*`|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"/g;
   for (const match of content.matchAll(stringPattern)) {
     const raw = match[0] ?? "";
@@ -329,7 +335,7 @@ function extractCodeStringSql(content: string): RawSnippet[] {
   return snippets;
 }
 
-function classifySqlSnippet(file: CandidateFile, snippet: RawSnippet): SqlScanFinding | undefined {
+function classifySqlSnippet(file: CandidateFile, snippet: SqlScanSnippet): SqlScanFinding | undefined {
   const sql = normalizeSqlText(snippet.sql);
   if (!sql || !SQL_KEYWORD_PATTERN.test(sql)) {
     return undefined;

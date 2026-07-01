@@ -186,6 +186,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_build_select` | v1.0.0 | Build parameterized read-only SELECT statements from validated structured input. |
 | `ob_lint_sql` | v1.0.0 | Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk. |
 | `ob_validate_sql_snippet` | v1.0.0 | Validate pasted SQL snippets for read-only policy, dialect, pagination, risk, and visible table or column metadata. |
+| `ob_explain_project_query` | v1.0.0 | Explain project SQL tables, fields, filters, pagination, and risk without executing it. |
 | `ob_rewrite_sql` | v1.0.0 | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | `ob_convert_sql_dialect` | v1.0.0 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | `ob_explain_error` | v1.0.0 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |

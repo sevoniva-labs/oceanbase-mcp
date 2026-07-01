@@ -186,6 +186,7 @@ npm run start:http
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 |
 | `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 |
 | `ob_validate_sql_snippet` | v1.0.0 | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 |
+| `ob_explain_project_query` | v1.0.0 | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 |
 | `ob_rewrite_sql` | v1.0.0 | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 |
 | `ob_convert_sql_dialect` | v1.0.0 | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 |
 | `ob_explain_error` | v1.0.0 | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
