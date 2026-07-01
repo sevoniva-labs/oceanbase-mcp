@@ -173,6 +173,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_value_distribution` | v1.0.0 | Return bounded top-value distribution for one visible column. |
 | `ob_detect_time_columns` | v1.0.0 | Detect likely create, update, and business time columns from metadata. |
 | `ob_detect_dimension_columns` | v1.0.0 | Detect likely status, type, channel, region, and category columns from metadata. |
+| `ob_find_recent_rows` | v1.0.0 | Read recent rows using an explicit or detected time column with safe pagination. |
 | `ob_prepare_query` | v1.0.0 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
 | `ob_build_select` | v1.0.0 | Build parameterized read-only SELECT statements from validated structured input. |
 | `ob_lint_sql` | v1.0.0 | Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk. |

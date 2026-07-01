@@ -2374,6 +2374,85 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_find_recent_rows",
+    {
+      title: "Find Recent Rows",
+      description: "Read recent rows from an allowed table using an explicit or metadata-detected time column with safe pagination.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        timeColumn: z.string().min(1).optional(),
+        columns: z.array(z.string().min(1)).max(100).optional(),
+        page: z.number().int().positive().optional().default(1),
+        pageSize: z.number().int().positive().max(1_000).optional()
+      }
+    },
+    async ({ profile, table, schema, timeColumn, columns, page = 1, pageSize }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadataRows = await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const visibleColumns = filterColumnMetadata(metadataRows, selected.config.policy);
+      const resolvedTime = resolveRecentRowsTimeColumn(visibleColumns, selected.config, effectiveSchema, table, timeColumn);
+      const requestedColumns = recentRowsProjection(columns, resolvedTime.column);
+      const built = buildStructuredSelect(
+        selected.config,
+        effectiveSchema,
+        table,
+        visibleColumns,
+        {
+          columns: requestedColumns,
+          filters: [],
+          orderBy: [{ column: resolvedTime.column, direction: "desc" }],
+          pageSize,
+          page
+        }
+      );
+      const sqlParams = built.params as SqlParam[];
+      assertSqlInputLimits(built.sql, sqlParams, selected.config);
+      assertSqlPolicy(built.sql, policyContext(selected.config));
+      const output = await withQuerySlot(selected, () =>
+        runReadOnlyQuery(
+          selected.pool,
+          selected.config.compatibility,
+          built.sql,
+          sqlParams,
+          built.pagination.pageSize,
+          selected.config.queryTimeoutMs,
+          selected.config.enforceReadOnlyTransaction
+        )
+      );
+      assertOutputAllowed(output, selected.config.policy);
+      const visibleOutput = enrichQueryOutput(
+        output,
+        selected.config,
+        recentRowsWarnings(built.warnings, resolvedTime, output.truncated)
+      );
+      const result = {
+        mode: selected.config.compatibility,
+        schema: effectiveSchema,
+        table,
+        timeColumn: resolvedTime,
+        sql: built.sql,
+        paramCount: sqlParams.length,
+        page: built.pagination.page,
+        pageSize: built.pagination.pageSize,
+        columns: visibleOutput.columns,
+        rows: visibleOutput.rows,
+        markdownPreview: visibleOutput.markdownPreview,
+        truncated: visibleOutput.truncated,
+        warnings: visibleOutput.warnings,
+        executed: true
+      };
+      assertJsonByteLimit(result, selected.config.maxResultBytes);
+      return toResult(result);
+    }
+  );
+
+  registerTool(
     "ob_find_related_tables",
     {
       title: "Find Related Tables",
@@ -4236,6 +4315,69 @@ function dimensionKindFromName(name: string): string | undefined {
     return "category";
   }
   return undefined;
+}
+
+function resolveRecentRowsTimeColumn(
+  rows: unknown[],
+  config: ObConfig,
+  schema: string | undefined,
+  table: string,
+  requestedTimeColumn: string | undefined
+) {
+  if (requestedTimeColumn) {
+    const column = getBuildColumn(config, buildSelectColumnInfos(config, schema, table, rows), requestedTimeColumn);
+    const signal = timeColumnSignal(column.name, column.type, column.comment);
+    return {
+      column: column.name,
+      source: "explicit",
+      confidence: Math.max(signal.confidence, 0.5),
+      kind: signal.kind,
+      evidence: signal.evidence.length > 0 ? signal.evidence : ["Time column was supplied explicitly."],
+      dataType: column.type,
+      masked: column.masked
+    };
+  }
+  const candidates = detectTimeColumnCandidates(rows, config, schema, table, 5);
+  const best = candidates[0];
+  if (!best || best.confidence < 0.5) {
+    throw new Error("No reliable time column was detected. Pass timeColumn explicitly.");
+  }
+  return {
+    column: best.column,
+    source: "detected",
+    confidence: best.confidence,
+    kind: best.kind,
+    evidence: best.evidence,
+    dataType: best.dataType,
+    masked: best.masked,
+    alternatives: candidates.slice(1, 5).map((candidate) => ({
+      column: candidate.column,
+      kind: candidate.kind,
+      confidence: candidate.confidence,
+      evidence: candidate.evidence
+    }))
+  };
+}
+
+function recentRowsProjection(columns: string[] | undefined, timeColumn: string): string[] | undefined {
+  if (!columns || columns.length === 0) {
+    return undefined;
+  }
+  return uniqueStrings([timeColumn, ...columns]);
+}
+
+function recentRowsWarnings(baseWarnings: string[], timeColumn: { source: string; alternatives?: unknown[] }, truncated: boolean): string[] {
+  const warnings = new Set(baseWarnings);
+  if (timeColumn.source === "detected") {
+    warnings.add("Time column was selected from metadata detection; pass timeColumn explicitly if this is not the business time field.");
+  }
+  if (Array.isArray(timeColumn.alternatives) && timeColumn.alternatives.length > 0) {
+    warnings.add("Other time-like columns were found; review alternatives before using this query for business decisions.");
+  }
+  if (truncated) {
+    warnings.add("Rows were truncated by the configured row or output limit.");
+  }
+  return [...warnings];
 }
 
 function selectTableProfileColumns(
