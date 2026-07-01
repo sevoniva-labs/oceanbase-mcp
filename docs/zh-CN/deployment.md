@@ -200,7 +200,7 @@ Windows 仅作为本地开发和 OpenCode 连接场景。生产承载建议使�
 仓库内置：
 
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml)：构建、测试、审计、SBOM、npm pack dry-run、Docker build。
-- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
+- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、打包源码、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
 
 Release workflow 产物：
 
@@ -210,6 +210,7 @@ Release workflow 产物：
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
 - `ob-mcp-X.Y.Z.tgz`
+- `ob-mcp-X.Y.Z-source.tar.gz`
 - `sbom.cdx.json`
 
 手动发布：
@@ -226,3 +227,15 @@ gunzip oceanbase-mcp-0.5.1-amd64.tar.gz
 docker load -i oceanbase-mcp-0.5.1-amd64.tar
 docker run --rm oceanbase-mcp:0.5.1-amd64
 ```
+
+内网源码编译：
+
+```bash
+tar -xzf ob-mcp-0.5.1-source.tar.gz
+cd ob-mcp-0.5.1
+npm ci
+npm run build
+npm run start
+```
+
+源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。构建完成后如需精简生产目录，可执行 `npm prune --omit=dev`。

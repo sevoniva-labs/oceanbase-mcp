@@ -200,7 +200,7 @@ Use Windows for local development and OpenCode connectivity. For production host
 The repository includes:
 
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml): build, test, audit, SBOM, npm pack dry-run, Docker build.
-- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
+- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, archive source, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
 
 Release workflow outputs:
 
@@ -210,6 +210,7 @@ Release workflow outputs:
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
 - `ob-mcp-X.Y.Z.tgz`
+- `ob-mcp-X.Y.Z-source.tar.gz`
 - `sbom.cdx.json`
 
 Manual release:
@@ -226,3 +227,15 @@ gunzip oceanbase-mcp-0.5.1-amd64.tar.gz
 docker load -i oceanbase-mcp-0.5.1-amd64.tar
 docker run --rm oceanbase-mcp:0.5.1-amd64
 ```
+
+Build from the source archive in an internal network:
+
+```bash
+tar -xzf ob-mcp-0.5.1-source.tar.gz
+cd ob-mcp-0.5.1
+npm ci
+npm run build
+npm run start
+```
+
+The source archive does not include `node_modules` or `dist`. The internal npm repository must provide the dependencies locked in `package-lock.json`. After the build, run `npm prune --omit=dev` if the production directory needs to be reduced.
