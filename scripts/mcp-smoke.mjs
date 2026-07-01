@@ -226,6 +226,7 @@ try {
   const constraintRows = parseToolJson(constraints);
   const partitionRows = parseToolJson(partitions);
   const sampleOutput = parseToolJson(sample);
+  const blockedWriteResult = parseToolJson(blocked);
   const connectionResourceJson = JSON.parse(connectionResource.contents[0].text);
   const tableResourceRows = JSON.parse(tableResource.contents[0].text);
   const unqualifiedTableRows = parseToolJson(unqualifiedTables);
@@ -309,6 +310,7 @@ try {
       connectionResourceJson.profile === defaultProfile &&
       tableResourceRows.length === tableSchemaRows.length,
     blockedWrite: blocked.isError === true,
+    errorHintsOk: Array.isArray(blockedWriteResult.hints) && blockedWriteResult.hints.length > 0,
     blockedSelectStar: blockedStar.isError === true,
     blockedShow: blockedShow.isError === true,
     blockedExplainWrite: blockedExplainWrite.isError === true,
@@ -346,6 +348,7 @@ try {
     output.sampleRows < 1 ||
     !output.sampleMaskOk ||
     !output.blockedWrite ||
+    !output.errorHintsOk ||
     !output.blockedSelectStar ||
     !output.blockedShow ||
     !output.blockedExplainWrite ||

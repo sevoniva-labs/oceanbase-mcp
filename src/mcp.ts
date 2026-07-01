@@ -1947,7 +1947,7 @@ function toResult(data: unknown) {
   };
 }
 
-function toErrorResult(error: unknown) {
+function toErrorResult(error: unknown, args?: unknown) {
   return {
     isError: true,
     content: [
@@ -1955,7 +1955,8 @@ function toErrorResult(error: unknown) {
         type: "text" as const,
         text: jsonText({
           ok: false,
-          error: serializeError(error, { includeSqlMessage: false })
+          error: serializeError(error, { includeSqlMessage: false }),
+          hints: errorHints(error, args)
         })
       }
     ]
@@ -2022,11 +2023,47 @@ function safeTool<Args>(
         ...auditArgs(args)
       });
       logError(name, error);
-      return toErrorResult(error);
+      return toErrorResult(error, args);
     } finally {
       finish();
     }
   };
+}
+
+function errorHints(error: unknown, args: unknown): string[] {
+  const message = (error as Error)?.message ?? String(error);
+  const lower = message.toLowerCase();
+  const sql = args && typeof args === "object" && "sql" in args ? String((args as Record<string, unknown>).sql ?? "") : "";
+  const hints: string[] = [];
+
+  if (/unknown column|invalid identifier|ora-00904|1054/.test(lower)) {
+    hints.push("Column was not found. Search visible metadata with ob_search_catalog, then read table details with ob_get_table_context.");
+    hints.push("In Oracle mode, check object and column casing. Unquoted identifiers are usually uppercase.");
+  }
+  if (/unknown table|table .* doesn't exist|ora-00942|1146/.test(lower)) {
+    hints.push("Table was not found or is not visible. Search visible schemas and tables with ob_search_catalog or ob_list_tables.");
+    hints.push("Check whether the SQL uses the configured schema and whether that schema is allowed by policy.");
+  }
+  if (/not allowed by the configured oceanbase mcp access policy|not allowed for token|blocked by ob_denied_columns|select \*/.test(lower)) {
+    hints.push("The request was blocked by MCP policy. Use ob_policy_explain or ob_query_preview to inspect the failing check.");
+    hints.push("Use explicit columns and allowed schema-qualified tables.");
+  }
+  if (/only read-only sql|write\/control keyword|multiple sql statements|side-effect|explain analyze|nextval/.test(lower)) {
+    hints.push("Only read-only SELECT, WITH, and safe EXPLAIN statements are allowed.");
+    hints.push("Remove writes, DDL, DCL, procedure calls, sequence NEXTVAL, locks, sleeps, file functions, and extra statements.");
+  }
+  if (/limit|offset|fetch|rownum|orderby must contain|paged query input/.test(lower)) {
+    hints.push("For ob_query_page, pass SQL without existing LIMIT, OFFSET/FETCH, or ROWNUM pagination.");
+    hints.push("Use orderBy only with simple identifiers, optional ASC/DESC, and comma separators.");
+  }
+  if (/access denied|permission|privilege|ora-01031|1044|1142/.test(lower)) {
+    hints.push("The database account may not have the required read or metadata privilege. Run ob_verify_permissions and check grants.");
+  }
+  if (sql && !/\border\s+by\b/i.test(sql) && /ob_query_page|paged/i.test(lower)) {
+    hints.push("Add a stable ORDER BY for repeatable pagination.");
+  }
+
+  return [...new Set(hints)];
 }
 
 function auditArgs(args: unknown): Record<string, unknown> {
