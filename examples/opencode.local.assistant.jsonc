@@ -1,0 +1,22 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  // 使用仓库内 .opencode/agents/oceanbase-developer.md 和 .opencode/skills/oceanbase-query/SKILL.md。
+  "default_agent": "oceanbase-developer",
+  "mcp": {
+    "oceanbase": {
+      "type": "local",
+      "command": ["node", "dist/index.js"],
+      "enabled": true,
+      "environment": {
+        "OB_HOST": "127.0.0.1",
+        "OB_PORT": "2883",
+        "OB_USER": "ob_user@ob_mysql#obcluster",
+        "OB_PASSWORD": "ob_password",
+        "OB_COMPATIBILITY": "mysql",
+        "OB_ALLOWED_SCHEMAS": "biz_test",
+        "OB_BUSINESS_GLOSSARY_FILE": "examples/business-glossary.example.json",
+        "OB_ALLOW_SELECT_STAR": "false"
+      }
+    }
+  }
+}
