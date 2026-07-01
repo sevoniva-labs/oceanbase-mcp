@@ -186,6 +186,7 @@ npm run start:http
 | v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
 | v1.0.0 | `ob_generate_schema_doc` | 生成 schema 级 Markdown 或 JSON 文档，带表和字段数量限制。 |
 | v1.0.0 | `ob_generate_table_doc` | 生成单表 Markdown 或 JSON 文档，不包含敏感样例值。 |
+| v1.0.0 | `ob_get_cache_status` | 返回当前 profile 的元数据缓存状态，不暴露缓存内容。 |
 | v1.0.0 | `ob_get_database_dictionary` | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 |
 | v1.0.0 | `ob_get_query_session` | 读取查询上下文，不暴露已存参数值。 |
 | v1.0.0 | `ob_get_schema_map` | 返回紧凑的 schema、表、关键字段和关系摘要。 |

@@ -186,6 +186,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_generate_query_examples` | Generate common read-only query examples from table context without executing SQL. |
 | v1.0.0 | `ob_generate_schema_doc` | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
 | v1.0.0 | `ob_generate_table_doc` | Generate Markdown or JSON documentation for one table without sample values. |
+| v1.0.0 | `ob_get_cache_status` | Return profile-scoped metadata cache status without exposing cached content. |
 | v1.0.0 | `ob_get_database_dictionary` | Generate bounded JSON or Markdown data dictionaries from visible metadata. |
 | v1.0.0 | `ob_get_query_session` | Read a query session context without exposing stored parameter values. |
 | v1.0.0 | `ob_get_schema_map` | Return compact schema, table, key-field, and relationship summaries. |

@@ -345,6 +345,22 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_get_cache_status",
+    {
+      title: "Get Metadata Cache Status",
+      description: "Return profile-scoped metadata cache settings and counters without exposing cached content.",
+      inputSchema: profileInput
+    },
+    async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      return toLimitedResult(
+        metadataCacheStatus(selected),
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_verify_permissions",
     {
       title: "Verify Database Permissions",
@@ -3955,6 +3971,42 @@ function refreshMetadataCache(
     warnings: [
       "Only in-memory metadata cache entries for the selected profile are cleared.",
       "Query results and sample rows are not cached by the metadata cache."
+    ]
+  };
+}
+
+function metadataCacheStatus(selected: ReturnType<typeof selectRuntimeProfile>) {
+  const now = Date.now();
+  const namespaceCounts = new Map<string, number>();
+  let expiredEntries = 0;
+  for (const [key, entry] of selected.metadataCache.entries) {
+    const parsed = parseMetadataCacheKey(key);
+    const namespace = parsed && typeof parsed[0] === "string" ? parsed[0] : "unknown";
+    namespaceCounts.set(namespace, (namespaceCounts.get(namespace) ?? 0) + 1);
+    if (entry.expiresAt <= now) {
+      expiredEntries += 1;
+    }
+  }
+  return {
+    profile: selected.profile,
+    mode: selected.config.compatibility,
+    enabled: selected.config.metadataCacheEnabled,
+    ttlMs: selected.config.metadataCacheTtlMs,
+    maxEntries: selected.config.metadataCacheMaxEntries,
+    entries: selected.metadataCache.entries.size,
+    expiredEntries,
+    namespaces: [...namespaceCounts.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([namespace, count]) => ({ namespace, count })),
+    stats: {
+      hits: selected.metadataCache.hits,
+      misses: selected.metadataCache.misses,
+      evictions: selected.metadataCache.evictions
+    },
+    executed: false,
+    warnings: [
+      "Cache status reports counts only; cached metadata content is not returned.",
+      "The metadata cache is in-memory and is cleared when the MCP process restarts."
     ]
   };
 }

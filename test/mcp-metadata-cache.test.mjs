@@ -89,6 +89,28 @@ test("ob_refresh_metadata_cache clears scoped metadata entries", async () => {
   assert.equal(calls.constraints, 2);
 });
 
+test("ob_get_cache_status returns counters without cached content", async () => {
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "biz_test",
+    OB_METADATA_CACHE_TTL_MS: "60000"
+  });
+  const server = createObMcpServer(runtime(config, mysqlPool({ tables: 0, columns: 0, constraints: 0 })));
+
+  await server.executeToolHandler(server._registeredTools.ob_generate_schema_doc, {
+    schema: "biz_test",
+    format: "json",
+    includeRelationships: false,
+    maxTables: 1
+  }, {});
+  const status = JSON.parse((await server.executeToolHandler(server._registeredTools.ob_get_cache_status, {}, {})).content[0].text);
+
+  assert.equal(status.executed, false);
+  assert.equal(status.enabled, true);
+  assert(status.entries >= 3);
+  assert(status.namespaces.some((item) => item.namespace === "schema_map_tables"));
+  assert(!JSON.stringify(status.namespaces).includes("orders"));
+});
+
 function runtime(config, pool) {
   return {
     defaultProfile: "default",

@@ -34,6 +34,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_list_schemas", since: "v0.3.0", group: "metadata", mode: "all", description: "List visible schemas or databases." },
   { name: "ob_list_tables", since: "v0.3.0", group: "metadata", mode: "all", description: "List visible tables." },
   { name: "ob_describe_table", since: "v0.3.0", group: "metadata", mode: "all", description: "Return column metadata." },
+  { name: "ob_get_cache_status", since: "v1.0.0", group: "configuration", mode: "all", description: "Return profile-scoped metadata cache status without exposing cached content." },
   { name: "ob_get_schema_map", since: "v1.0.0", group: "metadata", mode: "all", description: "Return compact schema, table, key-field, and relationship summaries." },
   { name: "ob_get_database_dictionary", since: "v1.0.0", group: "metadata", mode: "all", description: "Generate bounded JSON or Markdown data dictionaries from visible metadata." },
   { name: "ob_generate_data_dictionary", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON, Markdown, or simple HTML data dictionaries from visible metadata." },

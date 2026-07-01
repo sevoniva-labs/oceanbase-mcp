@@ -157,6 +157,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 | Generate common read-only query examples from table context without executing SQL. |
 | v1.0.0 | `ob_generate_schema_doc` | 生成 schema 级 Markdown 或 JSON 文档，带表和字段数量限制。 | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
 | v1.0.0 | `ob_generate_table_doc` | 生成单表 Markdown 或 JSON 文档，不包含敏感样例值。 | Generate Markdown or JSON documentation for one table without sample values. |
+| v1.0.0 | `ob_get_cache_status` | 返回当前 profile 的元数据缓存状态，不暴露缓存内容。 | Return profile-scoped metadata cache status without exposing cached content. |
 | v1.0.0 | `ob_get_database_dictionary` | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 | Generate bounded JSON or Markdown data dictionaries from visible metadata. |
 | v1.0.0 | `ob_get_query_session` | 读取查询上下文，不暴露已存参数值。 | Read a query session context without exposing stored parameter values. |
 | v1.0.0 | `ob_get_schema_map` | 返回紧凑的 schema、表、关键字段和关系摘要。 | Return compact schema, table, key-field, and relationship summaries. |
