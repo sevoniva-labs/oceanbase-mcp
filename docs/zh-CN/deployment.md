@@ -216,13 +216,13 @@ Release workflow 产物：
 
 1. 打开 GitHub Actions。
 2. 运行 `Release`。
-3. 输入版本号，例如 `v0.4.0`。
+3. 输入版本号，例如 `v0.5.0`。
 4. workflow 会创建 tag、发布镜像并上传 Release 附件。
 
 加载离线镜像：
 
 ```bash
-gunzip oceanbase-mcp-0.4.0-amd64.tar.gz
-docker load -i oceanbase-mcp-0.4.0-amd64.tar
-docker run --rm oceanbase-mcp:0.4.0-amd64
+gunzip oceanbase-mcp-0.5.0-amd64.tar.gz
+docker load -i oceanbase-mcp-0.5.0-amd64.tar
+docker run --rm oceanbase-mcp:0.5.0-amd64
 ```

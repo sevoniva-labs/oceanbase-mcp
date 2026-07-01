@@ -26,6 +26,10 @@ flowchart TB
 | `src/sql.ts` | SQL 只读检查和行数限制包装。 |
 | `src/policy.ts` | schema/table/column 策略。 |
 | `src/db.ts` | OceanBase 查询和元数据访问。 |
+| `src/er.ts` | ER 图结构和 Mermaid 输出。 |
+| `src/plan-analysis.ts` | 执行计划风险识别。 |
+| `src/query-generation.ts` | 只读 SQL 模板生成。 |
+| `src/performance-report.ts` | 性能建议报告汇总。 |
 | `src/config.ts` | 环境变量和 profile 加载。 |
 | `src/diagnostics.ts` | 配置和部署诊断。 |
 | `src/ip-policy.ts` | 来源 IP/CIDR allowlist。 |
@@ -74,6 +78,8 @@ OB_PROFILE_PROD_ALLOWED_SCHEMAS=app_schema
 MySQL 模式使用 `information_schema`。
 
 Oracle 模式优先使用当前 schema 的 `USER_*` 视图；跨 schema 元数据才回退到 `ALL_*` 视图。这样本地 Oracle tenant 响应更稳定，同时保留显式 schema 访问能力。
+
+DDL、ER、Oracle 对象元数据、SQL 模板和性能报告都走同一套 profile、访问策略、并发、超时、输出大小和审计链路。SQL 模板只生成文本；性能报告只执行只读 `EXPLAIN`。
 
 ## 可观测性
 

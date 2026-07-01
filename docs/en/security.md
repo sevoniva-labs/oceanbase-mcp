@@ -22,6 +22,8 @@ Use both layers:
 | `SELECT *` block | Enabled by default. |
 | System schema denial | Enabled by default. |
 | Sensitive column denial | Enabled by default. |
+| Field-level sample masking | `OB_MASKED_COLUMNS` supports exact column and wildcard rules. |
+| Developer assistant tools | DDL, ER, SQL template, and performance-report tools only read metadata or run read-only `EXPLAIN`. |
 | Read-only transaction | Enabled by default. |
 | Row and response-size caps | Enabled by default and cannot be raised by clients. |
 | Concurrency cap | Enabled per profile by default. |
@@ -56,6 +58,7 @@ Only enable proxy trust when the MCP server cannot be reached directly by untrus
 - Set `OB_MCP_AUTH_TOKEN_FILE` instead of inline tokens.
 - Set `OB_PASSWORD_FILE` instead of inline database passwords.
 - Use `OB_ALLOWED_SCHEMAS` or schema-qualified `OB_ALLOWED_TABLES`.
+- Set `OB_MASKED_COLUMNS` when sample output needs field-level masking.
 - Keep `OB_ALLOW_SELECT_STAR=false`.
 - Keep `OB_ENFORCE_READ_ONLY_TX=true`.
 - Set `OB_MAX_ROWS`, `OB_MAX_RESULT_BYTES`, and `OB_MAX_CONCURRENT_QUERIES`.
@@ -68,6 +71,7 @@ Only enable proxy trust when the MCP server cannot be reached directly by untrus
 - Write SQL execution.
 - Schema changes.
 - Stored procedure calls.
+- Directly executable DDL or index-change recommendations.
 - File import/export functions.
 - `SHOW` and `DESCRIBE` through `ob_query`; use metadata tools instead.
 - Disabling MCP read-only mode.

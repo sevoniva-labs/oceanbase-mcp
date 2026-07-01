@@ -22,6 +22,8 @@ OceanBase MCP 是 MCP client 与 OceanBase 之间的只读网关。它保护数�
 | `SELECT *` 拦截 | 默认启用。 |
 | 系统 schema 拒绝 | 默认启用。 |
 | 敏感列拒绝 | 默认启用。 |
+| 字段级样例脱敏 | `OB_MASKED_COLUMNS` 支持精确列和通配规则。 |
+| 开发辅助工具 | DDL、ER、SQL 模板、性能报告等工具只读取元数据或执行只读 `EXPLAIN`。 |
 | 只读事务 | 默认启用。 |
 | 行数和返回大小上限 | 默认启用，且客户端不能放大。 |
 | 并发上限 | 每个 profile 默认启用。 |
@@ -56,6 +58,7 @@ OB_MCP_TRUST_PROXY=1
 - 使用 `OB_MCP_AUTH_TOKEN_FILE`，不要内联 token。
 - 使用 `OB_PASSWORD_FILE`，不要内联数据库密码。
 - 设置 `OB_ALLOWED_SCHEMAS` 或 schema-qualified `OB_ALLOWED_TABLES`。
+- 按需设置 `OB_MASKED_COLUMNS`，对样例输出做字段级脱敏。
 - 保持 `OB_ALLOW_SELECT_STAR=false`。
 - 保持 `OB_ENFORCE_READ_ONLY_TX=true`。
 - 设置 `OB_MAX_ROWS`、`OB_MAX_RESULT_BYTES` 和 `OB_MAX_CONCURRENT_QUERIES`。
@@ -68,6 +71,7 @@ OB_MCP_TRUST_PROXY=1
 - 写 SQL 执行。
 - schema 变更。
 - 存储过程调用。
+- 输出可直接执行的 DDL 或索引变更建议。
 - 文件导入/导出函数。
 - 通过 `ob_query` 执行 `SHOW` 和 `DESCRIBE`；请使用元数据工具。
 - 关闭 MCP 只读模式。

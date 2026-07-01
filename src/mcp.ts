@@ -72,7 +72,7 @@ export function createObMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "ob-mcp",
-    version: "0.4.0"
+    version: "0.5.0"
   });
   const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) =>
     safeTool(name, handler, context);

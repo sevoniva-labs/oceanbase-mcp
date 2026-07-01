@@ -2,11 +2,11 @@ FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb
 
 WORKDIR /app
 COPY package.json package-lock.json tsconfig.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts --no-audit --fund=false
 
 COPY src ./src
 RUN npm run build
-RUN npm prune --omit=dev
+RUN npm prune --omit=dev --no-audit --fund=false
 
 FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2 AS runtime
 

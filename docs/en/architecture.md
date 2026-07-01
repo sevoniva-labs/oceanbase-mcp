@@ -26,6 +26,10 @@ flowchart TB
 | `src/sql.ts` | SQL read-only checks and row-limit wrapping. |
 | `src/policy.ts` | Schema/table/column policy. |
 | `src/db.ts` | OceanBase queries and metadata access. |
+| `src/er.ts` | ER diagram structure and Mermaid output. |
+| `src/plan-analysis.ts` | Query-plan risk detection. |
+| `src/query-generation.ts` | Read-only SQL template generation. |
+| `src/performance-report.ts` | Performance advisory report assembly. |
 | `src/config.ts` | Environment and profile loading. |
 | `src/diagnostics.ts` | Config and deployment diagnostics. |
 | `src/ip-policy.ts` | Source IP/CIDR allowlist. |
@@ -74,6 +78,8 @@ Tool calls can pass `{ "profile": "prod" }`.
 MySQL mode uses `information_schema`.
 
 Oracle mode uses current-schema `USER_*` views when possible and falls back to `ALL_*` views for cross-schema metadata. This keeps local Oracle tenants responsive while still supporting explicit schema access.
+
+DDL, ER, Oracle object metadata, SQL templates, and performance reports all use the same profile, access policy, concurrency, timeout, response-size, and audit path. SQL templates only generate text; performance reports only run read-only `EXPLAIN`.
 
 ## Observability
 
