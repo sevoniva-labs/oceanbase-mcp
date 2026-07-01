@@ -89,6 +89,8 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_explain` | Run `EXPLAIN` for read-only SQL. |
 | `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
 | `ob_search_catalog` | Search schemas, tables, and columns. |
+| `ob_list_objects` | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
+| `ob_get_object_metadata` | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |
 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |

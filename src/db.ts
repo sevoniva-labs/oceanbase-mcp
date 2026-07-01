@@ -97,11 +97,55 @@ export interface TableStats {
   warnings: string[];
 }
 
+export type OracleObjectType = "VIEW" | "SEQUENCE" | "SYNONYM" | "PROCEDURE" | "FUNCTION" | "PACKAGE" | "PACKAGE BODY";
+
+export interface ObjectListResult {
+  mode: CompatibilityMode;
+  schema?: string;
+  objectTypes: OracleObjectType[];
+  objects: unknown[];
+  warnings: string[];
+}
+
+export interface ObjectSourcePreview {
+  lines: Array<{ line: number; text: string }>;
+  text: string;
+  returnedLines: number;
+  truncated: boolean;
+  maxLines: number;
+  maxChars: number;
+}
+
+export interface ObjectMetadataResult {
+  mode: CompatibilityMode;
+  schema?: string;
+  objectName: string;
+  objectType: OracleObjectType;
+  summary?: Record<string, unknown>;
+  details?: Record<string, unknown>;
+  columns?: unknown[];
+  arguments?: unknown[];
+  sourcePreview?: ObjectSourcePreview;
+  warnings: string[];
+}
+
 interface QueryOptions {
   sql: string;
   values?: SqlParam[];
   timeout?: number;
 }
+
+const ORACLE_OBJECT_TYPES: OracleObjectType[] = [
+  "VIEW",
+  "SEQUENCE",
+  "SYNONYM",
+  "PROCEDURE",
+  "FUNCTION",
+  "PACKAGE",
+  "PACKAGE BODY"
+];
+const ORACLE_SOURCE_MAX_LINES = 200;
+const ORACLE_SOURCE_MAX_CHARS = 20_000;
 
 export function createObPool(config: ObConfig): ObPool {
   return mysql.createPool({
@@ -466,6 +510,136 @@ export async function getTableStats(
   return mode === "oracle"
     ? getOracleTableStats(pool, resolvedSchema, resolvedTable, timeoutMs)
     : getMysqlTableStats(pool, resolvedSchema!, resolvedTable, timeoutMs);
+}
+
+export function normalizeOracleObjectType(value: string): OracleObjectType {
+  const normalized = value.trim().replace(/_/g, " ").toUpperCase();
+  if (ORACLE_OBJECT_TYPES.includes(normalized as OracleObjectType)) {
+    return normalized as OracleObjectType;
+  }
+  throw new Error(`Unsupported Oracle object type "${value}".`);
+}
+
+export async function listObjects(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  query: string | undefined,
+  objectTypes: string[] | undefined,
+  limit: number,
+  timeoutMs: number
+): Promise<ObjectListResult> {
+  const requestedTypes =
+    objectTypes && objectTypes.length > 0
+      ? [...new Set(objectTypes.map((type) => normalizeOracleObjectType(type)))]
+      : ORACLE_OBJECT_TYPES;
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+
+  if (mode !== "oracle") {
+    return {
+      mode,
+      schema: resolvedSchema,
+      objectTypes: requestedTypes,
+      objects: [],
+      warnings: ["Oracle object metadata is available only in Oracle compatibility mode."]
+    };
+  }
+
+  const pattern = query?.trim() ? `%${query.trim()}%` : null;
+  const typePlaceholders = requestedTypes.map(() => "?").join(", ");
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} *
+      FROM (
+        SELECT owner, object_name, object_type, status, created, last_ddl_time
+        FROM all_objects
+        WHERE (? IS NULL OR owner = ?)
+          AND object_type IN (${typePlaceholders})
+          AND (? IS NULL OR LOWER(object_name) LIKE LOWER(?))
+        ORDER BY owner, object_type, object_name
+      )
+      WHERE ROWNUM <= ?
+    `,
+    values: [resolvedSchema ?? null, resolvedSchema ?? null, ...requestedTypes, pattern, pattern, limit],
+    timeout: timeoutMs
+  });
+
+  return {
+    mode,
+    schema: resolvedSchema,
+    objectTypes: requestedTypes,
+    objects: rows as unknown[],
+    warnings: []
+  };
+}
+
+export async function getObjectMetadata(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  objectName: string,
+  objectType: string,
+  schema: string | undefined,
+  timeoutMs: number
+): Promise<ObjectMetadataResult> {
+  const normalizedType = normalizeOracleObjectType(objectType);
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  const normalizedName = mode === "oracle" ? objectName.trim().toUpperCase() : objectName.trim();
+
+  if (mode !== "oracle") {
+    return {
+      mode,
+      schema: resolvedSchema,
+      objectName: normalizedName,
+      objectType: normalizedType,
+      warnings: ["Oracle object metadata is available only in Oracle compatibility mode."]
+    };
+  }
+
+  const summary = await getOracleObjectSummary(pool, resolvedSchema, normalizedName, normalizedType, timeoutMs);
+  if (!summary) {
+    throw new Error(`Oracle object "${resolvedSchema ? `${resolvedSchema}.` : ""}${normalizedName}" of type "${normalizedType}" was not found.`);
+  }
+
+  const owner = stringField(summary, "owner", "OWNER") ?? resolvedSchema;
+  const result: ObjectMetadataResult = {
+    mode,
+    schema: owner,
+    objectName: normalizedName,
+    objectType: normalizedType,
+    summary,
+    warnings: []
+  };
+
+  if (normalizedType === "VIEW") {
+    const view = await getOracleViewMetadata(pool, owner, normalizedName, timeoutMs);
+    result.details = view.details;
+    result.sourcePreview = view.sourcePreview;
+    result.columns = await describeTable(pool, mode, normalizedName, owner, timeoutMs);
+    return result;
+  }
+
+  if (normalizedType === "SEQUENCE") {
+    result.details = await getOracleSequenceMetadata(pool, owner, normalizedName, timeoutMs);
+    return result;
+  }
+
+  if (normalizedType === "SYNONYM") {
+    result.details = await getOracleSynonymMetadata(pool, owner, normalizedName, timeoutMs);
+    return result;
+  }
+
+  result.arguments = await getOracleArguments(pool, owner, normalizedName, normalizedType, timeoutMs);
+  result.sourcePreview = await getOracleSourcePreview(pool, owner, normalizedName, normalizedType, timeoutMs);
+  if (!result.sourcePreview) {
+    result.warnings.push("Source preview is not available for this object from all_source.");
+  }
+  return result;
 }
 
 export async function searchCatalog(
@@ -973,6 +1147,191 @@ async function oracleCount(
     timeout: timeoutMs
   });
   return numberField(firstRecord(rows) ?? {}, "item_count", "ITEM_COUNT") ?? 0;
+}
+
+async function getOracleObjectSummary(
+  pool: ObPool,
+  schema: string | undefined,
+  objectName: string,
+  objectType: OracleObjectType,
+  timeoutMs: number
+): Promise<Record<string, unknown> | undefined> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} owner, object_name, object_type, status, created, last_ddl_time
+      FROM all_objects
+      WHERE (? IS NULL OR owner = ?)
+        AND object_name = ?
+        AND object_type = ?
+    `,
+    values: [schema ?? null, schema ?? null, objectName, objectType],
+    timeout: timeoutMs
+  });
+  return firstRecord(rows);
+}
+
+async function getOracleViewMetadata(
+  pool: ObPool,
+  schema: string | undefined,
+  viewName: string,
+  timeoutMs: number
+): Promise<{ details?: Record<string, unknown>; sourcePreview?: ObjectSourcePreview }> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} owner, view_name, text_length, text
+      FROM all_views
+      WHERE (? IS NULL OR owner = ?)
+        AND view_name = ?
+    `,
+    values: [schema ?? null, schema ?? null, viewName],
+    timeout: timeoutMs
+  });
+  const record = firstRecord(rows);
+  if (!record) {
+    return {};
+  }
+  const { text, TEXT, ...details } = record;
+  const sourceText = typeof text === "string" ? text : typeof TEXT === "string" ? TEXT : undefined;
+  return {
+    details,
+    sourcePreview: sourceText ? sourcePreviewFromText(sourceText) : undefined
+  };
+}
+
+async function getOracleSequenceMetadata(
+  pool: ObPool,
+  schema: string | undefined,
+  sequenceName: string,
+  timeoutMs: number
+): Promise<Record<string, unknown> | undefined> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} sequence_owner, sequence_name, min_value, max_value, increment_by,
+             cycle_flag, order_flag, cache_size, last_number
+      FROM all_sequences
+      WHERE (? IS NULL OR sequence_owner = ?)
+        AND sequence_name = ?
+    `,
+    values: [schema ?? null, schema ?? null, sequenceName],
+    timeout: timeoutMs
+  });
+  return firstRecord(rows);
+}
+
+async function getOracleSynonymMetadata(
+  pool: ObPool,
+  schema: string | undefined,
+  synonymName: string,
+  timeoutMs: number
+): Promise<Record<string, unknown> | undefined> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} owner, synonym_name, table_owner, table_name, db_link
+      FROM all_synonyms
+      WHERE (? IS NULL OR owner = ?)
+        AND synonym_name = ?
+    `,
+    values: [schema ?? null, schema ?? null, synonymName],
+    timeout: timeoutMs
+  });
+  return firstRecord(rows);
+}
+
+async function getOracleArguments(
+  pool: ObPool,
+  schema: string | undefined,
+  objectName: string,
+  objectType: OracleObjectType,
+  timeoutMs: number
+): Promise<unknown[]> {
+  const packageName = objectType === "PACKAGE" || objectType === "PACKAGE BODY" ? objectName : null;
+  const standaloneName = packageName ? null : objectName;
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} owner, package_name, object_name, argument_name, position, sequence,
+             data_type, in_out, data_length, data_precision, data_scale
+      FROM all_arguments
+      WHERE (? IS NULL OR owner = ?)
+        AND (
+          (? IS NOT NULL AND package_name = ?)
+          OR (? IS NOT NULL AND object_name = ? AND package_name IS NULL)
+        )
+      ORDER BY owner, package_name, object_name, sequence
+    `,
+    values: [schema ?? null, schema ?? null, packageName, packageName, standaloneName, standaloneName],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
+}
+
+async function getOracleSourcePreview(
+  pool: ObPool,
+  schema: string | undefined,
+  objectName: string,
+  objectType: OracleObjectType,
+  timeoutMs: number
+): Promise<ObjectSourcePreview | undefined> {
+  const [rows] = await pool.query({
+    sql: `
+      SELECT ${oracleTimeoutHint(timeoutMs)} *
+      FROM (
+        SELECT owner, name, type, line, text
+        FROM all_source
+        WHERE (? IS NULL OR owner = ?)
+          AND name = ?
+          AND type = ?
+        ORDER BY line
+      )
+      WHERE ROWNUM <= ?
+    `,
+    values: [schema ?? null, schema ?? null, objectName, objectType, ORACLE_SOURCE_MAX_LINES + 1],
+    timeout: timeoutMs
+  });
+  const records = Array.isArray(rows) ? rows.map(rowRecord) : [];
+  if (records.length === 0) {
+    return undefined;
+  }
+  return sourcePreviewFromRows(records);
+}
+
+function sourcePreviewFromRows(rows: Record<string, unknown>[]): ObjectSourcePreview {
+  const lines: Array<{ line: number; text: string }> = [];
+  let totalChars = 0;
+  let truncated = rows.length > ORACLE_SOURCE_MAX_LINES;
+  for (const row of rows.slice(0, ORACLE_SOURCE_MAX_LINES)) {
+    const text = stringField(row, "text", "TEXT") ?? "";
+    const remaining = ORACLE_SOURCE_MAX_CHARS - totalChars;
+    if (remaining <= 0) {
+      truncated = true;
+      break;
+    }
+    const safeText = text.length > remaining ? text.slice(0, remaining) : text;
+    lines.push({
+      line: numberField(row, "line", "LINE") ?? lines.length + 1,
+      text: safeText
+    });
+    totalChars += safeText.length;
+    if (safeText.length < text.length) {
+      truncated = true;
+      break;
+    }
+  }
+  return {
+    lines,
+    text: lines.map((line) => line.text).join(""),
+    returnedLines: lines.length,
+    truncated,
+    maxLines: ORACLE_SOURCE_MAX_LINES,
+    maxChars: ORACLE_SOURCE_MAX_CHARS
+  };
+}
+
+function sourcePreviewFromText(text: string): ObjectSourcePreview {
+  const lines = text.split(/\r?\n/).map((line, index) => ({
+    line: index + 1,
+    text: index === 0 ? line : `\n${line}`
+  }));
+  return sourcePreviewFromRows(lines);
 }
 
 function firstRecord(rows: QueryResult): Record<string, unknown> | undefined {

@@ -91,6 +91,23 @@ try {
     name: "ob_search_catalog",
     arguments: { query: smokeSearch, schema: smokeSchema, limit: 20 }
   });
+  const objects = await send("tools/call", {
+    name: "ob_list_objects",
+    arguments: { schema: smokeSchema, limit: 20 }
+  });
+  const objectListResult = parseToolJson(objects);
+  let objectMetadataResult = null;
+  if (isOracle && objectListResult.objects.length > 0) {
+    const firstObject = objectListResult.objects[0];
+    objectMetadataResult = parseToolJson(await send("tools/call", {
+      name: "ob_get_object_metadata",
+      arguments: {
+        schema: smokeSchema,
+        objectName: firstObject.object_name ?? firstObject.OBJECT_NAME,
+        objectType: toolObjectType(firstObject.object_type ?? firstObject.OBJECT_TYPE)
+      }
+    }));
+  }
   const tableSchema = await send("tools/call", {
     name: "ob_get_table_schema",
     arguments: { schema: smokeSchema, table: smokeTable }
@@ -190,6 +207,8 @@ try {
     "ob_policy_explain",
     "ob_analyze_query_plan",
     "ob_search_catalog",
+    "ob_list_objects",
+    "ob_get_object_metadata",
     "ob_get_table_schema",
     "ob_get_table_ddl",
     "ob_find_related_tables",
@@ -213,6 +232,8 @@ try {
     explainRows: explainOutput.rows.length,
     planAnalysisOk: ["low", "medium", "high"].includes(planAnalysisResult.analysis?.riskLevel),
     catalogRows: catalogRows.length,
+    objectListOk: isOracle ? objectListResult.objects.length > 0 : objectListResult.warnings?.length > 0,
+    objectMetadataOk: !isOracle || objectMetadataResult?.schema === smokeSchema,
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
     relatedTablesOk: Array.isArray(relatedTablesResult.relations),
@@ -250,6 +271,8 @@ try {
     !output.resourcesOk ||
     !output.planAnalysisOk ||
     output.catalogRows < 1 ||
+    !output.objectListOk ||
+    !output.objectMetadataOk ||
     output.explainRows < 1 ||
     output.tableSchemaRows < 1 ||
     !output.tableDdlOk ||
@@ -293,4 +316,8 @@ function notify(method, params) {
 
 function parseToolJson(result) {
   return JSON.parse(result.content[0].text);
+}
+
+function toolObjectType(value) {
+  return String(value).trim().toLowerCase().replace(/\s+/g, "_");
 }

@@ -113,6 +113,8 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_explain` | Run `EXPLAIN` for read-only SQL. |
 | `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
 | `ob_search_catalog` | Search schemas, tables, and columns. |
+| `ob_list_objects` | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
+| `ob_get_object_metadata` | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |
 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
@@ -122,6 +124,12 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_constraints` | Return primary, unique, foreign-key, check, and not-null constraints. |
 | `ob_get_partitions` | Return table partition metadata. |
 | `ob_sample_rows` | Return masked, explicit-column sample rows. |
+
+## Oracle Object Metadata
+
+`ob_list_objects` and `ob_get_object_metadata` support Oracle-compatible `view`, `sequence`, `synonym`, `procedure`, `function`, `package`, and `package_body` objects. Object names are filtered by the same schema and object-name policy used for table metadata.
+
+Procedure, function, and package source is returned as a bounded preview, not as an unrestricted dump. Source previews are capped and passed through sensitive-name redaction before output. Synonym metadata is returned only when the connected database account can see the synonym in `all_synonyms`.
 
 ## Resources
 

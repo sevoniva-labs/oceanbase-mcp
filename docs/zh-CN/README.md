@@ -113,6 +113,8 @@ npm run start:http
 | `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 |
 | `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
 | `ob_search_catalog` | 搜索 schema、表和列。 |
+| `ob_list_objects` | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
+| `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 |
 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 |
 | `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 |
 | `ob_find_related_tables` | 查找外键关系和保守的命名推断表关系。 |
@@ -122,6 +124,12 @@ npm run start:http
 | `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 |
 | `ob_get_partitions` | 返回表分区元数据。 |
 | `ob_sample_rows` | 返回显式列样例数据，并默认脱敏。 |
+
+## Oracle 对象元数据
+
+`ob_list_objects` 和 `ob_get_object_metadata` 支持 Oracle 兼容模式下的 `view`、`sequence`、`synonym`、`procedure`、`function`、`package` 和 `package_body`。对象名会使用和表元数据相同的 schema、对象名访问策略过滤。
+
+procedure、function、package 的源码只返回有限预览，不返回不受限制的完整源码。源码预览有固定上限，输出前会按敏感字段名称做脱敏。synonym 元数据只有在当前数据库账号能从 `all_synonyms` 看到该 synonym 时才会返回。
 
 ## 资源
 

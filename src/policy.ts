@@ -73,6 +73,18 @@ export function assertTableAccess(schema: string | undefined, table: string, con
   assertTableRefAllowed({ schema, table, raw: schema ? `${schema}.${table}` : table }, context);
 }
 
+export function assertObjectAccess(
+  schema: string | undefined,
+  objectName: string,
+  context: PolicyContext
+): void {
+  const raw = schema ? `${schema}.${objectName}` : objectName;
+  const ref = resolveRef({ schema, table: objectName, raw }, context);
+  if (!isTableAllowed(ref, context)) {
+    throw new Error(`Object reference "${raw}" is not allowed by the configured OceanBase MCP access policy.`);
+  }
+}
+
 export function filterSchemas(rows: unknown[], policy: AccessPolicy): unknown[] {
   return rows.filter((row) => {
     const record = row as Record<string, unknown>;
@@ -102,6 +114,34 @@ export function filterTables(rows: unknown[], policy: AccessPolicy): unknown[] {
       return true;
     }
     return isTableAllowed({ schema, table, raw: schema ? `${schema}.${table}` : table }, { policy });
+  });
+}
+
+export function filterObjects(rows: unknown[], policy: AccessPolicy): unknown[] {
+  return rows.filter((row) => {
+    const record = row as Record<string, unknown>;
+    const schema = stringValue(
+      record.object_schema ??
+        record.OBJECT_SCHEMA ??
+        record.owner ??
+        record.OWNER ??
+        record.schema_name ??
+        record.SCHEMA_NAME
+    );
+    const objectName = stringValue(
+      record.object_name ??
+        record.OBJECT_NAME ??
+        record.view_name ??
+        record.VIEW_NAME ??
+        record.sequence_name ??
+        record.SEQUENCE_NAME ??
+        record.synonym_name ??
+        record.SYNONYM_NAME
+    );
+    if (!objectName) {
+      return true;
+    }
+    return isTableAllowed({ schema, table: objectName, raw: schema ? `${schema}.${objectName}` : objectName }, { policy });
   });
 }
 
