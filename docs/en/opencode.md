@@ -96,6 +96,26 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8
 
 `OB_MCP_ALLOWED_IPS` should contain approved client NAT addresses, VPN CIDRs, or trusted reverse-proxy source ranges.
 
+## OceanBase Assistant
+
+The repository includes an OpenCode agent and skill:
+
+- [.opencode/agents/oceanbase-developer.md](../../.opencode/agents/oceanbase-developer.md)
+- [.opencode/skills/oceanbase-query/SKILL.md](../../.opencode/skills/oceanbase-query/SKILL.md)
+
+Keep both directories at the project root. OpenCode loads the `oceanbase-developer` agent inside that project. For remote HTTP, see [opencode.remote.assistant.jsonc](../../examples/opencode.remote.assistant.jsonc).
+
+The agent uses this query workflow:
+
+1. Search schemas, tables, and columns first.
+2. Read table context.
+3. Generate only read-only SQL.
+4. Preview policy and plan risk before execution.
+5. Use paged queries for data inspection.
+6. Summarize SQL, row count, page state, masking, and truncation.
+
+Do not let the agent guess table names, column names, or relationships. When context is insufficient, provide a business term, schema, or table name first.
+
 ## Oracle Mode
 
 For Oracle compatibility:

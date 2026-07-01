@@ -96,6 +96,26 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8
 
 `OB_MCP_ALLOWED_IPS` 应填写被允许的客户端出口 NAT 地址、VPN 网段或可信反向代理来源网段。
 
+## OceanBase Assistant
+
+仓库提供 OpenCode agent 和 skill：
+
+- [.opencode/agents/oceanbase-developer.md](../../.opencode/agents/oceanbase-developer.md)
+- [.opencode/skills/oceanbase-query/SKILL.md](../../.opencode/skills/oceanbase-query/SKILL.md)
+
+把这两个目录保留在项目根目录，OpenCode 会在该项目内加载 `oceanbase-developer` agent。远程 HTTP 可参考 [opencode.remote.assistant.jsonc](../../examples/opencode.remote.assistant.jsonc)。
+
+该 agent 的查询流程固定为：
+
+1. 先搜索 schema、表和字段。
+2. 再读取表上下文。
+3. 只生成只读 SQL。
+4. 执行前先做策略和执行计划预览。
+5. 使用分页查询查看数据。
+6. 汇总 SQL、行数、分页、脱敏和截断信息。
+
+不要让 agent 猜表名、字段名或关系。信息不足时，应先补充业务词、schema 或表名。
+
 ## Oracle 模式
 
 Oracle 兼容模式：

@@ -6,6 +6,7 @@
 | --- | --- |
 | [opencode.local.jsonc](opencode.local.jsonc) | Local OpenCode stdio config. |
 | [opencode.remote.jsonc](opencode.remote.jsonc) | Remote OpenCode HTTP config. |
+| [opencode.remote.assistant.jsonc](opencode.remote.assistant.jsonc) | Remote OpenCode HTTP config with the OceanBase assistant. |
 | [env.local.mysql.example](env.local.mysql.example) | Local MySQL-mode `.env`. |
 | [env.local.oracle.example](env.local.oracle.example) | Local Oracle-mode `.env`. |
 | [env.production.example](env.production.example) | Production HTTP environment example. |

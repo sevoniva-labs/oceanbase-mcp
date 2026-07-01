@@ -28,6 +28,7 @@ OceanBase MCP is read-only by design. It has no write tool, rejects write/contro
 | --- | --- |
 | 支持 OceanBase MySQL 模式和 Oracle 模式。 | Supports OceanBase MySQL and Oracle compatibility modes. |
 | 支持本地 stdio 接入 OpenCode，也支持远程 Streamable HTTP 部署。 | Supports local stdio for OpenCode and remote Streamable HTTP deployments. |
+| 提供 OpenCode agent 和 skill，引导模型按元数据优先、只读预览、分页查询的流程使用 MCP。 | Provides an OpenCode agent and skill for metadata-first, read-only query workflows. |
 | 支持多 profile，用于不同环境、租户或集群。 | Supports multiple profiles for environments, tenants, or clusters. |
 | 支持 schema/table allowlist、系统 schema 隐藏、敏感列拦截、字段级样例脱敏、行数和返回大小硬限制。 | Supports schema/table allowlists, system-schema hiding, sensitive-column blocking, field-level sample masking, and hard row/response limits. |
 | 支持来源 IP allowlist、Bearer token 策略、Host allowlist、body 限制、端点鉴权和限流。 | Supports source IP allowlists, bearer-token policies, Host allowlists, body limits, endpoint auth, and rate limiting. |

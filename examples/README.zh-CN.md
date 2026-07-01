@@ -6,6 +6,7 @@
 | --- | --- |
 | [opencode.local.jsonc](opencode.local.jsonc) | 本地 OpenCode stdio 配置。 |
 | [opencode.remote.jsonc](opencode.remote.jsonc) | 远程 OpenCode HTTP 配置。 |
+| [opencode.remote.assistant.jsonc](opencode.remote.assistant.jsonc) | 使用 OceanBase assistant 的远程 OpenCode HTTP 配置。 |
 | [env.local.mysql.example](env.local.mysql.example) | 本地 MySQL 模式 `.env`。 |
 | [env.local.oracle.example](env.local.oracle.example) | 本地 Oracle 模式 `.env`。 |
 | [env.production.example](env.production.example) | 生产 HTTP 环境变量示例。 |

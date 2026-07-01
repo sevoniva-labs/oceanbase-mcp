@@ -12,6 +12,7 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 - Enforces schema/table allowlists, denied system schemas, denied sensitive columns, field-level sample masking, hard row/response caps, SQL length limits, and read-only transactions.
 - Inspects table DDL/structure, indexes, constraints, partitions, statistics, related tables, and ER diagrams.
 - Generates read-only SQL templates, query plan analysis, and performance advisory reports.
+- Provides an OpenCode agent and skill for metadata-first, read-only query workflows.
 - Inspects Oracle view, sequence, synonym, procedure, function, and package metadata.
 - Provides stdio mode for local development and HTTP mode for shared deployments.
 - Protects HTTP mode with bearer token policies, Host allowlist, source IP allowlist, endpoint auth, body limits, and rate limiting.
