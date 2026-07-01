@@ -199,6 +199,7 @@ npm run start:http
 | v1.0.0 | `ob_query_next_page` | 基于查询上下文读取下一页，继续执行只读策略和行数限制。 |
 | v1.0.0 | `ob_query_prev_page` | 基于查询上下文读取上一页，继续执行只读策略和行数限制。 |
 | v1.0.0 | `ob_query_refine` | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 |
+| v1.0.0 | `ob_refresh_metadata_cache` | 按 profile、schema 或 table 清理内存元数据缓存。 |
 | v1.0.0 | `ob_rewrite_sql` | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 |
 | v1.0.0 | `ob_search_everything` | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 |
 | v1.0.0 | `ob_start_query_session` | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 |

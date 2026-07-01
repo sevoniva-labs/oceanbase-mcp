@@ -318,6 +318,33 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_refresh_metadata_cache",
+    {
+      title: "Refresh Metadata Cache",
+      description: "Clear in-memory metadata cache entries for the active profile, optionally scoped by schema or table.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional()
+      }
+    },
+    async ({ profile, schema, table }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
+        throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+      if (table) {
+        assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      }
+      return toLimitedResult(
+        refreshMetadataCache(selected, effectiveSchema, table),
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_verify_permissions",
     {
       title: "Verify Database Permissions",
@@ -3888,6 +3915,81 @@ async function cachedRelatedTables(
       )
     )
   );
+}
+
+function refreshMetadataCache(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string | undefined
+) {
+  const before = selected.metadataCache.entries.size;
+  let removed = 0;
+  if (!schema && !table) {
+    removed = before;
+    selected.metadataCache.entries.clear();
+  } else {
+    for (const key of [...selected.metadataCache.entries.keys()]) {
+      if (metadataCacheKeyMatches(selected.config.compatibility, key, schema, table)) {
+        selected.metadataCache.entries.delete(key);
+        removed += 1;
+      }
+    }
+  }
+  return {
+    profile: selected.profile,
+    mode: selected.config.compatibility,
+    scope: {
+      schema: schema ?? null,
+      table: table ?? null
+    },
+    cacheEnabled: selected.config.metadataCacheEnabled,
+    beforeEntries: before,
+    removedEntries: removed,
+    afterEntries: selected.metadataCache.entries.size,
+    stats: {
+      hits: selected.metadataCache.hits,
+      misses: selected.metadataCache.misses,
+      evictions: selected.metadataCache.evictions
+    },
+    executed: false,
+    warnings: [
+      "Only in-memory metadata cache entries for the selected profile are cleared.",
+      "Query results and sample rows are not cached by the metadata cache."
+    ]
+  };
+}
+
+function metadataCacheKeyMatches(
+  mode: ObConfig["compatibility"],
+  key: string,
+  schema: string | undefined,
+  table: string | undefined
+): boolean {
+  const parsed = parseMetadataCacheKey(key);
+  if (!parsed) {
+    return false;
+  }
+  const [namespace, , cachedSchema, cachedTable] = parsed;
+  const schemaMatches = !schema || normalizeTableName(mode, String(cachedSchema ?? "")) === normalizeTableName(mode, schema);
+  if (!schemaMatches) {
+    return false;
+  }
+  if (!table) {
+    return true;
+  }
+  if (namespace === "schema_map_tables") {
+    return true;
+  }
+  return normalizeTableName(mode, String(cachedTable ?? "")) === normalizeTableName(mode, table);
+}
+
+function parseMetadataCacheKey(key: string): unknown[] | undefined {
+  try {
+    const parsed = JSON.parse(key);
+    return Array.isArray(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function buildSchemaMapTableSummary(

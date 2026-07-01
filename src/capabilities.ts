@@ -52,6 +52,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_get_table_stats", since: "v0.5.0", group: "metadata", mode: "all", description: "Return table estimates, counts, and storage statistics." },
   { name: "ob_profile_table", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Return bounded table-level profiles with metadata counts and sampled field signals." },
   { name: "ob_profile_columns", since: "v0.5.1", group: "data_understanding", mode: "all", description: "Return bounded column profiles with masking, type strategy, and enum signals." },
+  { name: "ob_refresh_metadata_cache", since: "v1.0.0", group: "configuration", mode: "all", description: "Clear profile-scoped metadata cache entries by profile, schema, or table scope." },
   { name: "ob_get_value_distribution", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Return bounded top-value distribution for one visible column." },
   { name: "ob_detect_time_columns", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Detect likely create, update, and business time columns from metadata." },
   { name: "ob_detect_dimension_columns", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Detect likely status, type, channel, region, flag, and category columns from metadata." },

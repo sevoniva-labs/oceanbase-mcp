@@ -57,6 +57,38 @@ test("metadata cache can be disabled", async () => {
   assert.equal(calls.constraints, 2);
 });
 
+test("ob_refresh_metadata_cache clears scoped metadata entries", async () => {
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "biz_test",
+    OB_METADATA_CACHE_TTL_MS: "60000"
+  });
+  const calls = { tables: 0, columns: 0, constraints: 0 };
+  const server = createObMcpServer(runtime(config, mysqlPool(calls)));
+
+  await server.executeToolHandler(server._registeredTools.ob_generate_schema_doc, {
+    schema: "biz_test",
+    format: "json",
+    includeRelationships: false,
+    maxTables: 1
+  }, {});
+  const refreshed = JSON.parse((await server.executeToolHandler(server._registeredTools.ob_refresh_metadata_cache, {
+    schema: "biz_test"
+  }, {})).content[0].text);
+  await server.executeToolHandler(server._registeredTools.ob_generate_schema_doc, {
+    schema: "biz_test",
+    format: "json",
+    includeRelationships: false,
+    maxTables: 1
+  }, {});
+
+  assert.equal(refreshed.executed, false);
+  assert.equal(refreshed.scope.schema, "biz_test");
+  assert(refreshed.removedEntries >= 3);
+  assert.equal(calls.tables, 2);
+  assert.equal(calls.columns, 2);
+  assert.equal(calls.constraints, 2);
+});
+
 function runtime(config, pool) {
   return {
     defaultProfile: "default",

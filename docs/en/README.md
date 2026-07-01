@@ -199,6 +199,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_query_next_page` | Run the next page for a query session with read-only policy and row limits enforced. |
 | v1.0.0 | `ob_query_prev_page` | Run the previous page for a query session with read-only policy and row limits enforced. |
 | v1.0.0 | `ob_query_refine` | Build refined read-only SELECT SQL from a query session without executing it. |
+| v1.0.0 | `ob_refresh_metadata_cache` | Clear in-memory metadata cache entries by profile, schema, or table scope. |
 | v1.0.0 | `ob_rewrite_sql` | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | v1.0.0 | `ob_search_everything` | Search schemas, tables, columns, comments, and business terms with evidence. |
 | v1.0.0 | `ob_start_query_session` | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
