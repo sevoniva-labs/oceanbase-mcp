@@ -110,6 +110,13 @@ export interface SchemaMapTable {
   };
 }
 
+export interface ColumnSearchFilter {
+  query?: string;
+  schema?: string;
+  tablePattern?: string;
+  dataType?: string;
+}
+
 export interface ColumnProfileRequest {
   name: string;
   dataType?: string;
@@ -653,6 +660,107 @@ export async function listSchemaMapTables(
         : { value: rowEstimate, exact: false as const, source: "information_schema.tables.table_rows" }
     };
   }).filter((table) => table.table);
+}
+
+export async function findColumns(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  filter: ColumnSearchFilter,
+  limit: number,
+  timeoutMs: number
+): Promise<unknown[]> {
+  const maxResults = safeLimit(limit);
+  const queryPattern = filter.query?.trim() ? `%${filter.query.trim()}%` : null;
+  const tablePattern = filter.tablePattern?.trim() ? `%${filter.tablePattern.trim()}%` : null;
+  const typePattern = filter.dataType?.trim() ? `%${filter.dataType.trim()}%` : null;
+
+  if (mode === "oracle") {
+    const owner = filter.schema?.trim().toUpperCase();
+    const [rows] = await pool.query({
+      sql: `
+        SELECT ${oracleTimeoutHint(timeoutMs)} *
+        FROM (
+          SELECT c.owner, c.table_name, c.column_name, c.data_type, c.data_length,
+                 c.data_precision, c.data_scale, c.nullable, c.column_id, cc.comments
+          FROM all_tab_columns c
+          LEFT JOIN all_col_comments cc
+            ON cc.owner = c.owner
+           AND cc.table_name = c.table_name
+           AND cc.column_name = c.column_name
+          WHERE (? IS NULL OR c.owner = ?)
+            AND (? IS NULL OR LOWER(c.table_name) LIKE LOWER(?))
+            AND (? IS NULL OR LOWER(c.data_type) LIKE LOWER(?))
+            AND (
+              ? IS NULL OR
+              LOWER(c.table_name) LIKE LOWER(?) OR
+              LOWER(c.column_name) LIKE LOWER(?) OR
+              LOWER(c.data_type) LIKE LOWER(?) OR
+              LOWER(cc.comments) LIKE LOWER(?)
+            )
+          ORDER BY c.owner, c.table_name, c.column_id
+        )
+        WHERE ROWNUM <= ?
+      `,
+      values: [
+        owner ?? null,
+        owner ?? null,
+        tablePattern,
+        tablePattern,
+        typePattern,
+        typePattern,
+        queryPattern,
+        queryPattern,
+        queryPattern,
+        queryPattern,
+        queryPattern,
+        maxResults
+      ],
+      timeout: timeoutMs
+    });
+    return rows as unknown[];
+  }
+
+  const resolvedSchema = filter.schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  const [rows] = await pool.query({
+    sql: `
+      SELECT table_schema, table_name, column_name, column_type, data_type,
+             is_nullable, ordinal_position, column_comment
+      FROM information_schema.columns
+      WHERE (? IS NULL OR table_schema = ?)
+        AND (? IS NULL OR table_name LIKE ?)
+        AND (? IS NULL OR data_type LIKE ? OR column_type LIKE ?)
+        AND (
+          ? IS NULL OR
+          table_schema LIKE ? OR
+          table_name LIKE ? OR
+          column_name LIKE ? OR
+          column_comment LIKE ? OR
+          data_type LIKE ? OR
+          column_type LIKE ?
+        )
+      ORDER BY table_schema, table_name, ordinal_position
+      LIMIT ?
+    `,
+    values: [
+      resolvedSchema ?? null,
+      resolvedSchema ?? null,
+      tablePattern,
+      tablePattern,
+      typePattern,
+      typePattern,
+      typePattern,
+      queryPattern,
+      queryPattern,
+      queryPattern,
+      queryPattern,
+      queryPattern,
+      queryPattern,
+      queryPattern,
+      maxResults
+    ],
+    timeout: timeoutMs
+  });
+  return rows as unknown[];
 }
 
 export function normalizeOracleObjectType(value: string): OracleObjectType {

@@ -147,6 +147,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_search_everything` | v1.0.0 | Search schemas, tables, columns, comments, and business terms with evidence. |
 | `ob_search_business_glossary` | v0.5.1 | Search visible business-term mappings to schemas, tables, and columns. |
 | `ob_find_tables_by_business_term` | v1.0.0 | Find candidate tables for a business term with evidence and related tables. |
+| `ob_find_columns` | v1.0.0 | Find visible columns by name, comment, type, table pattern, or business term. |
 | `ob_list_objects` | v0.5.0 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | `ob_get_object_metadata` | v0.5.0 | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | v0.3.0 | Return policy-filtered table schema. |
