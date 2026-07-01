@@ -127,6 +127,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | --- | --- | --- |
 | `ob_list_profiles` | v0.3.0 | List configured profiles with secrets redacted. |
 | `ob_config_diagnostics` | v0.3.0 | Report deployment and policy checks. |
+| `ob_check_opencode_setup` | v1.0.0 | Check local OpenCode config, OceanBase agent, and query skill files. |
 | `ob_get_usage_guide` | v1.0.0 | Return the recommended OpenCode workflow, read-only rules, and MySQL/Oracle notes. |
 | `ob_list_capabilities` | v1.0.0 | Return MCP capabilities, tool groups, versions, and read-only limits. |
 | `ob_verify_permissions` | v0.4.0 | Check current database grants for write or administrative privileges. |

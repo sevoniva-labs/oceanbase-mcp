@@ -22,6 +22,33 @@ export function diagnoseLocalProject(config: GatewayConfig, options: LocalDiagno
   return checks;
 }
 
+export function diagnoseOpenCodeSetup(config: GatewayConfig, options: LocalDiagnosticOptions = {}) {
+  const cwd = options.cwd ?? process.cwd();
+  const checks = opencodeChecks(cwd);
+  return {
+    ok: checks.every((check) => check.severity !== "fail"),
+    root: cwd,
+    defaultProfile: config.defaultProfile,
+    profiles: Object.keys(config.profiles),
+    files: {
+      config: join(cwd, "opencode.jsonc"),
+      agent: join(cwd, ".opencode", "agents", "oceanbase-developer.md"),
+      skill: join(cwd, ".opencode", "skills", "oceanbase-query", "SKILL.md")
+    },
+    checks,
+    nextSteps: checks.some((check) => check.severity !== "pass")
+      ? [
+          "Run ob-mcp init to generate local OpenCode files.",
+          "Run npm run build before starting a source-checkout MCP server.",
+          "Run opencode mcp list to confirm the oceanbase MCP entry is connected."
+        ]
+      : [
+          "Run opencode mcp list to confirm the oceanbase MCP entry is connected.",
+          "Ask OpenCode to use the oceanbase MCP server and call ob_get_usage_guide."
+        ]
+  };
+}
+
 function checkNodeVersion(version: string): DiagnosticCheck {
   const major = Number(/^v?(\d+)/.exec(version)?.[1] ?? 0);
   return {

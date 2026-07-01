@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import test from "node:test";
 
 import { loadGatewayConfig } from "../dist/config.js";
-import { diagnoseLocalProject } from "../dist/local-diagnostics.js";
+import { diagnoseLocalProject, diagnoseOpenCodeSetup } from "../dist/local-diagnostics.js";
 
 test("diagnoseLocalProject reports local setup checks without secrets", () => {
   const dir = mkdtempSync(join(tmpdir(), "ob-mcp-local-diag-"));
@@ -42,4 +42,23 @@ test("diagnoseLocalProject fails unsupported Node versions", () => {
   const gateway = loadGatewayConfig({ OB_USER: "u@t#c", OB_PASSWORD: "secret", OB_ALLOWED_SCHEMAS: "app" });
   const checks = diagnoseLocalProject(gateway, { cwd: tmpdir(), nodeVersion: "v18.19.0" });
   assert(checks.some((check) => check.id === "local.node_version" && check.severity === "fail"));
+});
+
+test("diagnoseOpenCodeSetup reports generated OpenCode files", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ob-mcp-opencode-diag-"));
+  try {
+    writeFileSync(join(dir, "opencode.jsonc"), JSON.stringify({ mcp: { oceanbase: { type: "local" } } }));
+    mkdirSync(join(dir, ".opencode", "agents"), { recursive: true });
+    writeFileSync(join(dir, ".opencode", "agents", "oceanbase-developer.md"), "");
+    mkdirSync(join(dir, ".opencode", "skills", "oceanbase-query"), { recursive: true });
+    writeFileSync(join(dir, ".opencode", "skills", "oceanbase-query", "SKILL.md"), "");
+
+    const gateway = loadGatewayConfig({ OB_USER: "u@t#c", OB_PASSWORD: "secret", OB_ALLOWED_SCHEMAS: "app" });
+    const result = diagnoseOpenCodeSetup(gateway, { cwd: dir });
+    assert.equal(result.ok, true);
+    assert(result.checks.every((check) => check.severity === "pass"));
+    assert.equal(result.files.config, join(dir, "opencode.jsonc"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

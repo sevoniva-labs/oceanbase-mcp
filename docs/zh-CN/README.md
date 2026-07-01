@@ -127,6 +127,7 @@ npm run start:http
 | --- | --- | --- |
 | `ob_list_profiles` | v0.3.0 | 列出已配置 profile，并隐藏敏感信息。 |
 | `ob_config_diagnostics` | v0.3.0 | 输出部署和策略诊断。 |
+| `ob_check_opencode_setup` | v1.0.0 | 检查本地 OpenCode 配置、OceanBase agent 和查询 skill。 |
 | `ob_get_usage_guide` | v1.0.0 | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 |
 | `ob_list_capabilities` | v1.0.0 | 返回当前 MCP 能力、工具分组、版本和只读限制。 |
 | `ob_verify_permissions` | v0.4.0 | 检查当前数据库账号是否包含写入或管理权限。 |

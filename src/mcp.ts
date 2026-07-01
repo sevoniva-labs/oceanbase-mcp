@@ -33,6 +33,7 @@ import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from 
 import { metrics } from "./metrics.js";
 import { analyzeQueryPlan } from "./plan-analysis.js";
 import { buildPerformanceReport } from "./performance-report.js";
+import { diagnoseOpenCodeSetup } from "./local-diagnostics.js";
 import {
   assertOutputAllowed,
   assertObjectAccess,
@@ -169,6 +170,22 @@ export function createObMcpServer(
         runtime,
         context
       )
+  );
+
+  registerTool(
+    "ob_check_opencode_setup",
+    {
+      title: "Check OpenCode Setup",
+      description: "Check local OpenCode config, OceanBase agent, and query skill files for the current project.",
+      inputSchema: profileInput
+    },
+    async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      return toLimitedResult(
+        diagnoseOpenCodeSetup(authorizedGatewayConfig(runtime, context)),
+        selected.config
+      );
+    }
   );
 
   registerTool(

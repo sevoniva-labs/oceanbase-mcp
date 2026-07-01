@@ -96,6 +96,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | --- | --- | --- | --- |
 | `ob_list_profiles` | v0.3.0 | 列出 profile，并隐藏敏感信息。 | List configured profiles with secrets redacted. |
 | `ob_config_diagnostics` | v0.3.0 | 输出部署和策略诊断。 | Report deployment and policy checks. |
+| `ob_check_opencode_setup` | v1.0.0 | 检查本地 OpenCode 配置、OceanBase agent 和查询 skill。 | Check local OpenCode config, OceanBase agent, and query skill files. |
 | `ob_get_usage_guide` | v1.0.0 | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 | Return the recommended OpenCode workflow, read-only rules, and MySQL/Oracle notes. |
 | `ob_list_capabilities` | v1.0.0 | 返回当前 MCP 能力、工具分组、版本和只读限制。 | Return MCP capabilities, tool groups, versions, and read-only limits. |
 | `ob_verify_permissions` | v0.4.0 | 检查数据库账号是否包含写入或管理权限。 | Check current database grants for write/admin privileges. |

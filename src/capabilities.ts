@@ -14,6 +14,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_list_profiles", since: "v0.3.0", group: "configuration", mode: "all", description: "List configured profiles with secrets redacted." },
   { name: "ob_config_diagnostics", since: "v0.3.0", group: "configuration", mode: "all", description: "Report deployment and policy checks." },
   { name: "ob_verify_permissions", since: "v0.4.0", group: "configuration", mode: "all", description: "Check current database grants for write or administrative privileges." },
+  { name: "ob_check_opencode_setup", since: "v1.0.0", group: "assistant", mode: "all", description: "Check local OpenCode config, OceanBase agent, and query skill files." },
   { name: "ob_get_usage_guide", since: "v1.0.0", group: "assistant", mode: "all", description: "Return the recommended OpenCode workflow and safety rules." },
   { name: "ob_list_capabilities", since: "v1.0.0", group: "assistant", mode: "all", description: "List MCP tools, feature groups, versions, and read-only limits." },
   { name: "ob_ping", since: "v0.3.0", group: "connection", mode: "all", description: "Verify the OceanBase connection." },
