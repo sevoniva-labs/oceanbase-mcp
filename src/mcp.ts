@@ -908,6 +908,68 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_find_tables_by_business_term",
+    {
+      title: "Find Tables by Business Term",
+      description: "Find visible candidate tables from a business term using glossary, catalog metadata, comments, and relationship evidence.",
+      inputSchema: {
+        ...profileInput,
+        term: z.string().min(1),
+        schema: z.string().optional(),
+        limit: z.number().int().positive().max(100).optional(),
+        includeRelated: z.boolean().optional().default(true),
+        relationshipLimit: z.number().int().positive().max(50).optional()
+      }
+    },
+    async ({ profile, term, schema, limit, includeRelated = true, relationshipLimit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      if (schema) {
+        assertTableAccess(schema, "*", policyContext(selected.config));
+      }
+      const maxResults = Math.min(limit ?? 20, 100);
+      const catalogRows = filterColumnMetadata(
+        await withQuerySlot(selected, () =>
+          searchCatalog(
+            selected.pool,
+            selected.config.compatibility,
+            term,
+            schema,
+            maxResults,
+            selected.config.queryTimeoutMs
+          )
+        ),
+        selected.config.policy
+      );
+      const glossary = searchBusinessGlossary(selected.config, term, maxResults, schema);
+      const searchResults = dedupeSearchResults([
+        ...catalogRows.flatMap((row) => catalogSearchResult(row, term, selected.config)),
+        ...glossary.matches.flatMap((match) => glossarySearchResults(match, term))
+      ]);
+      const candidates = tableCandidatesFromSearchResults(searchResults, selected.config, maxResults);
+      if (includeRelated) {
+        await attachRelatedTablesToCandidates(
+          selected,
+          candidates,
+          Math.min(relationshipLimit ?? 8, 50)
+        );
+      }
+
+      return toLimitedResult(
+        {
+          term,
+          schema: schema ?? null,
+          count: candidates.length,
+          glossaryConfigured: glossary.configured,
+          policyFiltered: glossary.policyFiltered,
+          candidates,
+          warnings: glossary.warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_search_business_glossary",
     {
       title: "Search Business Glossary",
@@ -2299,6 +2361,25 @@ interface SearchEverythingResult {
   evidence: Array<{ field: string; value: string; reason: string }>;
 }
 
+interface BusinessTableCandidate {
+  schema?: string;
+  table: string;
+  confidence: number;
+  sources: string[];
+  matchedColumns: string[];
+  terms: string[];
+  evidence: Array<{ source: string; type: string; field: string; value: string; reason: string }>;
+  relatedTables?: Array<{
+    schema?: string;
+    table: string;
+    relationType: string;
+    direction: string;
+    confidence: number;
+    columns: string[];
+    evidence: string[];
+  }>;
+}
+
 function schemaSearchResult(
   row: unknown,
   query: string,
@@ -2449,6 +2530,122 @@ function dedupeSearchResults(results: SearchEverythingResult[]): SearchEverythin
     }
   }
   return [...best.values()];
+}
+
+function tableCandidatesFromSearchResults(
+  results: SearchEverythingResult[],
+  config: ObConfig,
+  limit: number
+): BusinessTableCandidate[] {
+  const candidates = new Map<string, BusinessTableCandidate>();
+  for (const result of results) {
+    if (!result.table) {
+      continue;
+    }
+    try {
+      assertTableAccess(result.schema, result.table, policyContext(config));
+    } catch {
+      continue;
+    }
+    const key = tableRefKey(config.compatibility, result.schema, result.table);
+    const current = candidates.get(key) ?? {
+      schema: result.schema,
+      table: result.table,
+      confidence: 0,
+      sources: [],
+      matchedColumns: [],
+      terms: [],
+      evidence: []
+    };
+    current.confidence = Math.max(current.confidence, tableCandidateConfidence(result));
+    current.sources = uniqueStrings([...current.sources, result.source]);
+    if (result.column) {
+      current.matchedColumns = uniqueStrings([...current.matchedColumns, result.column]);
+    }
+    if (result.term) {
+      current.terms = uniqueStrings([...current.terms, result.term]);
+    }
+    current.evidence = [
+      ...current.evidence,
+      ...result.evidence.map((item) => ({
+        source: result.source,
+        type: result.type,
+        field: item.field,
+        value: item.value,
+        reason: item.reason
+      }))
+    ].slice(0, 20);
+    candidates.set(key, current);
+  }
+  return [...candidates.values()]
+    .sort((left, right) => right.confidence - left.confidence || left.table.localeCompare(right.table))
+    .slice(0, limit);
+}
+
+function tableCandidateConfidence(result: SearchEverythingResult): number {
+  if (result.source === "business_glossary") {
+    return Math.max(result.confidence, 0.9);
+  }
+  if (result.type === "table") {
+    return result.confidence;
+  }
+  if (result.type === "column") {
+    return Math.min(result.confidence, 0.82);
+  }
+  return Math.min(result.confidence, 0.7);
+}
+
+async function attachRelatedTablesToCandidates(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  candidates: BusinessTableCandidate[],
+  relationshipLimit: number
+): Promise<void> {
+  for (const candidate of candidates.slice(0, 10)) {
+    const relationships = await withQuerySlot(selected, () =>
+      findRelatedTables(
+        selected.pool,
+        selected.config.compatibility,
+        candidate.table,
+        candidate.schema,
+        1,
+        relationshipLimit,
+        selected.config.queryTimeoutMs
+      )
+    );
+    const related = relationships.relations
+      .filter((relation) => isRelationshipAllowed(relation, selected.config))
+      .map((relation) => relatedTableEvidence(candidate, relation, selected.config.compatibility))
+      .filter((item): item is NonNullable<BusinessTableCandidate["relatedTables"]>[number] => Boolean(item))
+      .slice(0, relationshipLimit);
+    if (related.length > 0) {
+      candidate.relatedTables = related;
+    }
+  }
+}
+
+function relatedTableEvidence(
+  candidate: BusinessTableCandidate,
+  relation: TableRelationship,
+  mode: ObConfig["compatibility"]
+): NonNullable<BusinessTableCandidate["relatedTables"]>[number] | undefined {
+  const sourceMatches =
+    normalizeTableName(mode, relation.sourceTable) === normalizeTableName(mode, candidate.table) &&
+    normalizeTableName(mode, relation.sourceSchema ?? "") === normalizeTableName(mode, candidate.schema ?? "");
+  const schema = sourceMatches ? relation.targetSchema : relation.sourceSchema;
+  const table = sourceMatches ? relation.targetTable : relation.sourceTable;
+  const columns = sourceMatches ? relation.sourceColumns : relation.targetColumns;
+  if (!table || normalizeTableName(mode, table) === normalizeTableName(mode, candidate.table)) {
+    return undefined;
+  }
+  return {
+    schema,
+    table,
+    relationType: relation.relationType,
+    direction: sourceMatches ? "outbound" : "inbound",
+    confidence: relation.confidence,
+    columns,
+    evidence: relation.evidence.map((item) => item.detail).slice(0, 5)
+  };
 }
 
 function businessGlossaryEntryMatches(

@@ -146,6 +146,7 @@ npm run start:http
 | `ob_search_catalog` | v0.3.0 | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 |
 | `ob_search_everything` | v1.0.0 | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 |
 | `ob_search_business_glossary` | v0.5.1 | 搜索业务词到 schema/table/column 的可见映射。 |
+| `ob_find_tables_by_business_term` | v1.0.0 | 按业务词返回候选表、依据和关联表摘要。 |
 | `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
 | `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 |
 | `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 |
