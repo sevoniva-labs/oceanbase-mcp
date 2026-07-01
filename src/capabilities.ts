@@ -67,7 +67,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_explain", since: "v0.3.0", group: "performance", mode: "all", description: "Run EXPLAIN for read-only SQL." },
   { name: "ob_analyze_query_plan", since: "v0.5.0", group: "performance", mode: "all", description: "Return evidence-based plan findings." },
   { name: "ob_generate_performance_report", since: "v0.5.0", group: "performance", mode: "all", description: "Generate a read-only performance advisory report." },
-  { name: "ob_generate_er_diagram", since: "v0.5.0", group: "diagram", mode: "all", description: "Generate Mermaid and JSON ER metadata." },
+  { name: "ob_generate_er_diagram", since: "v0.5.0", group: "diagram", mode: "all", description: "Generate Mermaid and JSON ER metadata; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls." },
   { name: "ob_get_indexes", since: "v0.3.0", group: "metadata", mode: "all", description: "Return table index metadata." },
   { name: "ob_get_constraints", since: "v0.3.0", group: "metadata", mode: "all", description: "Return primary, unique, foreign-key, check, and not-null constraints." },
   { name: "ob_get_partitions", since: "v0.3.0", group: "metadata", mode: "all", description: "Return table partition metadata." },

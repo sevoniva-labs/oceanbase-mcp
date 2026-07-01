@@ -183,7 +183,7 @@ npm run start:http
 | `ob_explain_error` | v1.0.0 | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
 | `ob_generate_query_examples` | v1.0.0 | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
 | `ob_generate_query` | v0.5.0 | 基于表元数据生成只读 SQL 模板。 |
-| `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 |
+| `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 |
 | `ob_get_indexes` | v0.3.0 | 返回表索引元数据。 |
 | `ob_get_constraints` | v0.3.0 | 返回主键、唯一键、外键、check 和 not-null 约束。 |
 | `ob_get_partitions` | v0.3.0 | 返回表分区元数据。 |

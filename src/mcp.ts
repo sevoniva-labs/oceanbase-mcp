@@ -2961,44 +2961,61 @@ export function createObMcpServer(
         ...profileInput,
         schema: z.string().optional(),
         table: z.string().optional(),
+        tables: z.array(z.string().min(1)).max(50).optional(),
+        businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(50).optional()
+        maxTables: z.number().int().positive().max(50).optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        includeInferred: z.boolean().optional().default(true)
       }
     },
-    async ({ profile, schema, table, depth, maxTables }) => {
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       const tableLimit = Math.min(maxTables ?? (table ? 20 : 12), 50);
       const depthLimit = depth ?? 1;
-      if (table) {
-        assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      } else if (!effectiveSchema) {
+      const relationConfidenceFloor = minConfidence ?? (includeInferred ? 0.5 : 0.9);
+      const requestedTables = uniqueStrings([table, ...(tables ?? [])].filter((value): value is string => Boolean(value)));
+      if (requestedTables.length === 0 && !businessTerm && !effectiveSchema) {
         throw new Error("Pass schema or table when generating an ER diagram without a configured default schema.");
       }
 
-      const refs = new Map<string, { schema?: string; table: string }>();
+      const scope = new Map<string, ErScopeTable>();
       const relationships: TableRelationship[] = [];
-      if (table) {
-        addTableRef(refs, selected.config.compatibility, effectiveSchema, table, tableLimit);
-        const result = await withQuerySlot(selected, () =>
-          findRelatedTables(
-            selected.pool,
-            selected.config.compatibility,
-            table,
-            effectiveSchema,
-            depthLimit,
-            tableLimit * 4,
-            selected.config.queryTimeoutMs
-          )
+      const warnings: string[] = [];
+      let relationshipScopeLimited = false;
+
+      for (const requestedTable of requestedTables) {
+        const ref = parseErInputTableRef(selected.config.compatibility, requestedTable, effectiveSchema);
+        assertTableAccess(ref.schema, ref.table, policyContext(selected.config));
+        addErScopeTable(scope, selected.config.compatibility, ref.schema, ref.table, tableLimit, {
+          source: requestedTable === table ? "explicit_table" : "explicit_tables",
+          confidence: 1,
+          evidence: [`Requested table ${requestedTable}.`]
+        });
+      }
+
+      if (businessTerm) {
+        const candidates = await findPrepareQueryCandidates(
+          selected,
+          prepareQuerySearchTerms(businessTerm, businessTerm, undefined),
+          effectiveSchema,
+          tableLimit,
+          warnings
         );
-        for (const relation of result.relations.filter((item) =>
-          isRelationshipAllowed(item, selected.config)
-        )) {
-          relationships.push(relation);
-          addTableRef(refs, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit);
-          addTableRef(refs, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit);
+        for (const candidate of candidates) {
+          addErScopeTable(scope, selected.config.compatibility, candidate.schema, candidate.table, tableLimit, {
+            source: "business_term",
+            confidence: candidate.confidence,
+            evidence: candidate.evidence.map((item) => `${item.field}: ${item.value} (${item.reason})`).slice(0, 5)
+          });
         }
-      } else {
+        if (candidates.length === 0) {
+          warnings.push("No visible table matched the supplied businessTerm.");
+        }
+      }
+
+      if (scope.size === 0) {
         const rows = filterTables(
           await withQuerySlot(selected, () =>
             listTables(
@@ -3014,31 +3031,56 @@ export function createObMcpServer(
         for (const row of rows) {
           const ref = tableRefFromMetadata(row, effectiveSchema);
           if (ref) {
-            addTableRef(refs, selected.config.compatibility, ref.schema, ref.table, tableLimit);
+            addErScopeTable(scope, selected.config.compatibility, ref.schema, ref.table, tableLimit, {
+              source: "schema_scan",
+              confidence: 1,
+              evidence: ["Returned from visible table metadata."]
+            });
           }
         }
-        for (const ref of refs.values()) {
-          const result = await withQuerySlot(selected, () =>
-            findRelatedTables(
-              selected.pool,
-              selected.config.compatibility,
-              ref.table,
-              ref.schema,
-              1,
-              tableLimit * 4,
-              selected.config.queryTimeoutMs
-            )
-          );
-          for (const relation of result.relations.filter((item) =>
-            isRelationshipAllowed(item, selected.config)
-          )) {
-            relationships.push(relation);
+      }
+
+      const initialRefs = [...scope.values()];
+      let discoveredRelationshipCount = 0;
+      let filteredRelationshipCount = 0;
+      for (const ref of initialRefs) {
+        const result = await withQuerySlot(selected, () =>
+          findRelatedTables(
+            selected.pool,
+            selected.config.compatibility,
+            ref.table,
+            ref.schema,
+            depthLimit,
+            tableLimit * 4,
+            selected.config.queryTimeoutMs
+          )
+        );
+        for (const relation of result.relations) {
+          discoveredRelationshipCount += 1;
+          if (!isErRelationshipVisible(relation, selected.config, relationConfidenceFloor, includeInferred)) {
+            filteredRelationshipCount += 1;
+            continue;
+          }
+          relationships.push(relation);
+          const evidence = relation.evidence.map((item) => item.detail).slice(0, 5);
+          const addedSource = addErScopeTable(scope, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit, {
+            source: "relationship",
+            confidence: relation.confidence,
+            evidence
+          });
+          const addedTarget = addErScopeTable(scope, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit, {
+            source: "relationship",
+            confidence: relation.confidence,
+            evidence
+          });
+          if (!addedSource || !addedTarget) {
+            relationshipScopeLimited = true;
           }
         }
       }
 
       const entities: ErEntity[] = [];
-      for (const ref of refs.values()) {
+      for (const ref of scope.values()) {
         const columns = filterColumnMetadata(
           await withQuerySlot(selected, () =>
             describeTable(
@@ -3067,7 +3109,7 @@ export function createObMcpServer(
       }
 
       const entityKeys = new Set(
-        [...refs.values()].map((ref) => tableRefKey(selected.config.compatibility, ref.schema, ref.table))
+        [...scope.values()].map((ref) => tableRefKey(selected.config.compatibility, ref.schema, ref.table))
       );
       const diagramRelationships = dedupeRelationships(selected.config.compatibility, relationships).filter(
         (relation) =>
@@ -3080,14 +3122,28 @@ export function createObMcpServer(
           mode: selected.config.compatibility,
           schema: effectiveSchema,
           rootTable: table ?? null,
+          businessTerm: businessTerm ?? null,
+          scope: [...scope.values()].map(erScopeTableOutput),
           maxTables: tableLimit,
+          depth: depthLimit,
+          minConfidence: relationConfidenceFloor,
+          includeInferred,
           tableCount: entities.length,
           relationshipCount: diagramRelationships.length,
+          discoveredRelationshipCount,
+          filteredRelationshipCount,
           mermaid: diagram.mermaid,
           diagram: {
             entities: diagram.entities,
             relationships: diagram.relationships
-          }
+          },
+          warnings: uniqueStrings([
+            ...warnings,
+            ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
+            ...(filteredRelationshipCount > 0
+              ? [`${filteredRelationshipCount} relationship(s) were hidden by policy, minConfidence, or includeInferred.`]
+              : [])
+          ])
         },
         selected.config
       );
@@ -3864,17 +3920,83 @@ function isRelationshipAllowed(relation: TableRelationship, config: ObConfig): b
   );
 }
 
-function addTableRef(
-  refs: Map<string, { schema?: string; table: string }>,
+interface ErScopeTable {
+  schema?: string;
+  table: string;
+  sources: string[];
+  confidence: number;
+  evidence: string[];
+}
+
+function parseErInputTableRef(
+  mode: ObConfig["compatibility"],
+  value: string,
+  fallbackSchema: string | undefined
+): { schema?: string; table: string } {
+  const trimmed = value.trim();
+  const separator = trimmed.indexOf(".");
+  const schema = separator > 0 ? trimmed.slice(0, separator).trim() : fallbackSchema;
+  const table = separator > 0 ? trimmed.slice(separator + 1).trim() : trimmed;
+  return {
+    schema: mode === "oracle" && schema ? schema.toUpperCase() : schema,
+    table: mode === "oracle" ? table.toUpperCase() : table
+  };
+}
+
+function addErScopeTable(
+  scope: Map<string, ErScopeTable>,
   mode: ObConfig["compatibility"],
   schema: string | undefined,
   table: string,
-  limit: number
-): void {
-  if (refs.size >= limit) {
-    return;
+  limit: number,
+  detail: { source: string; confidence: number; evidence: string[] }
+): boolean {
+  const normalizedSchema = mode === "oracle" && schema ? schema.toUpperCase() : schema;
+  const normalizedTable = mode === "oracle" ? table.toUpperCase() : table;
+  const key = tableRefKey(mode, normalizedSchema, normalizedTable);
+  const existing = scope.get(key);
+  if (!existing && scope.size >= limit) {
+    return false;
   }
-  refs.set(tableRefKey(mode, schema, table), { schema, table: mode === "oracle" ? table.toUpperCase() : table });
+  if (!existing) {
+    scope.set(key, {
+      schema: normalizedSchema,
+      table: normalizedTable,
+      sources: [detail.source],
+      confidence: detail.confidence,
+      evidence: detail.evidence.slice(0, 20)
+    });
+    return true;
+  }
+  existing.sources = uniqueStrings([...existing.sources, detail.source]);
+  existing.confidence = Math.max(existing.confidence, detail.confidence);
+  existing.evidence = uniqueStrings([...existing.evidence, ...detail.evidence]).slice(0, 20);
+  return true;
+}
+
+function erScopeTableOutput(table: ErScopeTable) {
+  return {
+    schema: table.schema,
+    table: table.table,
+    sources: table.sources,
+    confidence: Number(table.confidence.toFixed(3)),
+    evidence: table.evidence
+  };
+}
+
+function isErRelationshipVisible(
+  relation: TableRelationship,
+  config: ObConfig,
+  minConfidence: number,
+  includeInferred: boolean
+): boolean {
+  if (!includeInferred && relation.relationType === "name_inference") {
+    return false;
+  }
+  if (relation.confidence < minConfidence) {
+    return false;
+  }
+  return isRelationshipAllowed(relation, config);
 }
 
 function tableRefFromMetadata(
