@@ -22,19 +22,26 @@ OceanBase MCP is read-only by design. It has no write tool, rejects write/contro
 | 安全 / Security | [安全基线](docs/zh-CN/security.md) | [Security baseline](docs/en/security.md) |
 | 示例 / Examples | [示例索引](examples/README.zh-CN.md) | [Examples](examples/README.en.md) |
 
-## Capabilities / 能力
+## Versioned Capabilities / 功能版本
 
-| 中文 | English |
-| --- | --- |
-| 支持 OceanBase MySQL 模式和 Oracle 模式。 | Supports OceanBase MySQL and Oracle compatibility modes. |
-| 支持本地 stdio 接入 OpenCode，也支持远程 Streamable HTTP 部署。 | Supports local stdio for OpenCode and remote Streamable HTTP deployments. |
-| 提供 OpenCode agent 和 skill，引导模型按元数据优先、只读预览、分页查询的流程使用 MCP。 | Provides an OpenCode agent and skill for metadata-first, read-only query workflows. |
-| 支持多 profile，用于不同环境、租户或集群。 | Supports multiple profiles for environments, tenants, or clusters. |
-| 支持 schema/table allowlist、系统 schema 隐藏、敏感列拦截、字段级样例脱敏、行数和返回大小硬限制。 | Supports schema/table allowlists, system-schema hiding, sensitive-column blocking, field-level sample masking, and hard row/response limits. |
-| 支持来源 IP allowlist、Bearer token 策略、Host allowlist、body 限制、端点鉴权和限流。 | Supports source IP allowlists, bearer-token policies, Host allowlists, body limits, endpoint auth, and rate limiting. |
-| 提供健康检查、Prometheus 指标、JSON 审计日志、配置诊断和数据库账号权限核验。 | Provides health checks, Prometheus metrics, JSON audit logs, config diagnostics, and database permission verification. |
-| 提供 Docker、Docker Compose、Kubernetes、Nginx、systemd 和本地客户端示例。 | Provides Docker, Docker Compose, Kubernetes, Nginx, systemd, and local client examples. |
-| 提供 CI、tagged release、GHCR 多架构镜像和离线镜像归档流程。 | Provides CI, tagged releases, GHCR multi-architecture images, and offline image archives. |
+| Since | 中文 | English |
+| --- | --- | --- |
+| v0.3.0 | 基础只读 MCP 网关：stdio 接入、OceanBase MySQL/Oracle 模式连接、只读 SQL 执行和常用表元数据查看。 | Read-only MCP gateway foundation: stdio integration, OceanBase MySQL/Oracle connectivity, read-only SQL execution, and common table metadata inspection. |
+| v0.3.0 | 基础安全策略：拒绝写入/控制 SQL、多语句、危险函数和默认 `SELECT *`；限制行数、SQL 长度和返回大小。 | Baseline SQL policy: blocks write/control SQL, multi-statement SQL, dangerous functions, and `SELECT *` by default; caps rows, SQL length, and response size. |
+| v0.3.0 | 表结构、索引、约束、分区和脱敏样例数据工具。 | Tools for table schemas, indexes, constraints, partitions, and masked sample rows. |
+| v0.4.0 | 生产部署硬化：HTTP 模式、Bearer token、Host allowlist、来源 IP allowlist、body 限制、限流、健康检查、指标和审计日志。 | Production hardening: HTTP mode, bearer token auth, Host allowlist, source IP allowlist, body limits, rate limits, health checks, metrics, and audit logs. |
+| v0.4.0 | 数据库账号权限核验和更完整的配置诊断，用于上线前检查只读边界。 | Database permission verification and expanded configuration diagnostics for release checks. |
+| v0.5.0 | 开发辅助元数据：表 DDL、表统计、Oracle 对象元数据、相关表发现和 ER 图生成。 | Developer metadata: table DDL, table statistics, Oracle object metadata, related-table discovery, and ER diagram generation. |
+| v0.5.0 | SQL 辅助：只读 SQL 模板、执行计划分析和基于证据的性能建议报告。 | SQL assistance: read-only query templates, query plan analysis, and evidence-based performance advisory reports. |
+| v0.5.0 | 字段级脱敏配置增强，支持精确字段匹配和自动敏感字段识别。 | Enhanced column masking with exact column matches and automatic sensitive-name detection. |
+| v0.5.1 | OpenCode Agent/Skill：要求先查元数据，再生成只读 SQL，执行前预览风险，最后分页查询和总结结果。 | OpenCode Agent/Skill: metadata first, read-only SQL generation, pre-execution risk preview, paged query execution, and result summarization. |
+| v0.5.1 | 查询体验增强：表上下文、查询预览、分页查询、列元数据、Markdown 预览、结果警告和结构化错误提示。 | Query workflow improvements: table context, query preview, paged queries, column metadata, Markdown preview, warnings, and structured SQL error hints. |
+| v0.5.1 | 字段画像和业务字典：受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 | Column profiling and business glossary: bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
+| v0.5.1 | Release 交付补齐：npm 包、SBOM、amd64/arm64 离线镜像和源码归档。 | Release delivery assets: npm package, SBOM, amd64/arm64 offline images, and source archive. |
+
+所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
+
+All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
 ## Quick Start / 快速开始
 
@@ -79,38 +86,38 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 
 ## Tools / 工具
 
-| 工具 / Tool | 中文 | English |
-| --- | --- | --- |
-| `ob_list_profiles` | 列出 profile，并隐藏敏感信息。 | List configured profiles with secrets redacted. |
-| `ob_config_diagnostics` | 输出部署和策略诊断。 | Report deployment and policy checks. |
-| `ob_verify_permissions` | 检查数据库账号是否包含写入或管理权限。 | Check current database grants for write/admin privileges. |
-| `ob_ping` | 验证 OceanBase 连接。 | Verify the OceanBase connection. |
-| `ob_policy_explain` | 解释 SQL 是否会被允许。 | Explain whether SQL would be allowed. |
-| `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 | Preview read-only policy and plan risk before execution, without returning data. |
-| `ob_query` | 执行严格只读 SQL。 | Run strict read-only SQL. |
-| `ob_query_page` | 执行带分页的只读查询。 | Run a paged read-only query. |
-| `ob_list_schemas` | 列出可见 schema/database。 | List visible schemas/databases. |
-| `ob_list_tables` | 列出可见表。 | List visible tables. |
-| `ob_describe_table` | 返回列元数据。 | Return column metadata. |
-| `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 | Run `EXPLAIN` for read-only SQL. |
-| `ob_analyze_query_plan` | 返回基于证据的执行计划分析。 | Return evidence-based plan findings. |
-| `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 | Generate a read-only performance advisory report from EXPLAIN and metadata. |
-| `ob_search_catalog` | 搜索 schema、表和列。 | Search schemas, tables, and columns. |
-| `ob_search_business_glossary` | 搜索业务词到 schema/table/column 的可见映射。 | Search visible business-term mappings to schemas, tables, and columns. |
-| `ob_list_objects` | 列出经过策略过滤的 Oracle 对象。 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
-| `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
-| `ob_get_table_schema` | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |
-| `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 | Return native or structured table DDL metadata. |
-| `ob_get_table_context` | 返回写 SQL 和查数据常用的表上下文。 | Return common table context for SQL drafting and data inspection. |
-| `ob_find_related_tables` | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
-| `ob_get_table_stats` | 返回表行数估算、对象计数和存储统计。 | Return table row estimates, counts, and storage statistics. |
-| `ob_profile_columns` | 返回受限样本内的字段画像，并对敏感值脱敏。 | Return bounded-sample column profiles with sensitive values masked. |
-| `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
-| `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 | Generate Mermaid and JSON ER metadata from allowed tables. |
-| `ob_get_indexes` | 返回表索引元数据。 | Return table index metadata. |
-| `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 | Return primary, unique, foreign-key, check, and not-null constraints. |
-| `ob_get_partitions` | 返回表分区元数据。 | Return table partition metadata. |
-| `ob_sample_rows` | 返回显式列样例数据，并默认脱敏。 | Return masked, explicit-column sample rows. |
+| 工具 / Tool | Since | 中文 | English |
+| --- | --- | --- | --- |
+| `ob_list_profiles` | v0.3.0 | 列出 profile，并隐藏敏感信息。 | List configured profiles with secrets redacted. |
+| `ob_config_diagnostics` | v0.3.0 | 输出部署和策略诊断。 | Report deployment and policy checks. |
+| `ob_verify_permissions` | v0.4.0 | 检查数据库账号是否包含写入或管理权限。 | Check current database grants for write/admin privileges. |
+| `ob_ping` | v0.3.0 | 验证 OceanBase 连接。 | Verify the OceanBase connection. |
+| `ob_policy_explain` | v0.3.0 | 解释 SQL 是否会被允许。 | Explain whether SQL would be allowed. |
+| `ob_query_preview` | v0.5.1 | 执行前预览只读策略和执行计划风险，不返回数据。 | Preview read-only policy and plan risk before execution, without returning data. |
+| `ob_query` | v0.3.0 | 执行严格只读 SQL；v0.5.1 起返回列元数据、Markdown 预览和警告。 | Run strict read-only SQL; returns column metadata, Markdown preview, and warnings since v0.5.1. |
+| `ob_query_page` | v0.5.1 | 执行带分页的只读查询。 | Run a paged read-only query. |
+| `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 | List visible schemas/databases. |
+| `ob_list_tables` | v0.3.0 | 列出可见表。 | List visible tables. |
+| `ob_describe_table` | v0.3.0 | 返回列元数据。 | Return column metadata. |
+| `ob_explain` | v0.3.0 | 对只读 SQL 执行 `EXPLAIN`。 | Run `EXPLAIN` for read-only SQL. |
+| `ob_analyze_query_plan` | v0.5.0 | 返回基于证据的执行计划分析。 | Return evidence-based plan findings. |
+| `ob_generate_performance_report` | v0.5.0 | 基于 EXPLAIN 和元数据生成只读性能建议报告。 | Generate a read-only performance advisory report from EXPLAIN and metadata. |
+| `ob_search_catalog` | v0.3.0 | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 | Search schemas, tables, and columns; business glossary matches can be included since v0.5.1. |
+| `ob_search_business_glossary` | v0.5.1 | 搜索业务词到 schema/table/column 的可见映射。 | Search visible business-term mappings to schemas, tables, and columns. |
+| `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle 对象。 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
+| `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
+| `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |
+| `ob_get_table_ddl` | v0.5.0 | 返回表的原生或结构化 DDL 元数据。 | Return native or structured table DDL metadata. |
+| `ob_get_table_context` | v0.5.1 | 返回写 SQL 和查数据常用的表上下文。 | Return common table context for SQL drafting and data inspection. |
+| `ob_find_related_tables` | v0.5.0 | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
+| `ob_get_table_stats` | v0.5.0 | 返回表行数估算、对象计数和存储统计。 | Return table row estimates, counts, and storage statistics. |
+| `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像，并对敏感值脱敏。 | Return bounded-sample column profiles with sensitive values masked. |
+| `ob_generate_query` | v0.5.0 | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
+| `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 | Generate Mermaid and JSON ER metadata from allowed tables. |
+| `ob_get_indexes` | v0.3.0 | 返回表索引元数据。 | Return table index metadata. |
+| `ob_get_constraints` | v0.3.0 | 返回主键、唯一键、外键、check 和 not-null 约束。 | Return primary, unique, foreign-key, check, and not-null constraints. |
+| `ob_get_partitions` | v0.3.0 | 返回表分区元数据。 | Return table partition metadata. |
+| `ob_sample_rows` | v0.3.0 | 返回显式列样例数据，并默认脱敏。 | Return masked, explicit-column sample rows. |
 
 ## Validation / 验证
 

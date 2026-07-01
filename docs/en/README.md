@@ -19,6 +19,24 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 - Provides a read-only database account permission verification tool.
 - Ships Docker, Kubernetes, Nginx, systemd, and local OpenCode examples.
 
+## Versioned Capabilities
+
+| Version | Capability | Details |
+| --- | --- | --- |
+| v0.3.0 | Read-only gateway foundation | stdio integration, OceanBase MySQL/Oracle connectivity, read-only SQL execution, schema/table metadata, indexes, constraints, partitions, and masked sample rows. |
+| v0.3.0 | Baseline SQL policy | Blocks write/control SQL, multi-statement SQL, dangerous functions, and `SELECT *` by default; caps rows, SQL length, and response size. |
+| v0.4.0 | Production deployment hardening | HTTP mode, bearer token auth, Host allowlist, source IP allowlist, body limits, rate limits, health checks, Prometheus metrics, and JSON audit logs. |
+| v0.4.0 | Pre-release diagnostics | Database permission verification and expanded configuration diagnostics for read-only boundary checks. |
+| v0.5.0 | Developer metadata | Table DDL, table statistics, Oracle object metadata, related-table discovery, and ER diagram generation. |
+| v0.5.0 | SQL assistance | Read-only query templates, query plan analysis, and evidence-based performance advisory reports. |
+| v0.5.0 | Column masking enhancements | Exact column matches, wildcard matches, and automatic sensitive-name detection. |
+| v0.5.1 | OpenCode Agent/Skill | Guides the workflow to inspect metadata, generate read-only SQL, preview risk, page through results, and summarize output. |
+| v0.5.1 | Query workflow improvements | Table context, query preview, paged queries, column metadata, Markdown preview, result warnings, and structured SQL error hints. |
+| v0.5.1 | Column profiling and business glossary | Bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
+| v0.5.1 | Release delivery assets | npm package, SBOM, amd64/arm64 offline images, and source archive for internal builds. |
+
+All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
+
 ## Read-Only Contract
 
 The server is read-only by design:
@@ -103,38 +121,38 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 
 ## Tools
 
-| Tool | Purpose |
-| --- | --- |
-| `ob_list_profiles` | List configured profiles with secrets redacted. |
-| `ob_config_diagnostics` | Report deployment and policy checks. |
-| `ob_verify_permissions` | Check current database grants for write or administrative privileges. |
-| `ob_ping` | Verify the OceanBase connection. |
-| `ob_policy_explain` | Explain whether SQL would be allowed. |
-| `ob_query_preview` | Preview read-only policy and plan risk before execution, without returning data. |
-| `ob_query` | Run strict read-only SQL. |
-| `ob_query_page` | Run a paged read-only query. |
-| `ob_list_schemas` | List visible schemas/databases. |
-| `ob_list_tables` | List visible tables. |
-| `ob_describe_table` | Return column metadata. |
-| `ob_explain` | Run `EXPLAIN` for read-only SQL. |
-| `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
-| `ob_generate_performance_report` | Generate a read-only performance advisory report from EXPLAIN and metadata. |
-| `ob_search_catalog` | Search schemas, tables, and columns. |
-| `ob_search_business_glossary` | Search visible business-term mappings to schemas, tables, and columns. |
-| `ob_list_objects` | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
-| `ob_get_object_metadata` | Return bounded metadata and source preview for one Oracle object. |
-| `ob_get_table_schema` | Return policy-filtered table schema. |
-| `ob_get_table_ddl` | Return native or structured table DDL metadata. |
-| `ob_get_table_context` | Return common table context for SQL drafting and data inspection. |
-| `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
-| `ob_get_table_stats` | Return table row estimates, counts, and storage statistics. |
-| `ob_profile_columns` | Return bounded-sample column profiles with sensitive values masked. |
-| `ob_generate_query` | Generate read-only SQL templates from table metadata. |
-| `ob_generate_er_diagram` | Generate Mermaid and JSON ER metadata from allowed tables. |
-| `ob_get_indexes` | Return table index metadata. |
-| `ob_get_constraints` | Return primary, unique, foreign-key, check, and not-null constraints. |
-| `ob_get_partitions` | Return table partition metadata. |
-| `ob_sample_rows` | Return masked, explicit-column sample rows. |
+| Tool | Since | Purpose |
+| --- | --- | --- |
+| `ob_list_profiles` | v0.3.0 | List configured profiles with secrets redacted. |
+| `ob_config_diagnostics` | v0.3.0 | Report deployment and policy checks. |
+| `ob_verify_permissions` | v0.4.0 | Check current database grants for write or administrative privileges. |
+| `ob_ping` | v0.3.0 | Verify the OceanBase connection. |
+| `ob_policy_explain` | v0.3.0 | Explain whether SQL would be allowed. |
+| `ob_query_preview` | v0.5.1 | Preview read-only policy and plan risk before execution, without returning data. |
+| `ob_query` | v0.3.0 | Run strict read-only SQL; returns column metadata, Markdown preview, and warnings since v0.5.1. |
+| `ob_query_page` | v0.5.1 | Run a paged read-only query. |
+| `ob_list_schemas` | v0.3.0 | List visible schemas/databases. |
+| `ob_list_tables` | v0.3.0 | List visible tables. |
+| `ob_describe_table` | v0.3.0 | Return column metadata. |
+| `ob_explain` | v0.3.0 | Run `EXPLAIN` for read-only SQL. |
+| `ob_analyze_query_plan` | v0.5.0 | Run `EXPLAIN` and return evidence-based plan findings. |
+| `ob_generate_performance_report` | v0.5.0 | Generate a read-only performance advisory report from EXPLAIN and metadata. |
+| `ob_search_catalog` | v0.3.0 | Search schemas, tables, and columns; business glossary matches can be included since v0.5.1. |
+| `ob_search_business_glossary` | v0.5.1 | Search visible business-term mappings to schemas, tables, and columns. |
+| `ob_list_objects` | v0.5.0 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
+| `ob_get_object_metadata` | v0.5.0 | Return bounded metadata and source preview for one Oracle object. |
+| `ob_get_table_schema` | v0.3.0 | Return policy-filtered table schema. |
+| `ob_get_table_ddl` | v0.5.0 | Return native or structured table DDL metadata. |
+| `ob_get_table_context` | v0.5.1 | Return common table context for SQL drafting and data inspection. |
+| `ob_find_related_tables` | v0.5.0 | Find foreign-key and conservative naming-based table relationships. |
+| `ob_get_table_stats` | v0.5.0 | Return table row estimates, counts, and storage statistics. |
+| `ob_profile_columns` | v0.5.1 | Return bounded-sample column profiles with sensitive values masked. |
+| `ob_generate_query` | v0.5.0 | Generate read-only SQL templates from table metadata. |
+| `ob_generate_er_diagram` | v0.5.0 | Generate Mermaid and JSON ER metadata from allowed tables. |
+| `ob_get_indexes` | v0.3.0 | Return table index metadata. |
+| `ob_get_constraints` | v0.3.0 | Return primary, unique, foreign-key, check, and not-null constraints. |
+| `ob_get_partitions` | v0.3.0 | Return table partition metadata. |
+| `ob_sample_rows` | v0.3.0 | Return masked, explicit-column sample rows. |
 
 ## Oracle Object Metadata
 

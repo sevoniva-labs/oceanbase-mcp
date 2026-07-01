@@ -19,6 +19,24 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 - 提供数据库账号权限只读核验工具。
 - 提供 Docker、Kubernetes、Nginx、systemd 和本地 OpenCode 示例。
 
+## 功能版本
+
+| 版本 | 功能 | 说明 |
+| --- | --- | --- |
+| v0.3.0 | 基础只读网关 | stdio 接入、OceanBase MySQL/Oracle 模式连接、只读 SQL 执行、schema/table 元数据、索引、约束、分区和脱敏样例数据。 |
+| v0.3.0 | 基础 SQL 策略 | 拒绝写入/控制 SQL、多语句、危险函数和默认 `SELECT *`；限制行数、SQL 长度和返回大小。 |
+| v0.4.0 | 生产部署硬化 | HTTP 模式、Bearer token、Host allowlist、来源 IP allowlist、body 限制、限流、健康检查、Prometheus 指标和 JSON 审计日志。 |
+| v0.4.0 | 上线前诊断 | 数据库账号权限核验和更完整的配置诊断，用于确认只读边界。 |
+| v0.5.0 | 开发辅助元数据 | 表 DDL、表统计、Oracle 对象元数据、相关表发现和 ER 图生成。 |
+| v0.5.0 | SQL 辅助 | 只读 SQL 模板、执行计划分析和基于证据的性能建议报告。 |
+| v0.5.0 | 字段级脱敏增强 | 支持精确字段匹配、通配匹配和自动敏感字段识别。 |
+| v0.5.1 | OpenCode Agent/Skill | 约束查询流程为先查元数据、生成只读 SQL、执行前预览风险、分页查询、总结结果。 |
+| v0.5.1 | 查询体验增强 | 表上下文、查询预览、分页查询、列元数据、Markdown 预览、结果警告和结构化错误提示。 |
+| v0.5.1 | 字段画像和业务字典 | 受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 |
+| v0.5.1 | Release 交付补齐 | npm 包、SBOM、amd64/arm64 离线镜像和源码归档，便于内网编译部署。 |
+
+所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
+
 ## 只读边界
 
 这个服务从设计上只读：
@@ -103,38 +121,38 @@ npm run start:http
 
 ## 工具列表
 
-| 工具 | 用途 |
-| --- | --- |
-| `ob_list_profiles` | 列出已配置 profile，并隐藏敏感信息。 |
-| `ob_config_diagnostics` | 输出部署和策略诊断。 |
-| `ob_verify_permissions` | 检查当前数据库账号是否包含写入或管理权限。 |
-| `ob_ping` | 验证 OceanBase 连接。 |
-| `ob_policy_explain` | 解释 SQL 是否会被允许。 |
-| `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 |
-| `ob_query` | 执行严格只读 SQL。 |
-| `ob_query_page` | 执行带分页的只读查询。 |
-| `ob_list_schemas` | 列出可见 schema/database。 |
-| `ob_list_tables` | 列出可见表。 |
-| `ob_describe_table` | 返回列元数据。 |
-| `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 |
-| `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
-| `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
-| `ob_search_catalog` | 搜索 schema、表和列。 |
-| `ob_search_business_glossary` | 搜索业务词到 schema/table/column 的可见映射。 |
-| `ob_list_objects` | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
-| `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 |
-| `ob_get_table_schema` | 返回经过策略过滤的表结构。 |
-| `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 |
-| `ob_get_table_context` | 返回写 SQL 和查数据常用的表上下文。 |
-| `ob_find_related_tables` | 查找外键关系和保守的命名推断表关系。 |
-| `ob_get_table_stats` | 返回表行数估算、对象计数和存储统计。 |
-| `ob_profile_columns` | 返回受限样本内的字段画像，并对敏感值脱敏。 |
-| `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 |
-| `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 |
-| `ob_get_indexes` | 返回表索引元数据。 |
-| `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 |
-| `ob_get_partitions` | 返回表分区元数据。 |
-| `ob_sample_rows` | 返回显式列样例数据，并默认脱敏。 |
+| 工具 | 版本 | 用途 |
+| --- | --- | --- |
+| `ob_list_profiles` | v0.3.0 | 列出已配置 profile，并隐藏敏感信息。 |
+| `ob_config_diagnostics` | v0.3.0 | 输出部署和策略诊断。 |
+| `ob_verify_permissions` | v0.4.0 | 检查当前数据库账号是否包含写入或管理权限。 |
+| `ob_ping` | v0.3.0 | 验证 OceanBase 连接。 |
+| `ob_policy_explain` | v0.3.0 | 解释 SQL 是否会被允许。 |
+| `ob_query_preview` | v0.5.1 | 执行前预览只读策略和执行计划风险，不返回数据。 |
+| `ob_query` | v0.3.0 | 执行严格只读 SQL；v0.5.1 起返回列元数据、Markdown 预览和警告。 |
+| `ob_query_page` | v0.5.1 | 执行带分页的只读查询。 |
+| `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 |
+| `ob_list_tables` | v0.3.0 | 列出可见表。 |
+| `ob_describe_table` | v0.3.0 | 返回列元数据。 |
+| `ob_explain` | v0.3.0 | 对只读 SQL 执行 `EXPLAIN`。 |
+| `ob_analyze_query_plan` | v0.5.0 | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
+| `ob_generate_performance_report` | v0.5.0 | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
+| `ob_search_catalog` | v0.3.0 | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 |
+| `ob_search_business_glossary` | v0.5.1 | 搜索业务词到 schema/table/column 的可见映射。 |
+| `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
+| `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 |
+| `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 |
+| `ob_get_table_ddl` | v0.5.0 | 返回表的原生或结构化 DDL 元数据。 |
+| `ob_get_table_context` | v0.5.1 | 返回写 SQL 和查数据常用的表上下文。 |
+| `ob_find_related_tables` | v0.5.0 | 查找外键关系和保守的命名推断表关系。 |
+| `ob_get_table_stats` | v0.5.0 | 返回表行数估算、对象计数和存储统计。 |
+| `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像，并对敏感值脱敏。 |
+| `ob_generate_query` | v0.5.0 | 基于表元数据生成只读 SQL 模板。 |
+| `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据。 |
+| `ob_get_indexes` | v0.3.0 | 返回表索引元数据。 |
+| `ob_get_constraints` | v0.3.0 | 返回主键、唯一键、外键、check 和 not-null 约束。 |
+| `ob_get_partitions` | v0.3.0 | 返回表分区元数据。 |
+| `ob_sample_rows` | v0.3.0 | 返回显式列样例数据，并默认脱敏。 |
 
 ## Oracle 对象元数据
 
