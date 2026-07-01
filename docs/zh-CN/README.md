@@ -190,6 +190,7 @@ npm run start:http
 | `ob_generate_query_examples` | v1.0.0 | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
 | `ob_generate_er_html` | v1.0.0 | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 |
 | `ob_generate_entity_diagram` | v1.0.0 | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
+| `ob_explain_relationship` | v1.0.0 | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 |
 
 ## Oracle 对象元数据
 

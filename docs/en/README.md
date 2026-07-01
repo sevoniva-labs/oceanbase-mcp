@@ -190,6 +190,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_generate_query_examples` | v1.0.0 | Generate common read-only query examples from table context without executing SQL. |
 | `ob_generate_er_html` | v1.0.0 | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
 | `ob_generate_entity_diagram` | v1.0.0 | Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence. |
+| `ob_explain_relationship` | v1.0.0 | Explain visible relationship evidence and confidence between two tables without inventing missing links. |
 
 ## Oracle Object Metadata
 

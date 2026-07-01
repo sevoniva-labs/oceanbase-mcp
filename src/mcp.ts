@@ -3090,6 +3090,68 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_explain_relationship",
+    {
+      title: "Explain Table Relationship",
+      description: "Explain visible relationship evidence between two OceanBase tables without inventing missing relationships.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        sourceSchema: z.string().optional(),
+        sourceTable: z.string().min(1),
+        targetSchema: z.string().optional(),
+        targetTable: z.string().min(1),
+        depth: z.number().int().min(1).max(3).optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        includeInferred: z.boolean().optional().default(true)
+      }
+    },
+    async ({ profile, schema, sourceSchema, sourceTable, targetSchema, targetTable, depth, minConfidence, includeInferred = true }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const fallbackSchema = metadataSchema(selected.config, schema);
+      const sourceRef = parseErInputTableRef(selected.config.compatibility, sourceTable, metadataSchema(selected.config, sourceSchema) ?? fallbackSchema);
+      const targetRef = parseErInputTableRef(selected.config.compatibility, targetTable, metadataSchema(selected.config, targetSchema) ?? fallbackSchema);
+      assertTableAccess(sourceRef.schema, sourceRef.table, policyContext(selected.config));
+      assertTableAccess(targetRef.schema, targetRef.table, policyContext(selected.config));
+      const depthLimit = depth ?? 2;
+      const confidenceFloor = minConfidence ?? (includeInferred ? 0.5 : 0.9);
+      const result = await withQuerySlot(selected, () =>
+        findRelatedTables(
+          selected.pool,
+          selected.config.compatibility,
+          sourceRef.table,
+          sourceRef.schema,
+          depthLimit,
+          100,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const matches = dedupeRelationships(selected.config.compatibility, result.relations)
+        .filter((relation) => isErRelationshipVisible(relation, selected.config, confidenceFloor, includeInferred))
+        .filter((relation) => relationshipConnectsTables(selected.config.compatibility, relation, sourceRef, targetRef))
+        .map(entityRelationshipEvidence);
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          source: sourceRef,
+          target: targetRef,
+          depth: depthLimit,
+          minConfidence: confidenceFloor,
+          includeInferred,
+          conclusion: matches.length > 0 ? "relationship_found" : "not_found",
+          relationshipCount: matches.length,
+          relationships: matches,
+          warnings: matches.length > 0
+            ? []
+            : ["No visible relationship was found between the two tables under the active policy and confidence settings."]
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_get_indexes",
     {
       title: "Get Table Indexes",
@@ -4124,6 +4186,31 @@ function entityRelationshipEvidence(relation: TableRelationship) {
       columns: item.columns
     }))
   };
+}
+
+function relationshipConnectsTables(
+  mode: ObConfig["compatibility"],
+  relation: TableRelationship,
+  left: { schema?: string; table: string },
+  right: { schema?: string; table: string }
+): boolean {
+  const source = { schema: relation.sourceSchema, table: relation.sourceTable };
+  const target = { schema: relation.targetSchema, table: relation.targetTable };
+  return (
+    sameTableRef(mode, source, left) &&
+    sameTableRef(mode, target, right)
+  ) || (
+    sameTableRef(mode, source, right) &&
+    sameTableRef(mode, target, left)
+  );
+}
+
+function sameTableRef(
+  mode: ObConfig["compatibility"],
+  left: { schema?: string; table: string },
+  right: { schema?: string; table: string }
+): boolean {
+  return tableRefKey(mode, left.schema, left.table) === tableRefKey(mode, right.schema, right.table);
 }
 
 function parseErInputTableRef(
