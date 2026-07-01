@@ -2920,6 +2920,71 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_generate_query_doc",
+    {
+      title: "Generate Query Documentation",
+      description: "Generate bounded JSON or Markdown documentation for a SQL snippet without executing the target query.",
+      inputSchema: {
+        ...profileInput,
+        sql: z.string().min(1).optional(),
+        filePath: z.string().min(1).optional(),
+        line: z.number().int().positive().optional(),
+        params: z.array(sqlParamSchema).optional().default([]),
+        schema: z.string().optional(),
+        format: tableDocumentFormatSchema.optional().default("markdown"),
+        maxRows: z.number().int().positive().max(10_000).optional(),
+        runExplain: z.boolean().optional().default(false),
+        title: z.string().min(1).max(120).optional()
+      }
+    },
+    async ({ profile, sql, filePath, line, params = [], schema, format = "markdown", maxRows, runExplain = false, title }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const source = resolveProjectQuerySource(sql, filePath, line);
+      const sqlParams = params as SqlParam[];
+      const lint = await lintReadOnlySql(selected, source.sql, sqlParams, effectiveRowLimit(maxRows, selected.config), runExplain);
+      const policy = explainSqlPolicy(source.sql, policyContext(selected.config));
+      const metadata = await validateSnippetMetadata(selected, source.sql, policy.tableRefs, metadataSchema(selected.config, schema));
+      const metadataFindings = snippetMetadataFindings(metadata);
+      const findings = [...lint.findings, ...metadataFindings];
+      const document = {
+        generatedAt: new Date().toISOString(),
+        mode: selected.config.compatibility,
+        source: source.source,
+        sql: source.sql,
+        paramCount: sqlParams.length,
+        executed: false,
+        explainRun: lint.explainRun,
+        allowed: lint.allowed && metadataFindings.every((finding) => finding.severity !== "high"),
+        severity: lintSeverity(findings),
+        structure: projectQueryStructure(source.sql, selected.config.compatibility, policy.tableRefs),
+        metadata,
+        findings,
+        recommendations: uniqueStrings([
+          ...lint.recommendations,
+          ...snippetMetadataRecommendations(metadataFindings),
+          ...projectQueryRecommendations(source.source)
+        ]),
+        warnings: uniqueStrings([
+          ...metadata.warnings,
+          "Query documentation is based on parsed SQL and visible metadata; dynamic SQL may need review after rendering."
+        ])
+      };
+      return toLimitedResult(
+        {
+          format,
+          mode: selected.config.compatibility,
+          generatedAt: document.generatedAt,
+          executed: false,
+          document,
+          markdown: format === "markdown" ? renderQueryDocumentMarkdown(document, title) : undefined,
+          warnings: document.warnings
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_generate_mapper_context",
     {
       title: "Generate Mapper Context",
@@ -8733,6 +8798,103 @@ function projectQueryRecommendations(source: ProjectQuerySource): string[] {
     return ["Validate the rendered SQL after dynamic mapper or template conditions are applied."];
   }
   return [];
+}
+
+function renderQueryDocumentMarkdown(document: {
+  generatedAt: string;
+  mode: ObConfig["compatibility"];
+  source: ProjectQuerySource;
+  sql: string;
+  paramCount: number;
+  executed: boolean;
+  explainRun: boolean;
+  allowed: boolean;
+  severity: "low" | "medium" | "high";
+  structure: ReturnType<typeof projectQueryStructure>;
+  metadata: SnippetMetadataValidation;
+  findings: LintFinding[];
+  recommendations: string[];
+  warnings: string[];
+}, title?: string): string {
+  const lines = [
+    `# ${title ?? "Query Documentation"}`,
+    "",
+    `Generated at: ${document.generatedAt}`,
+    "",
+    `Mode: ${document.mode}`,
+    `Executed: ${document.executed ? "yes" : "no"}`,
+    `Allowed by current checks: ${document.allowed ? "yes" : "no"}`,
+    `Severity: ${document.severity}`,
+    `EXPLAIN run: ${document.explainRun ? "yes" : "no"}`,
+    "",
+    "## SQL",
+    "",
+    "```sql",
+    document.sql,
+    "```",
+    ""
+  ];
+  lines.push("## Structure", "");
+  lines.push(`Statement type: ${document.structure.statementType}`);
+  lines.push(`Parameters: ${document.paramCount}`);
+  lines.push(`Has WHERE: ${document.structure.shape.hasWhere ? "yes" : "no"}`);
+  lines.push(`Has ORDER BY: ${document.structure.shape.hasOrderBy ? "yes" : "no"}`);
+  lines.push(`Has row limit: ${document.structure.shape.hasRowLimit ? "yes" : "no"}`);
+  lines.push(`Has JOIN: ${document.structure.shape.hasJoin ? "yes" : "no"}`, "");
+  if (document.structure.filtersPreview) {
+    lines.push(`Filter preview: ${document.structure.filtersPreview}`, "");
+  }
+  if (document.structure.orderByPreview) {
+    lines.push(`Order preview: ${document.structure.orderByPreview}`, "");
+  }
+  lines.push("## Tables", "");
+  if (document.structure.tables.length === 0) {
+    lines.push("No table reference was parsed from the SQL.", "");
+  } else {
+    lines.push("| Schema | Table | Visible | Columns Checked | Unknown Columns |");
+    lines.push("| --- | --- | --- | --- | --- |");
+    for (const table of document.metadata.tables) {
+      lines.push(`| ${markdownCell(table.schema ?? "")} | ${markdownCell(table.table)} | ${table.visible ? "YES" : "NO"} | ${markdownCell(table.checkedColumns.join(", "))} | ${markdownCell(table.unknownColumns.join(", "))} |`);
+    }
+    lines.push("");
+  }
+  lines.push("## Field Sources", "");
+  const fieldRefs = [
+    ...document.metadata.qualifiedColumnRefs.map((ref) => ({ kind: "qualified", ...ref })),
+    ...document.metadata.bareColumnRefs.map((ref) => ({ kind: "bare", ...ref }))
+  ];
+  if (fieldRefs.length === 0) {
+    lines.push("No column reference was parsed from the SQL.", "");
+  } else {
+    lines.push("| Kind | Column | Schema | Table | Status |");
+    lines.push("| --- | --- | --- | --- | --- |");
+    for (const ref of fieldRefs.slice(0, 80)) {
+      const status = "ambiguous" in ref && ref.ambiguous ? "ambiguous" : ref.ok === false ? "unknown" : ref.ok === true ? "ok" : "";
+      lines.push(`| ${ref.kind} | ${markdownCell(ref.column)} | ${markdownCell(ref.schema ?? "")} | ${markdownCell(ref.table ?? "")} | ${status} |`);
+    }
+    lines.push("");
+  }
+  if (document.findings.length > 0) {
+    lines.push("## Findings", "");
+    lines.push("| Severity | Rule | Message | Evidence |");
+    lines.push("| --- | --- | --- | --- |");
+    for (const finding of document.findings) {
+      lines.push(`| ${finding.severity} | ${markdownCell(finding.rule)} | ${markdownCell(finding.message)} | ${markdownCell(finding.evidence.join("; "))} |`);
+    }
+    lines.push("");
+  }
+  if (document.recommendations.length > 0) {
+    lines.push("## Recommendations", "");
+    for (const recommendation of document.recommendations) {
+      lines.push(`- ${recommendation}`);
+    }
+    lines.push("");
+  }
+  lines.push("## Notes", "");
+  for (const warning of document.warnings) {
+    lines.push(`- ${warning}`);
+  }
+  return lines.join("\n");
 }
 
 function mapperContextTableRefs(

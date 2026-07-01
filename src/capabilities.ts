@@ -66,6 +66,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_find_unknown_columns_in_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Find unknown tables and columns in SQL with visible metadata-based candidates." },
   { name: "ob_generate_table_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for one visible table." },
   { name: "ob_generate_schema_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for visible tables in one schema." },
+  { name: "ob_generate_query_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for a SQL snippet without executing it." },
   { name: "ob_rewrite_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Rewrite SELECT/WITH SQL into a safer read-only form without executing it." },
   { name: "ob_convert_sql_dialect", since: "v1.0.0", group: "sql", mode: "all", description: "Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations." },
   { name: "ob_explain_error", since: "v1.0.0", group: "sql", mode: "all", description: "Explain SQL errors with policy context and visible metadata hints without executing SQL." },
@@ -87,12 +88,40 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_get_object_metadata", since: "v0.5.0", group: "oracle_metadata", mode: "oracle", description: "Return bounded metadata and source preview for one Oracle object." }
 ];
 
+function compareToolCapabilities(left: ToolCapability, right: ToolCapability): number {
+  const versionOrder = compareCapabilityVersions(left.since, right.since);
+  if (versionOrder !== 0) {
+    return versionOrder;
+  }
+  return left.name.localeCompare(right.name);
+}
+
+function compareCapabilityVersions(left: string, right: string): number {
+  const leftVersion = parseCapabilityVersion(left);
+  const rightVersion = parseCapabilityVersion(right);
+  for (let i = 0; i < 3; i += 1) {
+    if (leftVersion[i] !== rightVersion[i]) {
+      return leftVersion[i] - rightVersion[i];
+    }
+  }
+  return 0;
+}
+
+function parseCapabilityVersion(value: string): [number, number, number] {
+  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(value);
+  if (!match) {
+    return [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER];
+  }
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+}
+
 export function listCapabilities(input: {
   compatibility: CompatibilityMode;
   tools: ToolCapability[];
   profile: string;
 }) {
-  const groups = [...new Set(input.tools.map((tool) => tool.group))].sort();
+  const tools = [...input.tools].sort(compareToolCapabilities);
+  const groups = [...new Set(tools.map((tool) => tool.group))].sort();
   return {
     name: "ob-mcp",
     version: SERVER_VERSION,
@@ -104,7 +133,7 @@ export function listCapabilities(input: {
       blockedSql: ["DDL", "DCL", "DML", "procedure calls", "sequence NEXTVAL", "locks", "file functions", "sleep functions", "multi-statement SQL"]
     },
     groups,
-    tools: input.tools
+    tools
   };
 }
 

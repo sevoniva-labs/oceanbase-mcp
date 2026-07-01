@@ -93,92 +93,93 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 
 ## Tools / 工具
 
-按 Since 版本升序排列；同一版本内按常用工作流和能力分组排列。
+按 Since 版本升序排列；同一版本内按工具名升序排列。
 
-Sorted by Since version in ascending order; tools with the same version are grouped by workflow and capability.
+Sorted by Since version in ascending order; tools with the same version are sorted by tool name.
 
 | Since | 工具 / Tool | 中文 | English |
 | --- | --- | --- | --- |
-| v0.3.0 | `ob_list_profiles` | 列出 profile，并隐藏敏感信息。 | List configured profiles with secrets redacted. |
 | v0.3.0 | `ob_config_diagnostics` | 输出部署和策略诊断。 | Report deployment and policy checks. |
+| v0.3.0 | `ob_describe_table` | 返回列元数据。 | Return column metadata. |
+| v0.3.0 | `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 | Run `EXPLAIN` for read-only SQL. |
+| v0.3.0 | `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 | Return primary, unique, foreign-key, check, and not-null constraints. |
+| v0.3.0 | `ob_get_indexes` | 返回表索引元数据。 | Return table index metadata. |
+| v0.3.0 | `ob_get_partitions` | 返回表分区元数据。 | Return table partition metadata. |
+| v0.3.0 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |
+| v0.3.0 | `ob_list_profiles` | 列出 profile，并隐藏敏感信息。 | List configured profiles with secrets redacted. |
+| v0.3.0 | `ob_list_schemas` | 列出可见 schema/database。 | List visible schemas/databases. |
+| v0.3.0 | `ob_list_tables` | 列出可见表。 | List visible tables. |
 | v0.3.0 | `ob_ping` | 验证 OceanBase 连接。 | Verify the OceanBase connection. |
 | v0.3.0 | `ob_policy_explain` | 解释 SQL 是否会被允许。 | Explain whether SQL would be allowed. |
 | v0.3.0 | `ob_query` | 执行严格只读 SQL；v0.5.1 起返回列元数据、Markdown 预览和警告。 | Run strict read-only SQL; returns column metadata, Markdown preview, and warnings since v0.5.1. |
-| v0.3.0 | `ob_list_schemas` | 列出可见 schema/database。 | List visible schemas/databases. |
-| v0.3.0 | `ob_list_tables` | 列出可见表。 | List visible tables. |
-| v0.3.0 | `ob_describe_table` | 返回列元数据。 | Return column metadata. |
-| v0.3.0 | `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 | Run `EXPLAIN` for read-only SQL. |
-| v0.3.0 | `ob_search_catalog` | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 | Search schemas, tables, and columns; business glossary matches can be included since v0.5.1. |
-| v0.3.0 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |
-| v0.3.0 | `ob_get_indexes` | 返回表索引元数据。 | Return table index metadata. |
-| v0.3.0 | `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 | Return primary, unique, foreign-key, check, and not-null constraints. |
-| v0.3.0 | `ob_get_partitions` | 返回表分区元数据。 | Return table partition metadata. |
 | v0.3.0 | `ob_sample_rows` | 返回显式列样例数据，并默认脱敏。 | Return masked, explicit-column sample rows. |
+| v0.3.0 | `ob_search_catalog` | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 | Search schemas, tables, and columns; business glossary matches can be included since v0.5.1. |
 | v0.4.0 | `ob_verify_permissions` | 检查数据库账号是否包含写入或管理权限。 | Check current database grants for write/admin privileges. |
 | v0.5.0 | `ob_analyze_query_plan` | 返回基于证据的执行计划分析。 | Return evidence-based plan findings. |
+| v0.5.0 | `ob_find_related_tables` | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
+| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 | Generate Mermaid and JSON ER metadata from allowed tables; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls. |
 | v0.5.0 | `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 | Generate a read-only performance advisory report from EXPLAIN and metadata. |
-| v0.5.0 | `ob_list_objects` | 列出经过策略过滤的 Oracle 对象。 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
+| v0.5.0 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
 | v0.5.0 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
 | v0.5.0 | `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 | Return native or structured table DDL metadata. |
-| v0.5.0 | `ob_find_related_tables` | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
 | v0.5.0 | `ob_get_table_stats` | 返回表行数估算、对象计数和存储统计。 | Return table row estimates, counts, and storage statistics. |
-| v0.5.0 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
-| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 | Generate Mermaid and JSON ER metadata from allowed tables; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls. |
-| v0.5.1 | `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 | Preview read-only policy and plan risk before execution, without returning data. |
-| v0.5.1 | `ob_query_page` | 执行带分页的只读查询。 | Run a paged read-only query. |
-| v0.5.1 | `ob_search_business_glossary` | 搜索业务词到 schema/table/column 的可见映射。 | Search visible business-term mappings to schemas, tables, and columns. |
+| v0.5.0 | `ob_list_objects` | 列出经过策略过滤的 Oracle 对象。 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | v0.5.1 | `ob_get_table_context` | 返回写 SQL 和查数据常用的表上下文。 | Return common table context for SQL drafting and data inspection. |
 | v0.5.1 | `ob_profile_columns` | 返回受限样本内的字段画像；v1.0.0 起包含类型策略和枚举候选信号。 | Return bounded-sample column profiles; includes type strategy and enum signals since v1.0.0. |
+| v0.5.1 | `ob_query_page` | 执行带分页的只读查询。 | Run a paged read-only query. |
+| v0.5.1 | `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 | Preview read-only policy and plan risk before execution, without returning data. |
+| v0.5.1 | `ob_search_business_glossary` | 搜索业务词到 schema/table/column 的可见映射。 | Search visible business-term mappings to schemas, tables, and columns. |
+| v1.0.0 | `ob_build_select` | 用经过校验的结构化输入生成参数化只读 SELECT。 | Build parameterized read-only SELECT statements from validated structured input. |
+| v1.0.0 | `ob_check_data_quality` | 受限采样检查空值、重复键风险、维度和时间字段异常。 | Run bounded read-only checks for nulls, duplicate key risk, dimensions, and time columns. |
 | v1.0.0 | `ob_check_opencode_setup` | 检查本地 OpenCode 配置、OceanBase agent 和查询 skill。 | Check local OpenCode config, OceanBase agent, and query skill files. |
-| v1.0.0 | `ob_get_usage_guide` | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 | Return the recommended OpenCode workflow, read-only rules, and MySQL/Oracle notes. |
-| v1.0.0 | `ob_list_capabilities` | 返回当前 MCP 能力、工具分组、版本和只读限制。 | Return MCP capabilities, tool groups, versions, and read-only limits. |
-| v1.0.0 | `ob_start_query_session` | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
-| v1.0.0 | `ob_get_query_session` | 读取查询上下文，不暴露已存参数值。 | Read a query session context without exposing stored parameter values. |
 | v1.0.0 | `ob_close_query_session` | 关闭内存查询上下文。 | Close an in-memory query session. |
+| v1.0.0 | `ob_compare_query_results` | 比较两份已返回结果，不额外读取数据库。 | Compare two already returned query results without reading the database. |
+| v1.0.0 | `ob_compare_schemas` | 比较两个 schema 的表清单和受限表结构差异。 | Compare two visible schemas by table list and bounded table metadata differences. |
+| v1.0.0 | `ob_compare_tables` | 比较两张表的字段、索引、约束和分区差异。 | Compare two visible tables by columns, indexes, constraints, and partitions. |
+| v1.0.0 | `ob_convert_sql_dialect` | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
+| v1.0.0 | `ob_detect_dimension_columns` | 基于元数据识别状态、类型、渠道、地区等维度字段。 | Detect likely status, type, channel, region, and category columns from metadata. |
+| v1.0.0 | `ob_detect_time_columns` | 基于元数据识别创建、更新和业务时间字段。 | Detect likely create, update, and business time columns from metadata. |
+| v1.0.0 | `ob_explain_error` | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
+| v1.0.0 | `ob_explain_project_query` | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 | Explain project SQL tables, fields, filters, pagination, and risk without executing it. |
+| v1.0.0 | `ob_explain_relationship` | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 | Explain visible relationship evidence and confidence between two tables without inventing missing links. |
+| v1.0.0 | `ob_export_result_preview` | 生成 Markdown/CSV 结果预览字符串，不落盘。 | Generate Markdown/CSV result preview text without writing files. |
+| v1.0.0 | `ob_find_columns` | 按字段名、注释、类型、表名模式或业务词查找字段。 | Find visible columns by name, comment, type, table pattern, or business term. |
+| v1.0.0 | `ob_find_recent_rows` | 基于明确或识别出的时间字段分页查看最近数据。 | Read recent rows using an explicit or detected time column with safe pagination. |
+| v1.0.0 | `ob_find_tables_by_business_term` | 按业务词返回候选表、依据和关联表摘要。 | Find candidate tables for a business term with evidence and related tables. |
+| v1.0.0 | `ob_find_unknown_columns_in_sql` | 发现 SQL 中未知表或字段，并给出可见元数据候选。 | Find unknown tables or columns in SQL with visible metadata-based candidates. |
+| v1.0.0 | `ob_generate_data_dictionary` | 生成 JSON、Markdown 或简版 HTML 数据字典。 | Generate JSON, Markdown, or simple HTML data dictionaries. |
+| v1.0.0 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 | Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence. |
+| v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
+| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
+| v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 | Generate table and column context for mapper or SQL files without modifying code. |
+| v1.0.0 | `ob_generate_query_doc` | 生成 SQL 片段说明文档，不执行目标查询。 | Generate SQL snippet documentation without executing the target query. |
+| v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 | Generate common read-only query examples from table context without executing SQL. |
+| v1.0.0 | `ob_generate_schema_doc` | 生成 schema 级 Markdown 或 JSON 文档，带表和字段数量限制。 | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
+| v1.0.0 | `ob_generate_table_doc` | 生成单表 Markdown 或 JSON 文档，不包含敏感样例值。 | Generate Markdown or JSON documentation for one table without sample values. |
+| v1.0.0 | `ob_get_database_dictionary` | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 | Generate bounded JSON or Markdown data dictionaries from visible metadata. |
+| v1.0.0 | `ob_get_query_session` | 读取查询上下文，不暴露已存参数值。 | Read a query session context without exposing stored parameter values. |
+| v1.0.0 | `ob_get_schema_map` | 返回紧凑的 schema、表、关键字段和关系摘要。 | Return compact schema, table, key-field, and relationship summaries. |
+| v1.0.0 | `ob_get_table_summary` | 汇总单表用途推断、关键字段、关系和查询入口。 | Summarize one table with inferred purpose, key fields, relationships, and query entry points. |
+| v1.0.0 | `ob_get_usage_guide` | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 | Return the recommended OpenCode workflow, read-only rules, and MySQL/Oracle notes. |
+| v1.0.0 | `ob_get_value_distribution` | 返回单个可见字段的受限 top value 分布。 | Return bounded top-value distribution for one visible column. |
+| v1.0.0 | `ob_lint_sql` | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 | Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk. |
+| v1.0.0 | `ob_list_capabilities` | 返回当前 MCP 能力、工具分组、版本和只读限制。 | Return MCP capabilities, tool groups, versions, and read-only limits. |
+| v1.0.0 | `ob_prepare_query` | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
+| v1.0.0 | `ob_profile_table` | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 | Return bounded table profiles with key fields, null overview, and sampled field signals. |
 | v1.0.0 | `ob_query_next_page` | 基于查询上下文读取下一页，继续执行只读策略和行数限制。 | Run the next page for a query session with read-only policy and row limits enforced. |
 | v1.0.0 | `ob_query_prev_page` | 基于查询上下文读取上一页，继续执行只读策略和行数限制。 | Run the previous page for a query session with read-only policy and row limits enforced. |
 | v1.0.0 | `ob_query_refine` | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 | Build refined read-only SELECT SQL from a query session without executing it. |
-| v1.0.0 | `ob_summarize_result` | 汇总已返回结果，不额外读取数据库。 | Summarize already returned rows without reading the database. |
-| v1.0.0 | `ob_compare_query_results` | 比较两份已返回结果，不额外读取数据库。 | Compare two already returned query results without reading the database. |
-| v1.0.0 | `ob_export_result_preview` | 生成 Markdown/CSV 结果预览字符串，不落盘。 | Generate Markdown/CSV result preview text without writing files. |
-| v1.0.0 | `ob_get_schema_map` | 返回紧凑的 schema、表、关键字段和关系摘要。 | Return compact schema, table, key-field, and relationship summaries. |
-| v1.0.0 | `ob_get_database_dictionary` | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 | Generate bounded JSON or Markdown data dictionaries from visible metadata. |
-| v1.0.0 | `ob_generate_data_dictionary` | 生成 JSON、Markdown 或简版 HTML 数据字典。 | Generate JSON, Markdown, or simple HTML data dictionaries. |
-| v1.0.0 | `ob_search_everything` | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 | Search schemas, tables, columns, comments, and business terms with evidence. |
-| v1.0.0 | `ob_find_tables_by_business_term` | 按业务词返回候选表、依据和关联表摘要。 | Find candidate tables for a business term with evidence and related tables. |
-| v1.0.0 | `ob_find_columns` | 按字段名、注释、类型、表名模式或业务词查找字段。 | Find visible columns by name, comment, type, table pattern, or business term. |
-| v1.0.0 | `ob_get_table_summary` | 汇总单表用途推断、关键字段、关系和查询入口。 | Summarize one table with inferred purpose, key fields, relationships, and query entry points. |
-| v1.0.0 | `ob_compare_tables` | 比较两张表的字段、索引、约束和分区差异。 | Compare two visible tables by columns, indexes, constraints, and partitions. |
-| v1.0.0 | `ob_compare_schemas` | 比较两个 schema 的表清单和受限表结构差异。 | Compare two visible schemas by table list and bounded table metadata differences. |
-| v1.0.0 | `ob_profile_table` | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 | Return bounded table profiles with key fields, null overview, and sampled field signals. |
-| v1.0.0 | `ob_get_value_distribution` | 返回单个可见字段的受限 top value 分布。 | Return bounded top-value distribution for one visible column. |
-| v1.0.0 | `ob_detect_time_columns` | 基于元数据识别创建、更新和业务时间字段。 | Detect likely create, update, and business time columns from metadata. |
-| v1.0.0 | `ob_detect_dimension_columns` | 基于元数据识别状态、类型、渠道、地区等维度字段。 | Detect likely status, type, channel, region, and category columns from metadata. |
-| v1.0.0 | `ob_find_recent_rows` | 基于明确或识别出的时间字段分页查看最近数据。 | Read recent rows using an explicit or detected time column with safe pagination. |
-| v1.0.0 | `ob_check_data_quality` | 受限采样检查空值、重复键风险、维度和时间字段异常。 | Run bounded read-only checks for nulls, duplicate key risk, dimensions, and time columns. |
-| v1.0.0 | `ob_prepare_query` | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
-| v1.0.0 | `ob_build_select` | 用经过校验的结构化输入生成参数化只读 SELECT。 | Build parameterized read-only SELECT statements from validated structured input. |
-| v1.0.0 | `ob_lint_sql` | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 | Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk. |
-| v1.0.0 | `ob_validate_sql_snippet` | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 | Validate pasted SQL snippets for read-only policy, dialect, pagination, risk, and visible table or column metadata. |
-| v1.0.0 | `ob_explain_project_query` | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 | Explain project SQL tables, fields, filters, pagination, and risk without executing it. |
-| v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 | Generate table and column context for mapper or SQL files without modifying code. |
-| v1.0.0 | `ob_find_unknown_columns_in_sql` | 发现 SQL 中未知表或字段，并给出可见元数据候选。 | Find unknown tables or columns in SQL with visible metadata-based candidates. |
-| v1.0.0 | `ob_generate_table_doc` | 生成单表 Markdown 或 JSON 文档，不包含敏感样例值。 | Generate Markdown or JSON documentation for one table without sample values. |
-| v1.0.0 | `ob_generate_schema_doc` | 生成 schema 级 Markdown 或 JSON 文档，带表和字段数量限制。 | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
 | v1.0.0 | `ob_rewrite_sql` | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
-| v1.0.0 | `ob_convert_sql_dialect` | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
-| v1.0.0 | `ob_explain_error` | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
-| v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 | Generate common read-only query examples from table context without executing SQL. |
-| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
-| v1.0.0 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 | Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence. |
-| v1.0.0 | `ob_explain_relationship` | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 | Explain visible relationship evidence and confidence between two tables without inventing missing links. |
-| v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
+| v1.0.0 | `ob_search_everything` | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 | Search schemas, tables, columns, comments, and business terms with evidence. |
+| v1.0.0 | `ob_start_query_session` | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
+| v1.0.0 | `ob_summarize_result` | 汇总已返回结果，不额外读取数据库。 | Summarize already returned rows without reading the database. |
+| v1.0.0 | `ob_validate_sql_snippet` | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 | Validate pasted SQL snippets for read-only policy, dialect, pagination, risk, and visible table or column metadata. |
 
 ## Documentation Generation / 文档生成
 
-`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。以上能力都不包含样例数据值。
+`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。以上能力都不包含样例数据值，也不会执行目标查询。
 
-`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. These tools do not include sample data values.
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. These tools do not include sample data values or execute the target query.
 
 ## Validation / 验证
 

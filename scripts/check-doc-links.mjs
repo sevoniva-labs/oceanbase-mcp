@@ -87,8 +87,13 @@ function checkToolTableOrder(file, content, failures) {
 
     const headers = parseMarkdownRow(lines[headerIndex]);
     const versionIndex = headers.findIndex((header) => header === "Since" || header === "版本");
+    const toolIndex = headers.findIndex((header) => header === "工具 / Tool" || header === "Tool" || header === "工具");
     if (versionIndex < 0) {
       failures.push(`${file}: tools table is missing a Since/version column`);
+      continue;
+    }
+    if (toolIndex < 0) {
+      failures.push(`${file}: tools table is missing a tool column`);
       continue;
     }
     if (versionIndex !== 0) {
@@ -107,10 +112,14 @@ function checkToolTableOrder(file, content, failures) {
         failures.push(`${file}: invalid tool version "${rawVersion}"`);
         continue;
       }
+      const toolName = cells[toolIndex].replace(/`/g, "");
       if (previous && compareVersions(previous.version, version) > 0) {
         failures.push(`${file}: tools table version order moves from ${previous.raw} to ${rawVersion}`);
       }
-      previous = { raw: rawVersion, version };
+      if (previous && compareVersions(previous.version, version) === 0 && previous.toolName.localeCompare(toolName) > 0) {
+        failures.push(`${file}: tools table order moves from ${previous.raw} ${previous.toolName} to ${rawVersion} ${toolName}`);
+      }
+      previous = { raw: rawVersion, version, toolName };
     }
   }
 }
