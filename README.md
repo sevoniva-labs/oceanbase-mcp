@@ -153,6 +153,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 | Build parameterized read-only SELECT statements from validated structured input. |
 | `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 | Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk. |
+| `ob_validate_sql_snippet` | v1.0.0 | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 | Validate pasted SQL snippets for read-only policy, dialect, pagination, risk, and visible table or column metadata. |
 | `ob_rewrite_sql` | v1.0.0 | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 | Rewrite SELECT/WITH SQL into a safer read-only form without executing it. |
 | `ob_convert_sql_dialect` | v1.0.0 | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 | Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations. |
 | `ob_explain_error` | v1.0.0 | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
