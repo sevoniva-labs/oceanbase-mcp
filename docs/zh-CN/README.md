@@ -174,6 +174,7 @@ npm run start:http
 | `ob_detect_time_columns` | v1.0.0 | 基于元数据识别创建、更新和业务时间字段。 |
 | `ob_detect_dimension_columns` | v1.0.0 | 基于元数据识别状态、类型、渠道、地区等维度字段。 |
 | `ob_find_recent_rows` | v1.0.0 | 基于明确或识别出的时间字段分页查看最近数据。 |
+| `ob_check_data_quality` | v1.0.0 | 受限采样检查空值、重复键风险、维度和时间字段异常。 |
 | `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 |
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 |
 | `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 |
