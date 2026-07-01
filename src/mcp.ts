@@ -27,7 +27,7 @@ import {
 import { diagnoseGateway } from "./diagnostics.js";
 import { buildErDiagram, type ErEntity } from "./er.js";
 import { logAudit, logError, serializeError } from "./errors.js";
-import { assertJsonByteLimit, jsonText, type QueryOutput } from "./format.js";
+import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
 import { analyzeQueryPlan } from "./plan-analysis.js";
 import { buildPerformanceReport } from "./performance-report.js";
@@ -335,7 +335,8 @@ export function createObMcpServer(
         )
       );
       assertOutputAllowed(output, selected.config.policy);
-      assertJsonByteLimit(output, selected.config.maxResultBytes);
+      const enrichedOutput = enrichQueryOutput(output, selected.config, queryResultWarnings(sql, output, selected.config));
+      assertJsonByteLimit(enrichedOutput, selected.config.maxResultBytes);
       const durationMs = Date.now() - started;
       metrics.recordQueryDuration(durationMs);
       logAudit("ob_query", {
@@ -352,7 +353,7 @@ export function createObMcpServer(
         sqlLength: sql.length,
         paramCount: sqlParams.length
       });
-      return toResult(output);
+      return toResult(enrichedOutput);
     }
   );
 
@@ -405,6 +406,16 @@ export function createObMcpServer(
       if (output.truncated) {
         warnings.push("Result was truncated by the configured row limit.");
       }
+      const visibleOutput = enrichQueryOutput(
+        {
+          ...output,
+          rowCount: rows.length,
+          rows,
+          truncated: output.truncated || hasMore
+        },
+        selected.config,
+        warnings
+      );
       const result = {
         sql,
         pagedSql,
@@ -412,10 +423,11 @@ export function createObMcpServer(
         page,
         pageSize: effectivePageSize,
         hasMore,
-        truncated: output.truncated || hasMore,
-        columns: output.fields ?? [],
-        rows,
-        warnings,
+        truncated: visibleOutput.truncated,
+        columns: visibleOutput.columns,
+        rows: visibleOutput.rows,
+        markdownPreview: visibleOutput.markdownPreview,
+        warnings: visibleOutput.warnings,
         executed: true
       };
       assertJsonByteLimit(result, selected.config.maxResultBytes);
@@ -1614,6 +1626,105 @@ function pagedQueryWarnings(
     warnings.push("hasMore may be false when the configured row limit does not allow fetching an extra row.");
   }
   return warnings;
+}
+
+function queryResultWarnings(sql: string, output: QueryOutput, config: ObConfig): string[] {
+  const warnings: string[] = [];
+  if (output.truncated) {
+    warnings.push("Result was truncated by the configured row limit.");
+  }
+  if (!/\border\s+by\b/i.test(sql) && output.rows.length > 1) {
+    warnings.push("No ORDER BY was detected. Result order may be unstable.");
+  }
+  if (jsonByteLength(output) > config.maxResultBytes * 0.8) {
+    warnings.push("Result size is close to OB_MAX_RESULT_BYTES.");
+  }
+  return warnings;
+}
+
+function enrichQueryOutput(output: QueryOutput, config: ObConfig, warnings: string[] = []) {
+  const columns = queryOutputColumns(output, config);
+  const maskedRows = maskQueryRows(output.rows, columns);
+  const maskedColumns = columns.filter((column) => column.masked).map((column) => column.name);
+  const combinedWarnings = [...warnings];
+  if (maskedColumns.length > 0) {
+    combinedWarnings.push(`Masked result columns: ${maskedColumns.join(", ")}.`);
+  }
+  return {
+    ...output,
+    rows: maskedRows,
+    columns,
+    markdownPreview: renderMarkdownPreview(maskedRows, columns.map((column) => column.name)),
+    warnings: [...new Set(combinedWarnings)]
+  };
+}
+
+function queryOutputColumns(output: QueryOutput, config: ObConfig) {
+  if (output.fields && output.fields.length > 0) {
+    return output.fields.map((field) => ({
+      name: field.name,
+      table: field.table,
+      schema: field.database,
+      columnType: field.columnType,
+      masked: shouldMaskColumnValue(field.name, config, field.database, field.table)
+    }));
+  }
+
+  const firstRow = output.rows.find((row) => row && typeof row === "object" && !Array.isArray(row));
+  if (!firstRow || typeof firstRow !== "object" || Array.isArray(firstRow)) {
+    return [];
+  }
+  return Object.keys(firstRow as Record<string, unknown>).map((name) => ({
+    name,
+    masked: shouldMaskColumnValue(name, config)
+  }));
+}
+
+function maskQueryRows(rows: unknown[], columns: Array<{ name: string; masked: boolean }>): unknown[] {
+  if (columns.length === 0) {
+    return rows;
+  }
+  const masked = new Set(columns.filter((column) => column.masked).map((column) => column.name));
+  if (masked.size === 0) {
+    return rows;
+  }
+  return rows.map((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      return row;
+    }
+    const output: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(row)) {
+      output[key] = masked.has(key) ? "***MASKED***" : value;
+    }
+    return output;
+  });
+}
+
+function renderMarkdownPreview(rows: unknown[], columnNames: string[]): string {
+  if (rows.length === 0 || columnNames.length === 0) {
+    return "";
+  }
+  const visibleColumns = columnNames.slice(0, 12);
+  const visibleRows = rows.slice(0, 10);
+  const header = `| ${visibleColumns.map(markdownCell).join(" | ")} |`;
+  const divider = `| ${visibleColumns.map(() => "---").join(" | ")} |`;
+  const body = visibleRows.map((row) => {
+    const record = row && typeof row === "object" && !Array.isArray(row) ? row as Record<string, unknown> : {};
+    return `| ${visibleColumns.map((column) => markdownCell(formatPreviewValue(record[column]))).join(" | ")} |`;
+  });
+  return [header, divider, ...body].join("\n");
+}
+
+function formatPreviewValue(value: unknown): string {
+  if (value == null) {
+    return "";
+  }
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+}
+
+function markdownCell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
 
 export function effectiveRowLimit(requested: number | undefined, config: ObConfig): number {
