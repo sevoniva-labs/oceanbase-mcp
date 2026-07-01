@@ -67,6 +67,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_generate_table_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for one visible table." },
   { name: "ob_generate_schema_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for visible tables in one schema." },
   { name: "ob_generate_query_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for a SQL snippet without executing it." },
+  { name: "ob_generate_onboarding_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded onboarding documentation from visible metadata and business glossary hints." },
   { name: "ob_rewrite_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Rewrite SELECT/WITH SQL into a safer read-only form without executing it." },
   { name: "ob_convert_sql_dialect", since: "v1.0.0", group: "sql", mode: "all", description: "Convert read-only SQL between OceanBase MySQL and Oracle modes with limitations." },
   { name: "ob_explain_error", since: "v1.0.0", group: "sql", mode: "all", description: "Explain SQL errors with policy context and visible metadata hints without executing SQL." },

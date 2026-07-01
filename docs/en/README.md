@@ -181,6 +181,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_generate_er_document` | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
 | v1.0.0 | `ob_generate_er_html` | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
 | v1.0.0 | `ob_generate_mapper_context` | Generate table and column context for mapper or SQL files without modifying code. |
+| v1.0.0 | `ob_generate_onboarding_doc` | Generate onboarding documentation from visible metadata and business glossary hints. |
 | v1.0.0 | `ob_generate_query_doc` | Generate SQL snippet documentation without executing the target query. |
 | v1.0.0 | `ob_generate_query_examples` | Generate common read-only query examples from table context without executing SQL. |
 | v1.0.0 | `ob_generate_schema_doc` | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
@@ -220,7 +221,7 @@ Procedure, function, and package source is returned as a bounded preview, not as
 
 ## Documentation Generation
 
-`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. These tools do not include sample data values or execute the target query.
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. `ob_generate_onboarding_doc` generates onboarding documentation with core tables, relationships, query entry points, and business glossary hints. These tools do not include sample data values or execute the target query.
 
 ## Resources
 

@@ -152,6 +152,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
 | v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
 | v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 | Generate table and column context for mapper or SQL files without modifying code. |
+| v1.0.0 | `ob_generate_onboarding_doc` | 基于可见元数据和业务字典生成新开发者入门文档。 | Generate onboarding documentation from visible metadata and business glossary hints. |
 | v1.0.0 | `ob_generate_query_doc` | 生成 SQL 片段说明文档，不执行目标查询。 | Generate SQL snippet documentation without executing the target query. |
 | v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 | Generate common read-only query examples from table context without executing SQL. |
 | v1.0.0 | `ob_generate_schema_doc` | 生成 schema 级 Markdown 或 JSON 文档，带表和字段数量限制。 | Generate bounded Markdown or JSON documentation for visible tables in one schema. |
@@ -177,9 +178,9 @@ Sorted by Since version in ascending order; tools with the same version are sort
 
 ## Documentation Generation / 文档生成
 
-`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。以上能力都不包含样例数据值，也不会执行目标查询。
+`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。`ob_generate_onboarding_doc` 生成面向新开发者的库结构入门文档，包含核心表、关系、查询入口和业务字典提示。以上能力都不包含样例数据值，也不会执行目标查询。
 
-`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. These tools do not include sample data values or execute the target query.
+`ob_generate_table_doc` generates Markdown or JSON documentation for one visible table, including columns, keys, indexes, constraints, partitions, relationships, and read-only query examples. `ob_generate_schema_doc` generates schema-level documentation with table and per-table column limits. `ob_generate_data_dictionary` outputs JSON, Markdown, or simple HTML data dictionaries. `ob_generate_query_doc` documents SQL snippet tables, fields, filters, ordering, pagination, and risk. `ob_generate_onboarding_doc` generates onboarding documentation with core tables, relationships, query entry points, and business glossary hints. These tools do not include sample data values or execute the target query.
 
 ## Validation / 验证
 

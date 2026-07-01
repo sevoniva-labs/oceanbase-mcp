@@ -181,6 +181,7 @@ npm run start:http
 | v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 |
 | v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 |
 | v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 |
+| v1.0.0 | `ob_generate_onboarding_doc` | 基于可见元数据和业务字典生成新开发者入门文档。 |
 | v1.0.0 | `ob_generate_query_doc` | 生成 SQL 片段说明文档，不执行目标查询。 |
 | v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
 | v1.0.0 | `ob_generate_schema_doc` | 生成 schema 级 Markdown 或 JSON 文档，带表和字段数量限制。 |
@@ -220,7 +221,7 @@ procedure、function、package 的源码只返回有限预览，不返回不受�
 
 ## 文档生成
 
-`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。以上能力都不包含样例数据值，也不会执行目标查询。
+`ob_generate_table_doc` 基于可见元数据生成单表 Markdown 或 JSON 文档，包含字段、主键、索引、约束、分区、关系和只读查询示例。`ob_generate_schema_doc` 生成 schema 级文档，并限制表数量和每表字段数量。`ob_generate_data_dictionary` 输出 JSON、Markdown 或简版 HTML 数据字典。`ob_generate_query_doc` 说明 SQL 片段的表、字段、过滤、排序、分页和风险。`ob_generate_onboarding_doc` 生成面向新开发者的库结构入门文档，包含核心表、关系、查询入口和业务字典提示。以上能力都不包含样例数据值，也不会执行目标查询。
 
 ## 资源
 
