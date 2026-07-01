@@ -184,6 +184,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_generate_query_examples` | v1.0.0 | Generate common read-only query examples from table context without executing SQL. |
 | `ob_generate_query` | v0.5.0 | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | v0.5.0 | Generate Mermaid and JSON ER metadata from allowed tables; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls. |
+| `ob_generate_er_html` | v1.0.0 | Generate self-contained HTML ER diagrams from allowed metadata and relationship evidence. |
 | `ob_get_indexes` | v0.3.0 | Return table index metadata. |
 | `ob_get_constraints` | v0.3.0 | Return primary, unique, foreign-key, check, and not-null constraints. |
 | `ob_get_partitions` | v0.3.0 | Return table partition metadata. |

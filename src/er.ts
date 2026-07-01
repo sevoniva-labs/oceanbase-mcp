@@ -21,6 +21,13 @@ export interface ErDiagram {
   mermaid: string;
 }
 
+export interface ErHtmlOptions {
+  title?: string;
+  warnings?: string[];
+  generatedAt?: string;
+  maxColumnsPerEntity?: number;
+}
+
 export function buildErDiagram(
   mode: CompatibilityMode,
   entities: ErEntity[],
@@ -32,6 +39,137 @@ export function buildErDiagram(
     relationships,
     mermaid: renderMermaidEr(entities, relationships)
   };
+}
+
+export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): string {
+  const title = options.title ?? "OceanBase ER Diagram";
+  const generatedAt = options.generatedAt ?? new Date().toISOString();
+  const maxColumns = Math.max(3, Math.min(options.maxColumnsPerEntity ?? 18, 50));
+  const svg = renderSvgEr(diagram.entities, diagram.relationships, maxColumns);
+  const metadataJson = JSON.stringify({
+    mode: diagram.mode,
+    entities: diagram.entities,
+    relationships: diagram.relationships
+  }, null, 2);
+  const warnings = options.warnings ?? [];
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f7f8fa;
+      --panel: #ffffff;
+      --text: #18202a;
+      --muted: #5d6978;
+      --line: #c8d0da;
+      --accent: #136f63;
+      --accent-soft: #e7f3f1;
+      --warn: #8a5a00;
+      --warn-soft: #fff4d6;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    header {
+      padding: 24px 32px 16px;
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+    h1 { margin: 0 0 8px; font-size: 22px; font-weight: 650; letter-spacing: 0; }
+    .meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 12px; }
+    main { padding: 24px 32px 40px; }
+    section { margin-bottom: 24px; }
+    .canvas {
+      overflow: auto;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 6px;
+      padding: 16px;
+    }
+    .warnings {
+      border: 1px solid #f0cf84;
+      background: var(--warn-soft);
+      color: var(--warn);
+      border-radius: 6px;
+      padding: 12px 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    th, td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #eef2f5; font-weight: 650; }
+    tr:last-child td { border-bottom: 0; }
+    details {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+    }
+    summary { cursor: pointer; font-weight: 650; }
+    pre {
+      overflow: auto;
+      white-space: pre;
+      background: #111827;
+      color: #e5e7eb;
+      border-radius: 4px;
+      padding: 12px;
+    }
+    .entity-box { fill: #ffffff; stroke: #8fa1b3; }
+    .entity-header { fill: var(--accent-soft); stroke: #8fa1b3; }
+    .entity-name { fill: var(--text); font-weight: 650; font-size: 13px; }
+    .column-text { fill: #2b3645; font-size: 12px; }
+    .column-muted { fill: var(--muted); font-size: 11px; }
+    .rel-line { stroke: var(--accent); stroke-width: 1.5; fill: none; opacity: 0.75; }
+    .rel-label { fill: var(--accent); font-size: 11px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="meta">
+      <span>Mode: ${escapeHtml(diagram.mode)}</span>
+      <span>Tables: ${diagram.entities.length}</span>
+      <span>Relationships: ${diagram.relationships.length}</span>
+      <span>Generated: ${escapeHtml(generatedAt)}</span>
+    </div>
+  </header>
+  <main>
+    ${warnings.length > 0 ? `<section class="warnings">${warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</section>` : ""}
+    <section class="canvas">
+      ${svg}
+    </section>
+    <section>
+      <h2>Relationships</h2>
+      ${renderRelationshipTable(diagram.relationships)}
+    </section>
+    <section>
+      <details>
+        <summary>Mermaid Source</summary>
+        <pre>${escapeHtml(diagram.mermaid)}</pre>
+      </details>
+      <details>
+        <summary>JSON Metadata</summary>
+        <pre>${escapeHtml(metadataJson)}</pre>
+      </details>
+    </section>
+  </main>
+</body>
+</html>`;
 }
 
 function renderMermaidEr(entities: ErEntity[], relationships: TableRelationship[]): string {
@@ -92,4 +230,150 @@ function mermaidType(value: string | undefined): string {
 
 function mermaidLabel(value: string): string {
   return value.replace(/["\\]/g, "").slice(0, 80);
+}
+
+function renderSvgEr(entities: ErEntity[], relationships: TableRelationship[], maxColumns: number): string {
+  if (entities.length === 0) {
+    return `<svg role="img" aria-label="Empty ER diagram" width="640" height="160" viewBox="0 0 640 160" xmlns="http://www.w3.org/2000/svg">
+      <text x="24" y="82" class="column-muted">No visible tables matched the selected ER scope.</text>
+    </svg>`;
+  }
+
+  const boxWidth = 280;
+  const headerHeight = 34;
+  const rowHeight = 22;
+  const gapX = 70;
+  const gapY = 70;
+  const margin = 36;
+  const perRow = Math.max(1, Math.ceil(Math.sqrt(entities.length)));
+  const positions = new Map<string, { x: number; y: number; width: number; height: number }>();
+  const boxes = entities.map((entity, index) => {
+    const visibleColumns = entity.columns.slice(0, maxColumns);
+    const hiddenCount = Math.max(0, entity.columns.length - visibleColumns.length);
+    const height = headerHeight + rowHeight * (visibleColumns.length + (hiddenCount > 0 ? 1 : 0)) + 10;
+    const x = margin + (index % perRow) * (boxWidth + gapX);
+    const y = margin + Math.floor(index / perRow) * (height + gapY);
+    const position = { x, y, width: boxWidth, height };
+    positions.set(entityKey(entity.schema, entity.table), position);
+    return { entity, visibleColumns, hiddenCount, position };
+  });
+  const rows = Math.ceil(entities.length / perRow);
+  const maxHeightByRow = new Array(rows).fill(0);
+  for (const box of boxes) {
+    const row = Math.floor(boxes.indexOf(box) / perRow);
+    maxHeightByRow[row] = Math.max(maxHeightByRow[row], box.position.height);
+  }
+  let currentY = margin;
+  for (let row = 0; row < rows; row += 1) {
+    for (let col = 0; col < perRow; col += 1) {
+      const box = boxes[row * perRow + col];
+      if (box) {
+        box.position.y = currentY;
+      }
+    }
+    currentY += maxHeightByRow[row] + gapY;
+  }
+  const width = margin * 2 + perRow * boxWidth + Math.max(0, perRow - 1) * gapX;
+  const height = Math.max(180, currentY - gapY + margin);
+  const relationLines = relationships.map((relationship) =>
+    renderSvgRelationship(relationship, positions)
+  ).filter(Boolean).join("\n");
+  const entityBoxes = boxes.map((box) => renderSvgEntityBox(box, headerHeight, rowHeight)).join("\n");
+
+  return `<svg role="img" aria-label="OceanBase ER diagram" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#136f63"></path>
+      </marker>
+    </defs>
+    ${relationLines}
+    ${entityBoxes}
+  </svg>`;
+}
+
+function renderSvgEntityBox(
+  box: {
+    entity: ErEntity;
+    visibleColumns: ErColumn[];
+    hiddenCount: number;
+    position: { x: number; y: number; width: number; height: number };
+  },
+  headerHeight: number,
+  rowHeight: number
+): string {
+  const { entity, visibleColumns, hiddenCount, position } = box;
+  const title = entity.schema ? `${entity.schema}.${entity.table}` : entity.table;
+  const rows = visibleColumns.map((column, index) => {
+    const y = position.y + headerHeight + 19 + index * rowHeight;
+    const flags = [column.primaryKey ? "PK" : "", column.nullable === false ? "NN" : ""].filter(Boolean).join(" ");
+    const label = `${column.name}${column.type ? `: ${column.type}` : ""}${flags ? ` [${flags}]` : ""}`;
+    return `<text x="${position.x + 12}" y="${y}" class="column-text">${escapeHtml(label)}</text>`;
+  });
+  if (hiddenCount > 0) {
+    const y = position.y + headerHeight + 19 + visibleColumns.length * rowHeight;
+    rows.push(`<text x="${position.x + 12}" y="${y}" class="column-muted">+ ${hiddenCount} more column(s)</text>`);
+  }
+  return `<g>
+    <rect x="${position.x}" y="${position.y}" width="${position.width}" height="${position.height}" rx="6" class="entity-box"></rect>
+    <rect x="${position.x}" y="${position.y}" width="${position.width}" height="${headerHeight}" rx="6" class="entity-header"></rect>
+    <text x="${position.x + 12}" y="${position.y + 22}" class="entity-name">${escapeHtml(title)}</text>
+    ${rows.join("\n")}
+  </g>`;
+}
+
+function renderSvgRelationship(
+  relationship: TableRelationship,
+  positions: Map<string, { x: number; y: number; width: number; height: number }>
+): string {
+  const source = positions.get(entityKey(relationship.sourceSchema, relationship.sourceTable));
+  const target = positions.get(entityKey(relationship.targetSchema, relationship.targetTable));
+  if (!source || !target) {
+    return "";
+  }
+  const sourceX = source.x + source.width / 2;
+  const sourceY = source.y + source.height / 2;
+  const targetX = target.x + target.width / 2;
+  const targetY = target.y + target.height / 2;
+  const midX = (sourceX + targetX) / 2;
+  const midY = (sourceY + targetY) / 2;
+  const label = relationship.constraintName ?? relationship.relationType;
+  return `<g>
+    <path d="M ${targetX} ${targetY} L ${midX} ${midY} L ${sourceX} ${sourceY}" class="rel-line" marker-end="url(#arrow)"></path>
+    <text x="${midX + 4}" y="${midY - 4}" class="rel-label">${escapeHtml(label)}</text>
+  </g>`;
+}
+
+function renderRelationshipTable(relationships: TableRelationship[]): string {
+  if (relationships.length === 0) {
+    return `<p>No visible relationships matched this ER scope.</p>`;
+  }
+  const rows = relationships.map((relationship) => {
+    const source = tableLabel(relationship.sourceSchema, relationship.sourceTable);
+    const target = tableLabel(relationship.targetSchema, relationship.targetTable);
+    return `<tr>
+      <td>${escapeHtml(source)}.${escapeHtml(relationship.sourceColumns.join(","))}</td>
+      <td>${escapeHtml(target)}.${escapeHtml(relationship.targetColumns.join(","))}</td>
+      <td>${escapeHtml(relationship.relationType)}</td>
+      <td>${relationship.confidence.toFixed(2)}</td>
+      <td>${escapeHtml(relationship.evidence.map((item) => item.detail).join(" "))}</td>
+    </tr>`;
+  }).join("");
+  return `<table>
+    <thead>
+      <tr><th>Source</th><th>Target</th><th>Type</th><th>Confidence</th><th>Evidence</th></tr>
+    </thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+function tableLabel(schema: string | undefined, table: string): string {
+  return schema ? `${schema}.${table}` : table;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

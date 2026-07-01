@@ -32,7 +32,7 @@ import {
   type SqlParam
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
-import { buildErDiagram, type ErEntity } from "./er.js";
+import { buildErDiagram, renderErHtml, type ErDiagram, type ErEntity } from "./er.js";
 import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
@@ -2971,179 +2971,48 @@ export function createObMcpServer(
     },
     async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      const tableLimit = Math.min(maxTables ?? (table ? 20 : 12), 50);
-      const depthLimit = depth ?? 1;
-      const relationConfidenceFloor = minConfidence ?? (includeInferred ? 0.5 : 0.9);
-      const requestedTables = uniqueStrings([table, ...(tables ?? [])].filter((value): value is string => Boolean(value)));
-      if (requestedTables.length === 0 && !businessTerm && !effectiveSchema) {
-        throw new Error("Pass schema or table when generating an ER diagram without a configured default schema.");
+      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred });
+      return toLimitedResult(result.response, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_generate_er_html",
+    {
+      title: "Generate ER HTML",
+      description: "Generate a self-contained HTML ER diagram from allowed OceanBase metadata and relationship evidence.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        tables: z.array(z.string().min(1)).max(50).optional(),
+        businessTerm: z.string().min(1).optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        maxTables: z.number().int().positive().max(50).optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        includeInferred: z.boolean().optional().default(true),
+        title: z.string().min(1).max(120).optional()
       }
-
-      const scope = new Map<string, ErScopeTable>();
-      const relationships: TableRelationship[] = [];
-      const warnings: string[] = [];
-      let relationshipScopeLimited = false;
-
-      for (const requestedTable of requestedTables) {
-        const ref = parseErInputTableRef(selected.config.compatibility, requestedTable, effectiveSchema);
-        assertTableAccess(ref.schema, ref.table, policyContext(selected.config));
-        addErScopeTable(scope, selected.config.compatibility, ref.schema, ref.table, tableLimit, {
-          source: requestedTable === table ? "explicit_table" : "explicit_tables",
-          confidence: 1,
-          evidence: [`Requested table ${requestedTable}.`]
-        });
-      }
-
-      if (businessTerm) {
-        const candidates = await findPrepareQueryCandidates(
-          selected,
-          prepareQuerySearchTerms(businessTerm, businessTerm, undefined),
-          effectiveSchema,
-          tableLimit,
-          warnings
-        );
-        for (const candidate of candidates) {
-          addErScopeTable(scope, selected.config.compatibility, candidate.schema, candidate.table, tableLimit, {
-            source: "business_term",
-            confidence: candidate.confidence,
-            evidence: candidate.evidence.map((item) => `${item.field}: ${item.value} (${item.reason})`).slice(0, 5)
-          });
-        }
-        if (candidates.length === 0) {
-          warnings.push("No visible table matched the supplied businessTerm.");
-        }
-      }
-
-      if (scope.size === 0) {
-        const rows = filterTables(
-          await withQuerySlot(selected, () =>
-            listTables(
-              selected.pool,
-              selected.config.compatibility,
-              effectiveSchema,
-              tableLimit,
-              selected.config.queryTimeoutMs
-            )
-          ),
-          selected.config.policy
-        );
-        for (const row of rows) {
-          const ref = tableRefFromMetadata(row, effectiveSchema);
-          if (ref) {
-            addErScopeTable(scope, selected.config.compatibility, ref.schema, ref.table, tableLimit, {
-              source: "schema_scan",
-              confidence: 1,
-              evidence: ["Returned from visible table metadata."]
-            });
-          }
-        }
-      }
-
-      const initialRefs = [...scope.values()];
-      let discoveredRelationshipCount = 0;
-      let filteredRelationshipCount = 0;
-      for (const ref of initialRefs) {
-        const result = await withQuerySlot(selected, () =>
-          findRelatedTables(
-            selected.pool,
-            selected.config.compatibility,
-            ref.table,
-            ref.schema,
-            depthLimit,
-            tableLimit * 4,
-            selected.config.queryTimeoutMs
-          )
-        );
-        for (const relation of result.relations) {
-          discoveredRelationshipCount += 1;
-          if (!isErRelationshipVisible(relation, selected.config, relationConfidenceFloor, includeInferred)) {
-            filteredRelationshipCount += 1;
-            continue;
-          }
-          relationships.push(relation);
-          const evidence = relation.evidence.map((item) => item.detail).slice(0, 5);
-          const addedSource = addErScopeTable(scope, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit, {
-            source: "relationship",
-            confidence: relation.confidence,
-            evidence
-          });
-          const addedTarget = addErScopeTable(scope, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit, {
-            source: "relationship",
-            confidence: relation.confidence,
-            evidence
-          });
-          if (!addedSource || !addedTarget) {
-            relationshipScopeLimited = true;
-          }
-        }
-      }
-
-      const entities: ErEntity[] = [];
-      for (const ref of scope.values()) {
-        const columns = filterColumnMetadata(
-          await withQuerySlot(selected, () =>
-            describeTable(
-              selected.pool,
-              selected.config.compatibility,
-              ref.table,
-              ref.schema,
-              selected.config.queryTimeoutMs
-            )
-          ),
-          selected.config.policy
-        );
-        const constraints = filterColumnMetadata(
-          await withQuerySlot(selected, () =>
-            listConstraints(
-              selected.pool,
-              selected.config.compatibility,
-              ref.table,
-              ref.schema,
-              selected.config.queryTimeoutMs
-            )
-          ),
-          selected.config.policy
-        );
-        entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, columns, constraints));
-      }
-
-      const entityKeys = new Set(
-        [...scope.values()].map((ref) => tableRefKey(selected.config.compatibility, ref.schema, ref.table))
-      );
-      const diagramRelationships = dedupeRelationships(selected.config.compatibility, relationships).filter(
-        (relation) =>
-          entityKeys.has(tableRefKey(selected.config.compatibility, relation.sourceSchema, relation.sourceTable)) &&
-          entityKeys.has(tableRefKey(selected.config.compatibility, relation.targetSchema, relation.targetTable))
-      );
-      const diagram = buildErDiagram(selected.config.compatibility, entities, diagramRelationships);
+    },
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true, title }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred });
+      const html = renderErHtml(result.diagram, {
+        title: title ?? defaultErHtmlTitle(result.response),
+        warnings: result.response.warnings
+      });
       return toLimitedResult(
         {
-          mode: selected.config.compatibility,
-          schema: effectiveSchema,
-          rootTable: table ?? null,
-          businessTerm: businessTerm ?? null,
-          scope: [...scope.values()].map(erScopeTableOutput),
-          maxTables: tableLimit,
-          depth: depthLimit,
-          minConfidence: relationConfidenceFloor,
-          includeInferred,
-          tableCount: entities.length,
-          relationshipCount: diagramRelationships.length,
-          discoveredRelationshipCount,
-          filteredRelationshipCount,
-          mermaid: diagram.mermaid,
-          diagram: {
-            entities: diagram.entities,
-            relationships: diagram.relationships
-          },
-          warnings: uniqueStrings([
-            ...warnings,
-            ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
-            ...(filteredRelationshipCount > 0
-              ? [`${filteredRelationshipCount} relationship(s) were hidden by policy, minConfidence, or includeInferred.`]
-              : [])
-          ])
+          mode: result.response.mode,
+          schema: result.response.schema,
+          rootTable: result.response.rootTable,
+          businessTerm: result.response.businessTerm,
+          tableCount: result.response.tableCount,
+          relationshipCount: result.response.relationshipCount,
+          contentType: "text/html",
+          html,
+          mermaid: result.response.mermaid,
+          warnings: result.response.warnings
         },
         selected.config
       );
@@ -3926,6 +3795,229 @@ interface ErScopeTable {
   sources: string[];
   confidence: number;
   evidence: string[];
+}
+
+interface BuildErDiagramInput {
+  schema?: string;
+  table?: string;
+  tables?: string[];
+  businessTerm?: string;
+  depth?: number;
+  maxTables?: number;
+  minConfidence?: number;
+  includeInferred: boolean;
+}
+
+interface ErDiagramToolResponse {
+  mode: ObConfig["compatibility"];
+  schema?: string;
+  rootTable: string | null;
+  businessTerm: string | null;
+  scope: ReturnType<typeof erScopeTableOutput>[];
+  maxTables: number;
+  depth: number;
+  minConfidence: number;
+  includeInferred: boolean;
+  tableCount: number;
+  relationshipCount: number;
+  discoveredRelationshipCount: number;
+  filteredRelationshipCount: number;
+  mermaid: string;
+  diagram: {
+    entities: ErEntity[];
+    relationships: TableRelationship[];
+  };
+  warnings: string[];
+}
+
+async function buildErDiagramResult(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  input: BuildErDiagramInput
+): Promise<{ diagram: ErDiagram; response: ErDiagramToolResponse }> {
+  const effectiveSchema = metadataSchema(selected.config, input.schema);
+  const tableLimit = Math.min(input.maxTables ?? (input.table ? 20 : 12), 50);
+  const depthLimit = input.depth ?? 1;
+  const relationConfidenceFloor = input.minConfidence ?? (input.includeInferred ? 0.5 : 0.9);
+  const requestedTables = uniqueStrings([input.table, ...(input.tables ?? [])].filter((value): value is string => Boolean(value)));
+  if (requestedTables.length === 0 && !input.businessTerm && !effectiveSchema) {
+    throw new Error("Pass schema or table when generating an ER diagram without a configured default schema.");
+  }
+
+  const scope = new Map<string, ErScopeTable>();
+  const relationships: TableRelationship[] = [];
+  const warnings: string[] = [];
+  let relationshipScopeLimited = false;
+
+  for (const requestedTable of requestedTables) {
+    const ref = parseErInputTableRef(selected.config.compatibility, requestedTable, effectiveSchema);
+    assertTableAccess(ref.schema, ref.table, policyContext(selected.config));
+    addErScopeTable(scope, selected.config.compatibility, ref.schema, ref.table, tableLimit, {
+      source: requestedTable === input.table ? "explicit_table" : "explicit_tables",
+      confidence: 1,
+      evidence: [`Requested table ${requestedTable}.`]
+    });
+  }
+
+  if (input.businessTerm) {
+    const candidates = await findPrepareQueryCandidates(
+      selected,
+      prepareQuerySearchTerms(input.businessTerm, input.businessTerm, undefined),
+      effectiveSchema,
+      tableLimit,
+      warnings
+    );
+    for (const candidate of candidates) {
+      addErScopeTable(scope, selected.config.compatibility, candidate.schema, candidate.table, tableLimit, {
+        source: "business_term",
+        confidence: candidate.confidence,
+        evidence: candidate.evidence.map((item) => `${item.field}: ${item.value} (${item.reason})`).slice(0, 5)
+      });
+    }
+    if (candidates.length === 0) {
+      warnings.push("No visible table matched the supplied businessTerm.");
+    }
+  }
+
+  if (scope.size === 0) {
+    const rows = filterTables(
+      await withQuerySlot(selected, () =>
+        listTables(
+          selected.pool,
+          selected.config.compatibility,
+          effectiveSchema,
+          tableLimit,
+          selected.config.queryTimeoutMs
+        )
+      ),
+      selected.config.policy
+    );
+    for (const row of rows) {
+      const ref = tableRefFromMetadata(row, effectiveSchema);
+      if (ref) {
+        addErScopeTable(scope, selected.config.compatibility, ref.schema, ref.table, tableLimit, {
+          source: "schema_scan",
+          confidence: 1,
+          evidence: ["Returned from visible table metadata."]
+        });
+      }
+    }
+  }
+
+  const initialRefs = [...scope.values()];
+  let discoveredRelationshipCount = 0;
+  let filteredRelationshipCount = 0;
+  for (const ref of initialRefs) {
+    const result = await withQuerySlot(selected, () =>
+      findRelatedTables(
+        selected.pool,
+        selected.config.compatibility,
+        ref.table,
+        ref.schema,
+        depthLimit,
+        tableLimit * 4,
+        selected.config.queryTimeoutMs
+      )
+    );
+    for (const relation of result.relations) {
+      discoveredRelationshipCount += 1;
+      if (!isErRelationshipVisible(relation, selected.config, relationConfidenceFloor, input.includeInferred)) {
+        filteredRelationshipCount += 1;
+        continue;
+      }
+      relationships.push(relation);
+      const evidence = relation.evidence.map((item) => item.detail).slice(0, 5);
+      const addedSource = addErScopeTable(scope, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit, {
+        source: "relationship",
+        confidence: relation.confidence,
+        evidence
+      });
+      const addedTarget = addErScopeTable(scope, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit, {
+        source: "relationship",
+        confidence: relation.confidence,
+        evidence
+      });
+      if (!addedSource || !addedTarget) {
+        relationshipScopeLimited = true;
+      }
+    }
+  }
+
+  const entities: ErEntity[] = [];
+  for (const ref of scope.values()) {
+    const columns = filterColumnMetadata(
+      await withQuerySlot(selected, () =>
+        describeTable(
+          selected.pool,
+          selected.config.compatibility,
+          ref.table,
+          ref.schema,
+          selected.config.queryTimeoutMs
+        )
+      ),
+      selected.config.policy
+    );
+    const constraints = filterColumnMetadata(
+      await withQuerySlot(selected, () =>
+        listConstraints(
+          selected.pool,
+          selected.config.compatibility,
+          ref.table,
+          ref.schema,
+          selected.config.queryTimeoutMs
+        )
+      ),
+      selected.config.policy
+    );
+    entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, columns, constraints));
+  }
+
+  const entityKeys = new Set(
+    [...scope.values()].map((ref) => tableRefKey(selected.config.compatibility, ref.schema, ref.table))
+  );
+  const diagramRelationships = dedupeRelationships(selected.config.compatibility, relationships).filter(
+    (relation) =>
+      entityKeys.has(tableRefKey(selected.config.compatibility, relation.sourceSchema, relation.sourceTable)) &&
+      entityKeys.has(tableRefKey(selected.config.compatibility, relation.targetSchema, relation.targetTable))
+  );
+  const diagram = buildErDiagram(selected.config.compatibility, entities, diagramRelationships);
+  const response = {
+    mode: selected.config.compatibility,
+    schema: effectiveSchema,
+    rootTable: input.table ?? null,
+    businessTerm: input.businessTerm ?? null,
+    scope: [...scope.values()].map(erScopeTableOutput),
+    maxTables: tableLimit,
+    depth: depthLimit,
+    minConfidence: relationConfidenceFloor,
+    includeInferred: input.includeInferred,
+    tableCount: entities.length,
+    relationshipCount: diagramRelationships.length,
+    discoveredRelationshipCount,
+    filteredRelationshipCount,
+    mermaid: diagram.mermaid,
+    diagram: {
+      entities: diagram.entities,
+      relationships: diagram.relationships
+    },
+    warnings: uniqueStrings([
+      ...warnings,
+      ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
+      ...(filteredRelationshipCount > 0
+        ? [`${filteredRelationshipCount} relationship(s) were hidden by policy, minConfidence, or includeInferred.`]
+        : [])
+    ])
+  };
+  return { diagram, response };
+}
+
+function defaultErHtmlTitle(response: ErDiagramToolResponse): string {
+  if (response.businessTerm) {
+    return `OceanBase ER Diagram - ${response.businessTerm}`;
+  }
+  if (response.rootTable) {
+    return `OceanBase ER Diagram - ${response.rootTable}`;
+  }
+  return response.schema ? `OceanBase ER Diagram - ${response.schema}` : "OceanBase ER Diagram";
 }
 
 function parseErInputTableRef(
