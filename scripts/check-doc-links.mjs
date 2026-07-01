@@ -33,6 +33,7 @@ for (const root of roots) {
 
 const failures = [];
 const markdownLink = /!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const toolHeadings = new Set(["## Tools / 工具", "## Tools", "## 工具列表"]);
 
 for (const file of markdownFiles) {
   const content = fs.readFileSync(file, "utf8");
@@ -59,6 +60,7 @@ for (const file of markdownFiles) {
       failures.push(`${file}: missing link target ${rawTarget}`);
     }
   }
+  checkToolTableOrder(file, content, failures);
 }
 
 if (failures.length > 0) {
@@ -69,3 +71,79 @@ if (failures.length > 0) {
 }
 
 console.log(`checked ${markdownFiles.length} markdown files`);
+
+function checkToolTableOrder(file, content, failures) {
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    if (!toolHeadings.has(lines[i].trim())) {
+      continue;
+    }
+
+    const headerIndex = findToolTableHeader(lines, i + 1);
+    if (headerIndex < 0) {
+      failures.push(`${file}: missing tools table under "${lines[i].trim()}"`);
+      continue;
+    }
+
+    const headers = parseMarkdownRow(lines[headerIndex]);
+    const versionIndex = headers.findIndex((header) => header === "Since" || header === "版本");
+    if (versionIndex < 0) {
+      failures.push(`${file}: tools table is missing a Since/version column`);
+      continue;
+    }
+    if (versionIndex !== 0) {
+      failures.push(`${file}: tools table must put the Since/version column first`);
+    }
+
+    let previous = null;
+    for (let j = headerIndex + 2; j < lines.length && lines[j].startsWith("|"); j += 1) {
+      const cells = parseMarkdownRow(lines[j]);
+      if (!cells.some((cell) => cell.startsWith("`ob_"))) {
+        continue;
+      }
+      const rawVersion = cells[versionIndex];
+      const version = parseVersion(rawVersion);
+      if (!version) {
+        failures.push(`${file}: invalid tool version "${rawVersion}"`);
+        continue;
+      }
+      if (previous && compareVersions(previous.version, version) > 0) {
+        failures.push(`${file}: tools table version order moves from ${previous.raw} to ${rawVersion}`);
+      }
+      previous = { raw: rawVersion, version };
+    }
+  }
+}
+
+function findToolTableHeader(lines, start) {
+  for (let i = start; i < lines.length; i += 1) {
+    if (lines[i].startsWith("## ")) {
+      return -1;
+    }
+    if (lines[i].startsWith("|") && (lines[i].includes("Since") || lines[i].includes("版本"))) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+function parseMarkdownRow(line) {
+  return line.split("|").slice(1, -1).map((cell) => cell.trim());
+}
+
+function parseVersion(value) {
+  const match = /^v(\d+)\.(\d+)\.(\d+)$/.exec(value);
+  if (!match) {
+    return null;
+  }
+  return match.slice(1).map((part) => Number(part));
+}
+
+function compareVersions(left, right) {
+  for (let i = 0; i < 3; i += 1) {
+    if (left[i] !== right[i]) {
+      return left[i] - right[i];
+    }
+  }
+  return 0;
+}

@@ -124,78 +124,81 @@ npm run start:http
 
 ## 工具列表
 
-| 工具 | 版本 | 用途 |
+按版本升序排列；同一版本内按常用工作流和能力分组排列。
+
+| 版本 | 工具 | 用途 |
 | --- | --- | --- |
-| `ob_list_profiles` | v0.3.0 | 列出已配置 profile，并隐藏敏感信息。 |
-| `ob_config_diagnostics` | v0.3.0 | 输出部署和策略诊断。 |
-| `ob_ping` | v0.3.0 | 验证 OceanBase 连接。 |
-| `ob_policy_explain` | v0.3.0 | 解释 SQL 是否会被允许。 |
-| `ob_query` | v0.3.0 | 执行严格只读 SQL；v0.5.1 起返回列元数据、Markdown 预览和警告。 |
-| `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 |
-| `ob_list_tables` | v0.3.0 | 列出可见表。 |
-| `ob_describe_table` | v0.3.0 | 返回列元数据。 |
-| `ob_explain` | v0.3.0 | 对只读 SQL 执行 `EXPLAIN`。 |
-| `ob_search_catalog` | v0.3.0 | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 |
-| `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 |
-| `ob_get_indexes` | v0.3.0 | 返回表索引元数据。 |
-| `ob_get_constraints` | v0.3.0 | 返回主键、唯一键、外键、check 和 not-null 约束。 |
-| `ob_get_partitions` | v0.3.0 | 返回表分区元数据。 |
-| `ob_sample_rows` | v0.3.0 | 返回显式列样例数据，并默认脱敏。 |
-| `ob_verify_permissions` | v0.4.0 | 检查当前数据库账号是否包含写入或管理权限。 |
-| `ob_analyze_query_plan` | v0.5.0 | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
-| `ob_generate_performance_report` | v0.5.0 | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
-| `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
-| `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 |
-| `ob_get_table_ddl` | v0.5.0 | 返回表的原生或结构化 DDL 元数据。 |
-| `ob_find_related_tables` | v0.5.0 | 查找外键关系和保守的命名推断表关系。 |
-| `ob_get_table_stats` | v0.5.0 | 返回表行数估算、对象计数和存储统计。 |
-| `ob_generate_query` | v0.5.0 | 基于表元数据生成只读 SQL 模板。 |
-| `ob_generate_er_diagram` | v0.5.0 | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 |
-| `ob_query_preview` | v0.5.1 | 执行前预览只读策略和执行计划风险，不返回数据。 |
-| `ob_query_page` | v0.5.1 | 执行带分页的只读查询。 |
-| `ob_search_business_glossary` | v0.5.1 | 搜索业务词到 schema/table/column 的可见映射。 |
-| `ob_get_table_context` | v0.5.1 | 返回写 SQL 和查数据常用的表上下文。 |
-| `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像；v1.0.0 起包含类型策略和枚举候选信号。 |
-| `ob_check_opencode_setup` | v1.0.0 | 检查本地 OpenCode 配置、OceanBase agent 和查询 skill。 |
-| `ob_get_usage_guide` | v1.0.0 | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 |
-| `ob_list_capabilities` | v1.0.0 | 返回当前 MCP 能力、工具分组、版本和只读限制。 |
-| `ob_start_query_session` | v1.0.0 | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 |
-| `ob_get_query_session` | v1.0.0 | 读取查询上下文，不暴露已存参数值。 |
-| `ob_close_query_session` | v1.0.0 | 关闭内存查询上下文。 |
-| `ob_query_next_page` | v1.0.0 | 基于查询上下文读取下一页，继续执行只读策略和行数限制。 |
-| `ob_query_prev_page` | v1.0.0 | 基于查询上下文读取上一页，继续执行只读策略和行数限制。 |
-| `ob_query_refine` | v1.0.0 | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 |
-| `ob_summarize_result` | v1.0.0 | 汇总已返回结果，不额外读取数据库。 |
-| `ob_compare_query_results` | v1.0.0 | 比较两份已返回结果，不额外读取数据库。 |
-| `ob_export_result_preview` | v1.0.0 | 生成 Markdown/CSV 结果预览字符串，不落盘。 |
-| `ob_get_schema_map` | v1.0.0 | 返回紧凑的 schema、表、关键字段和关系摘要。 |
-| `ob_get_database_dictionary` | v1.0.0 | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 |
-| `ob_search_everything` | v1.0.0 | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 |
-| `ob_find_tables_by_business_term` | v1.0.0 | 按业务词返回候选表、依据和关联表摘要。 |
-| `ob_find_columns` | v1.0.0 | 按字段名、注释、类型、表名模式或业务词查找字段。 |
-| `ob_get_table_summary` | v1.0.0 | 汇总单表用途推断、关键字段、关系和查询入口。 |
-| `ob_compare_tables` | v1.0.0 | 比较两张表的字段、索引、约束和分区差异。 |
-| `ob_compare_schemas` | v1.0.0 | 比较两个 schema 的表清单和受限表结构差异。 |
-| `ob_profile_table` | v1.0.0 | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 |
-| `ob_get_value_distribution` | v1.0.0 | 返回单个可见字段的受限 top value 分布。 |
-| `ob_detect_time_columns` | v1.0.0 | 基于元数据识别创建、更新和业务时间字段。 |
-| `ob_detect_dimension_columns` | v1.0.0 | 基于元数据识别状态、类型、渠道、地区等维度字段。 |
-| `ob_find_recent_rows` | v1.0.0 | 基于明确或识别出的时间字段分页查看最近数据。 |
-| `ob_check_data_quality` | v1.0.0 | 受限采样检查空值、重复键风险、维度和时间字段异常。 |
-| `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 |
-| `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 |
-| `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 |
-| `ob_validate_sql_snippet` | v1.0.0 | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 |
-| `ob_explain_project_query` | v1.0.0 | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 |
-| `ob_generate_mapper_context` | v1.0.0 | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 |
-| `ob_rewrite_sql` | v1.0.0 | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 |
-| `ob_convert_sql_dialect` | v1.0.0 | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 |
-| `ob_explain_error` | v1.0.0 | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
-| `ob_generate_query_examples` | v1.0.0 | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
-| `ob_generate_er_html` | v1.0.0 | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 |
-| `ob_generate_entity_diagram` | v1.0.0 | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
-| `ob_explain_relationship` | v1.0.0 | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 |
-| `ob_generate_er_document` | v1.0.0 | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 |
+| v0.3.0 | `ob_list_profiles` | 列出已配置 profile，并隐藏敏感信息。 |
+| v0.3.0 | `ob_config_diagnostics` | 输出部署和策略诊断。 |
+| v0.3.0 | `ob_ping` | 验证 OceanBase 连接。 |
+| v0.3.0 | `ob_policy_explain` | 解释 SQL 是否会被允许。 |
+| v0.3.0 | `ob_query` | 执行严格只读 SQL；v0.5.1 起返回列元数据、Markdown 预览和警告。 |
+| v0.3.0 | `ob_list_schemas` | 列出可见 schema/database。 |
+| v0.3.0 | `ob_list_tables` | 列出可见表。 |
+| v0.3.0 | `ob_describe_table` | 返回列元数据。 |
+| v0.3.0 | `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 |
+| v0.3.0 | `ob_search_catalog` | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 |
+| v0.3.0 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 |
+| v0.3.0 | `ob_get_indexes` | 返回表索引元数据。 |
+| v0.3.0 | `ob_get_constraints` | 返回主键、唯一键、外键、check 和 not-null 约束。 |
+| v0.3.0 | `ob_get_partitions` | 返回表分区元数据。 |
+| v0.3.0 | `ob_sample_rows` | 返回显式列样例数据，并默认脱敏。 |
+| v0.4.0 | `ob_verify_permissions` | 检查当前数据库账号是否包含写入或管理权限。 |
+| v0.5.0 | `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
+| v0.5.0 | `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
+| v0.5.0 | `ob_list_objects` | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
+| v0.5.0 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 |
+| v0.5.0 | `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 |
+| v0.5.0 | `ob_find_related_tables` | 查找外键关系和保守的命名推断表关系。 |
+| v0.5.0 | `ob_get_table_stats` | 返回表行数估算、对象计数和存储统计。 |
+| v0.5.0 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 |
+| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 |
+| v0.5.1 | `ob_query_preview` | 执行前预览只读策略和执行计划风险，不返回数据。 |
+| v0.5.1 | `ob_query_page` | 执行带分页的只读查询。 |
+| v0.5.1 | `ob_search_business_glossary` | 搜索业务词到 schema/table/column 的可见映射。 |
+| v0.5.1 | `ob_get_table_context` | 返回写 SQL 和查数据常用的表上下文。 |
+| v0.5.1 | `ob_profile_columns` | 返回受限样本内的字段画像；v1.0.0 起包含类型策略和枚举候选信号。 |
+| v1.0.0 | `ob_check_opencode_setup` | 检查本地 OpenCode 配置、OceanBase agent 和查询 skill。 |
+| v1.0.0 | `ob_get_usage_guide` | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 |
+| v1.0.0 | `ob_list_capabilities` | 返回当前 MCP 能力、工具分组、版本和只读限制。 |
+| v1.0.0 | `ob_start_query_session` | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 |
+| v1.0.0 | `ob_get_query_session` | 读取查询上下文，不暴露已存参数值。 |
+| v1.0.0 | `ob_close_query_session` | 关闭内存查询上下文。 |
+| v1.0.0 | `ob_query_next_page` | 基于查询上下文读取下一页，继续执行只读策略和行数限制。 |
+| v1.0.0 | `ob_query_prev_page` | 基于查询上下文读取上一页，继续执行只读策略和行数限制。 |
+| v1.0.0 | `ob_query_refine` | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 |
+| v1.0.0 | `ob_summarize_result` | 汇总已返回结果，不额外读取数据库。 |
+| v1.0.0 | `ob_compare_query_results` | 比较两份已返回结果，不额外读取数据库。 |
+| v1.0.0 | `ob_export_result_preview` | 生成 Markdown/CSV 结果预览字符串，不落盘。 |
+| v1.0.0 | `ob_get_schema_map` | 返回紧凑的 schema、表、关键字段和关系摘要。 |
+| v1.0.0 | `ob_get_database_dictionary` | 基于可见元数据生成受限 JSON 或 Markdown 数据字典。 |
+| v1.0.0 | `ob_search_everything` | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 |
+| v1.0.0 | `ob_find_tables_by_business_term` | 按业务词返回候选表、依据和关联表摘要。 |
+| v1.0.0 | `ob_find_columns` | 按字段名、注释、类型、表名模式或业务词查找字段。 |
+| v1.0.0 | `ob_get_table_summary` | 汇总单表用途推断、关键字段、关系和查询入口。 |
+| v1.0.0 | `ob_compare_tables` | 比较两张表的字段、索引、约束和分区差异。 |
+| v1.0.0 | `ob_compare_schemas` | 比较两个 schema 的表清单和受限表结构差异。 |
+| v1.0.0 | `ob_profile_table` | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 |
+| v1.0.0 | `ob_get_value_distribution` | 返回单个可见字段的受限 top value 分布。 |
+| v1.0.0 | `ob_detect_time_columns` | 基于元数据识别创建、更新和业务时间字段。 |
+| v1.0.0 | `ob_detect_dimension_columns` | 基于元数据识别状态、类型、渠道、地区等维度字段。 |
+| v1.0.0 | `ob_find_recent_rows` | 基于明确或识别出的时间字段分页查看最近数据。 |
+| v1.0.0 | `ob_check_data_quality` | 受限采样检查空值、重复键风险、维度和时间字段异常。 |
+| v1.0.0 | `ob_prepare_query` | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 |
+| v1.0.0 | `ob_build_select` | 用经过校验的结构化输入生成参数化只读 SELECT。 |
+| v1.0.0 | `ob_lint_sql` | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 |
+| v1.0.0 | `ob_validate_sql_snippet` | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 |
+| v1.0.0 | `ob_explain_project_query` | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 |
+| v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 |
+| v1.0.0 | `ob_find_unknown_columns_in_sql` | 发现 SQL 中未知表或字段，并给出可见元数据候选。 |
+| v1.0.0 | `ob_rewrite_sql` | 将 SELECT/WITH 改写为更安全的只读形式，不执行 SQL。 |
+| v1.0.0 | `ob_convert_sql_dialect` | 在 OceanBase MySQL/Oracle 模式间转换只读 SQL，并标明限制。 |
+| v1.0.0 | `ob_explain_error` | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
+| v1.0.0 | `ob_generate_query_examples` | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
+| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 |
+| v1.0.0 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
+| v1.0.0 | `ob_explain_relationship` | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 |
+| v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 |
 
 ## Oracle 对象元数据
 
