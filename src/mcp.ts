@@ -68,6 +68,13 @@ const buildSelectOrderBySchema = z.object({
   direction: z.enum(["asc", "desc"]).optional(),
   nulls: z.enum(["first", "last"]).optional()
 });
+const resultSummaryColumnSchema = z.object({
+  name: z.string().min(1),
+  type: z.string().optional(),
+  table: z.string().optional(),
+  schema: z.string().optional(),
+  masked: z.boolean().optional()
+});
 const compatibilityModeSchema = z.enum(["mysql", "oracle"]);
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
 const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
@@ -820,6 +827,42 @@ export function createObMcpServer(
           pagination: built.pagination,
           sessionUpdated: updateSession,
           session: updateSession ? publicQuerySession(session) : undefined,
+          executed: false
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
+    "ob_summarize_result",
+    {
+      title: "Summarize Query Result",
+      description: "Summarize already returned query rows without reading the database.",
+      inputSchema: {
+        ...profileInput,
+        sessionId: z.string().optional(),
+        rows: z.array(z.record(z.string(), z.unknown())).max(1_000),
+        columns: z.array(resultSummaryColumnSchema).max(200).optional(),
+        maxTopValues: z.number().int().positive().max(50).optional()
+      }
+    },
+    async ({ profile, sessionId, rows, columns, maxTopValues }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const session = sessionId ? getQuerySessionForProfile(querySessions, sessionId, selected.profile) : undefined;
+      const summary = summarizeQueryResultRows(
+        rows as Array<Record<string, unknown>>,
+        columns ?? [],
+        selected.config,
+        Math.min(maxTopValues ?? 10, 50)
+      );
+      return toLimitedResult(
+        {
+          sessionId: session?.id ?? null,
+          mode: selected.config.compatibility,
+          rowCount: rows.length,
+          ...summary,
           executed: false
         },
         selected.config
@@ -5049,6 +5092,183 @@ function updateSessionFromRefinedSql(
   session.updatedAt = now.toISOString();
   session.expiresAt = new Date(now.getTime() + QUERY_SESSION_TTL_MS).toISOString();
   session.warnings = uniqueStrings([...session.warnings, ...warnings]);
+}
+
+type ResultSummaryColumn = z.infer<typeof resultSummaryColumnSchema>;
+
+function summarizeQueryResultRows(
+  rows: Array<Record<string, unknown>>,
+  columns: ResultSummaryColumn[],
+  config: ObConfig,
+  maxTopValues: number
+) {
+  const columnNames = resultSummaryColumnNames(rows, columns);
+  const columnMetadata = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  const summaries = columnNames.map((name) =>
+    summarizeResultColumn(name, rows, columnMetadata.get(name.toLowerCase()), config, maxTopValues)
+  );
+  const maskedColumns = summaries.filter((column) => column.masked).map((column) => column.name);
+  const timeColumns = summaries
+    .filter((column) => column.timeRange)
+    .map((column) => column.name);
+  const dimensionColumns = summaries
+    .filter((column) => column.distinct.count > 0 && column.distinct.count <= Math.max(20, Math.ceil(rows.length / 2)))
+    .map((column) => column.name);
+  return {
+    empty: rows.length === 0,
+    columns: summaries,
+    maskedColumns,
+    timeColumns,
+    dimensionColumns,
+    nextSteps: resultSummaryNextSteps(rows.length, maskedColumns, timeColumns, dimensionColumns)
+  };
+}
+
+function resultSummaryColumnNames(
+  rows: Array<Record<string, unknown>>,
+  columns: ResultSummaryColumn[]
+): string[] {
+  const names = columns.map((column) => column.name);
+  for (const row of rows) {
+    names.push(...Object.keys(row));
+  }
+  return uniqueStrings(names.filter(Boolean)).slice(0, 200);
+}
+
+function summarizeResultColumn(
+  name: string,
+  rows: Array<Record<string, unknown>>,
+  metadata: ResultSummaryColumn | undefined,
+  config: ObConfig,
+  maxTopValues: number
+) {
+  const values = rows.map((row) => row[name]);
+  const nullCount = values.filter((value) => value == null).length;
+  const nonNullValues = values.filter((value) => value != null);
+  const masked = Boolean(metadata?.masked) || shouldMaskColumnValue(name, config, metadata?.schema, metadata?.table);
+  const counts = valueCounts(nonNullValues, maxTopValues);
+  const numericRange = masked ? undefined : numericSummary(nonNullValues);
+  const timeRange = masked ? undefined : timeSummary(name, metadata?.type, nonNullValues);
+  return {
+    name,
+    type: metadata?.type,
+    table: metadata?.table,
+    schema: metadata?.schema,
+    masked,
+    nulls: {
+      count: nullCount,
+      ratio: rows.length === 0 ? 0 : nullCount / rows.length
+    },
+    distinct: {
+      count: new Set(nonNullValues.map(summaryValueKey)).size,
+      exact: rows.length <= 1_000
+    },
+    topValues: masked
+      ? []
+      : counts.map((item) => ({
+          value: item.value,
+          count: item.count,
+          ratio: rows.length === 0 ? 0 : item.count / rows.length
+        })),
+    numericRange,
+    timeRange,
+    warnings: masked ? ["Values are hidden because the column is marked or detected as sensitive."] : []
+  };
+}
+
+function valueCounts(values: unknown[], limit: number): Array<{ value: unknown; count: number }> {
+  const counts = new Map<string, { value: unknown; count: number }>();
+  for (const value of values) {
+    const key = summaryValueKey(value);
+    const current = counts.get(key);
+    if (current) {
+      current.count += 1;
+    } else {
+      counts.set(key, { value: summaryValue(value), count: 1 });
+    }
+  }
+  return [...counts.values()]
+    .sort((left, right) => right.count - left.count || String(left.value).localeCompare(String(right.value)))
+    .slice(0, limit);
+}
+
+function numericSummary(values: unknown[]) {
+  const numbers = values
+    .map((value) => typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : NaN)
+    .filter((value) => Number.isFinite(value));
+  if (numbers.length === 0) {
+    return undefined;
+  }
+  return {
+    min: Math.min(...numbers),
+    max: Math.max(...numbers)
+  };
+}
+
+function timeSummary(name: string, type: string | undefined, values: unknown[]) {
+  const looksTemporal = /(time|date|created|updated|modified|gmt_)/i.test(`${name} ${type ?? ""}`);
+  if (!looksTemporal) {
+    return undefined;
+  }
+  const timestamps = values
+    .map((value) => {
+      if (value instanceof Date) {
+        return value.getTime();
+      }
+      if (typeof value === "string" || typeof value === "number") {
+        const time = Date.parse(String(value));
+        return Number.isFinite(time) ? time : NaN;
+      }
+      return NaN;
+    })
+    .filter((value) => Number.isFinite(value));
+  if (timestamps.length === 0) {
+    return undefined;
+  }
+  return {
+    min: new Date(Math.min(...timestamps)).toISOString(),
+    max: new Date(Math.max(...timestamps)).toISOString()
+  };
+}
+
+function summaryValue(value: unknown): unknown {
+  if (value == null || ["string", "number", "boolean"].includes(typeof value)) {
+    return value;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+  return "[complex]";
+}
+
+function summaryValueKey(value: unknown): string {
+  const safeValue = summaryValue(value);
+  return `${typeof safeValue}:${String(safeValue)}`;
+}
+
+function resultSummaryNextSteps(
+  rowCount: number,
+  maskedColumns: string[],
+  timeColumns: string[],
+  dimensionColumns: string[]
+): string[] {
+  const steps: string[] = [];
+  if (rowCount === 0) {
+    steps.push("Check whether filters are too narrow or whether the selected schema/table is correct.");
+  }
+  if (timeColumns.length > 0) {
+    steps.push(`Use ${timeColumns[0]} for bounded recent-data queries when investigating changes.`);
+  }
+  if (dimensionColumns.length > 0) {
+    steps.push(`Use ${dimensionColumns[0]} for grouped counts or value-distribution checks.`);
+  }
+  if (maskedColumns.length > 0) {
+    steps.push("Masked columns were summarized without exposing raw values.");
+  }
+  if (steps.length === 0) {
+    steps.push("Use ob_query_refine to add filters, ordering, or pagination before running a follow-up query.");
+  }
+  return steps;
 }
 
 function cleanOptionalString(value: string | undefined): string | undefined {
