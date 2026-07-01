@@ -7,6 +7,7 @@ import { loadGatewayConfig } from "./config.js";
 import { runDoctorCommand } from "./doctor-runner.js";
 import { runExportErCommand } from "./er-export.js";
 import { runInitCommand } from "./init.js";
+import { runMetadataCommand } from "./metadata-cli.js";
 import { createObMcpServer } from "./mcp.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
 import { runScanSqlCommand } from "./sql-scan.js";
@@ -19,6 +20,8 @@ if (command === "init") {
   process.exitCode = await runDoctorCommand(args);
 } else if (command === "export-er" || command === "ob_export_er_artifact") {
   process.exitCode = await runExportErCommand(args);
+} else if (command === "metadata") {
+  process.exitCode = await runMetadataCommand(args);
 } else if (command === "scan-sql") {
   process.exitCode = await runScanSqlCommand(args);
 } else if (command === "--help" || command === "-h" || command === "help") {
@@ -57,6 +60,7 @@ Usage:
   ob-mcp init [options]      Create local OpenCode and OceanBase MCP files
   ob-mcp doctor              Check local setup, config, and OceanBase connectivity
   ob-mcp export-er [options] Export a local ER HTML artifact
+  ob-mcp metadata <command>  Capture or compare metadata artifacts
   ob-mcp scan-sql [options]  Scan project files for SQL snippets
 
 Init options:
@@ -90,5 +94,8 @@ Scan SQL options:
   --max-bytes <n>
   --format json|text
   --fail-on-risk
+
+Metadata commands:
+  snapshot                  Capture a metadata-only JSON snapshot
 `);
 }
