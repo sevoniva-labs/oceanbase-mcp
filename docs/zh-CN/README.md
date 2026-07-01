@@ -120,6 +120,7 @@ npm run start:http
 | `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
 | `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
 | `ob_search_catalog` | 搜索 schema、表和列。 |
+| `ob_search_business_glossary` | 搜索业务词到 schema/table/column 的可见映射。 |
 | `ob_list_objects` | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 |
 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 |

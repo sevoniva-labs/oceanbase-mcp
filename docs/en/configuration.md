@@ -71,6 +71,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_DENIED_TABLES` | unset | Comma-separated denied tables; glob-style `*` is supported. |
 | `OB_DENIED_COLUMNS` | sensitive names | Comma-separated denied column/identifier names. |
 | `OB_MASKED_COLUMNS` | unset | Comma-separated sample-output masking rules. Supports `schema.table.column`, `table.column`, `column`, and `*` globs. |
+| `OB_BUSINESS_GLOSSARY_FILE` | unset | Optional business glossary JSON file used only for search hints. |
 | `OB_ALLOW_SELECT_STAR` | `false` | Allows `SELECT *` only when explicitly set to `true`. |
 | `OB_REQUIRE_ACCESS_POLICY` | production: `true` | Requires allowlist policy in production. |
 | `OB_INCLUDE_SYSTEM_SCHEMAS` | `false` | Includes system schemas in metadata tools. |
@@ -84,8 +85,14 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 Masking priority:
 
 1. `OB_DENIED_COLUMNS` is strongest: matching columns are blocked from query output and hidden from metadata.
-2. `OB_MASKED_COLUMNS` keeps the column visible in metadata but masks values returned by `ob_sample_rows`.
-3. Built-in sensitive-name detection still masks sample fields such as password, token, secret, email, phone, and similar names.
+2. `OB_MASKED_COLUMNS` keeps the column visible in metadata but masks values in query output, table-context samples, and column profiles.
+3. Built-in sensitive-name detection still masks values for fields such as password, token, secret, email, phone, and similar names.
+
+Business glossary:
+
+- `OB_BUSINESS_GLOSSARY_FILE` points to a JSON file. See [business-glossary.example.json](../../examples/business-glossary.example.json).
+- The glossary only affects search hints from `ob_search_business_glossary` and `ob_search_catalog`; it does not grant database access.
+- Glossary targets are still filtered by profile, schema, table, and column policy. Denied tables or columns are not returned.
 
 ## HTTP Server
 

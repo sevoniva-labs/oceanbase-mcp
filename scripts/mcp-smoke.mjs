@@ -245,6 +245,7 @@ try {
     "ob_analyze_query_plan",
     "ob_generate_performance_report",
     "ob_search_catalog",
+    "ob_search_business_glossary",
     "ob_list_objects",
     "ob_get_object_metadata",
     "ob_get_table_schema",

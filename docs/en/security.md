@@ -22,8 +22,9 @@ Use both layers:
 | `SELECT *` block | Enabled by default. |
 | System schema denial | Enabled by default. |
 | Sensitive column denial | Enabled by default. |
-| Field-level sample masking | `OB_MASKED_COLUMNS` supports exact column and wildcard rules. |
+| Field-level value masking | `OB_MASKED_COLUMNS` supports exact column and wildcard rules. |
 | Developer assistant tools | DDL, ER, SQL template, and performance-report tools only read metadata or run read-only `EXPLAIN`. |
+| Business glossary | Used only for search hints and filtered by access policy before return. |
 | Read-only transaction | Enabled by default. |
 | Row and response-size caps | Enabled by default and cannot be raised by clients. |
 | Concurrency cap | Enabled per profile by default. |

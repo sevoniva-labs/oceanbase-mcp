@@ -1,0 +1,31 @@
+{
+  "terms": [
+    {
+      "term": "订单",
+      "aliases": ["order", "sales order"],
+      "description": "订单主表和订单明细。",
+      "targets": [
+        { "schema": "biz_test", "table": "orders" },
+        { "schema": "biz_test", "table": "order_items" }
+      ]
+    },
+    {
+      "term": "用户",
+      "aliases": ["user", "account"],
+      "description": "用户账号和基础资料。",
+      "targets": [
+        { "schema": "biz_test", "table": "users" },
+        { "schema": "biz_test", "table": "accounts" }
+      ]
+    },
+    {
+      "term": "支付",
+      "aliases": ["payment", "transaction"],
+      "description": "支付单和交易流水。",
+      "targets": [
+        { "schema": "biz_test", "table": "payments" },
+        { "schema": "biz_test", "table": "transactions" }
+      ]
+    }
+  ]
+}

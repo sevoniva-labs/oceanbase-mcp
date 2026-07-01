@@ -33,7 +33,7 @@ Use the OceanBase MCP server for database inspection and data queries. Treat the
 
 ## Tool Order
 
-- Start with `ob_search_catalog`, `ob_list_schemas`, or `ob_list_tables` when the table is unknown.
+- Start with `ob_search_catalog`, `ob_search_business_glossary`, `ob_list_schemas`, or `ob_list_tables` when the table is unknown.
 - Use `ob_get_table_context` when available. Until then, combine `ob_get_table_ddl`, `ob_describe_table`, `ob_get_indexes`, `ob_get_constraints`, `ob_get_partitions`, `ob_get_table_stats`, `ob_find_related_tables`, and `ob_generate_query`.
 - Use `ob_query_preview` before executing user-facing queries when available. Until then, call `ob_policy_explain` and `ob_analyze_query_plan`.
 - Prefer `ob_query_page` for data lookup when available. Until then, use `ob_query` with explicit selected columns, filters, ordering, and a small limit.

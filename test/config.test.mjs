@@ -53,6 +53,35 @@ test("loadConfig reads password from file", () => {
   }
 });
 
+test("loadConfig reads business glossary file and publicConfig redacts entries", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ob-mcp-test-"));
+  try {
+    const file = join(dir, "glossary.json");
+    writeFileSync(file, JSON.stringify({
+      terms: [
+        {
+          term: "订单",
+          aliases: ["order"],
+          targets: [
+            { schema: "biz_test", table: "orders" },
+            { schema: "biz_test", table: "order_items" }
+          ]
+        }
+      ]
+    }));
+    const config = loadConfig({ OB_BUSINESS_GLOSSARY_FILE: file });
+    const safe = publicConfig(config);
+
+    assert.equal(config.businessGlossary.entries.length, 1);
+    assert.equal(config.businessGlossary.entries[0].term, "订单");
+    assert.equal("businessGlossary" in safe, false);
+    assert.equal(safe.businessGlossaryConfigured, true);
+    assert.equal(safe.businessGlossaryEntries, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("loadGatewayConfig supports multiple profiles and prefixed overrides", () => {
   const gateway = loadGatewayConfig({
     OB_PROFILES: "dev,prod",

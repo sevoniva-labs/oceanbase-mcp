@@ -23,6 +23,25 @@ export interface AccessPolicy {
   requireAccessPolicy: boolean;
 }
 
+export interface BusinessGlossaryTarget {
+  schema?: string;
+  table?: string;
+  column?: string;
+  description?: string;
+}
+
+export interface BusinessGlossaryEntry {
+  term: string;
+  aliases: string[];
+  description?: string;
+  targets: BusinessGlossaryTarget[];
+}
+
+export interface BusinessGlossary {
+  entries: BusinessGlossaryEntry[];
+  file: string;
+}
+
 export interface ObConfig {
   profile: string;
   host: string;
@@ -45,6 +64,7 @@ export interface ObConfig {
   enforceReadOnlyTransaction: boolean;
   requireTls: boolean;
   policy: AccessPolicy;
+  businessGlossary?: BusinessGlossary;
   ssl?: ObSslConfig;
 }
 
@@ -85,10 +105,12 @@ export interface GatewayConfig {
 }
 
 export interface PublicObConfig
-  extends Omit<ObConfig, "password" | "ssl"> {
+  extends Omit<ObConfig, "password" | "ssl" | "businessGlossary"> {
   passwordConfigured: boolean;
   sslConfigured: boolean;
   sslRejectUnauthorized?: boolean;
+  businessGlossaryConfigured: boolean;
+  businessGlossaryEntries: number;
 }
 
 const DEFAULT_CLUSTER = "obcluster";
@@ -125,6 +147,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
   const ssl = loadSslConfig(env);
   const requireTls = parseBoolean(env.OB_REQUIRE_TLS, false);
   const policy = loadAccessPolicy(env, productionMode);
+  const businessGlossary = loadBusinessGlossary(env);
   const enforceReadOnlyTransaction = parseBoolean(env.OB_ENFORCE_READ_ONLY_TX, true);
   const connectionLimit = parseInteger(env.OB_CONNECTION_LIMIT, 5, "OB_CONNECTION_LIMIT");
   if (requireTls && !ssl) {
@@ -173,6 +196,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
     enforceReadOnlyTransaction,
     requireTls,
     policy,
+    businessGlossary,
     ssl
   };
 }
@@ -198,12 +222,14 @@ export function loadGatewayConfig(env: NodeJS.ProcessEnv = process.env): Gateway
 }
 
 export function publicConfig(config: ObConfig): PublicObConfig {
-  const { password, ssl, ...rest } = config;
+  const { password, ssl, businessGlossary, ...rest } = config;
   return {
     ...rest,
     passwordConfigured: password.length > 0,
     sslConfigured: ssl != null,
-    sslRejectUnauthorized: ssl?.rejectUnauthorized
+    sslRejectUnauthorized: ssl?.rejectUnauthorized,
+    businessGlossaryConfigured: businessGlossary != null,
+    businessGlossaryEntries: businessGlossary?.entries.length ?? 0
   };
 }
 
@@ -305,6 +331,103 @@ function resolveSecret(env: NodeJS.ProcessEnv, name: string): string | undefined
   } catch (error) {
     throw new Error(`Failed to read ${name}_FILE at ${filePath}: ${(error as Error).message}`);
   }
+}
+
+function loadBusinessGlossary(env: NodeJS.ProcessEnv): BusinessGlossary | undefined {
+  const filePath = env.OB_BUSINESS_GLOSSARY_FILE?.trim();
+  if (!filePath) {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(filePath, "utf8"));
+  } catch (error) {
+    throw new Error(`Failed to read OB_BUSINESS_GLOSSARY_FILE at ${filePath}: ${(error as Error).message}`);
+  }
+
+  const terms: unknown[] | undefined = Array.isArray(parsed)
+    ? parsed
+    : parsed && typeof parsed === "object" && Array.isArray((parsed as Record<string, unknown>).terms)
+      ? (parsed as Record<string, unknown>).terms as unknown[]
+      : undefined;
+  if (!terms) {
+    throw new Error("OB_BUSINESS_GLOSSARY_FILE must contain a JSON array or an object with a terms array.");
+  }
+  if (terms.length > 1000) {
+    throw new Error("OB_BUSINESS_GLOSSARY_FILE supports at most 1000 terms.");
+  }
+
+  return {
+    file: filePath,
+    entries: terms.map((entry, index) => parseBusinessGlossaryEntry(entry, index))
+  };
+}
+
+function parseBusinessGlossaryEntry(value: unknown, index: number): BusinessGlossaryEntry {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Business glossary term ${index + 1} must be an object.`);
+  }
+  const record = value as Record<string, unknown>;
+  const term = glossaryText(record.term, `terms[${index}].term`, true)!;
+  const aliases = parseOptionalStringArray(record.aliases, `terms[${index}].aliases`, (item) =>
+    validateGlossaryText(item, `terms[${index}].aliases`)
+  ) ?? [];
+  const targets = record.targets;
+  if (!Array.isArray(targets) || targets.length === 0) {
+    throw new Error(`terms[${index}].targets must be a non-empty array.`);
+  }
+  if (targets.length > 100) {
+    throw new Error(`terms[${index}].targets supports at most 100 targets.`);
+  }
+
+  return {
+    term,
+    aliases,
+    description: glossaryText(record.description, `terms[${index}].description`, false),
+    targets: targets.map((target, targetIndex) => parseBusinessGlossaryTarget(target, index, targetIndex))
+  };
+}
+
+function parseBusinessGlossaryTarget(value: unknown, termIndex: number, targetIndex: number): BusinessGlossaryTarget {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`terms[${termIndex}].targets[${targetIndex}] must be an object.`);
+  }
+  const record = value as Record<string, unknown>;
+  const target = {
+    schema: glossaryText(record.schema, `terms[${termIndex}].targets[${targetIndex}].schema`, false),
+    table: glossaryText(record.table, `terms[${termIndex}].targets[${targetIndex}].table`, false),
+    column: glossaryText(record.column, `terms[${termIndex}].targets[${targetIndex}].column`, false),
+    description: glossaryText(record.description, `terms[${termIndex}].targets[${targetIndex}].description`, false)
+  };
+  if (!target.schema && !target.table) {
+    throw new Error(`terms[${termIndex}].targets[${targetIndex}] requires schema or table.`);
+  }
+  if (target.column && !target.table) {
+    throw new Error(`terms[${termIndex}].targets[${targetIndex}].column requires table.`);
+  }
+  return target;
+}
+
+function glossaryText(value: unknown, name: string, required: boolean): string | undefined {
+  if (value == null) {
+    if (required) {
+      throw new Error(`${name} is required.`);
+    }
+    return undefined;
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    throw new Error(`${name} must be a non-empty string.`);
+  }
+  return validateGlossaryText(value, name);
+}
+
+function validateGlossaryText(value: string, name: string): string {
+  const trimmed = value.trim();
+  if (trimmed.length > 256) {
+    throw new Error(`${name} must be 256 characters or fewer.`);
+  }
+  return trimmed;
 }
 
 function loadAuthTokenPolicies(env: NodeJS.ProcessEnv, directToken: string | undefined): AuthTokenPolicy[] {

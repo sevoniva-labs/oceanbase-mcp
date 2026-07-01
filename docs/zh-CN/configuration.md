@@ -71,6 +71,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_DENIED_TABLES` | 未设置 | 被拒绝的表列表，支持 `*`。 |
 | `OB_DENIED_COLUMNS` | 敏感名称 | 被拒绝的列名/标识符列表。 |
 | `OB_MASKED_COLUMNS` | 未设置 | 样例输出脱敏规则，支持 `schema.table.column`、`table.column`、`column` 和 `*` 通配。 |
+| `OB_BUSINESS_GLOSSARY_FILE` | 未设置 | 可选业务字典 JSON 文件，仅用于搜索提示。 |
 | `OB_ALLOW_SELECT_STAR` | `false` | 只有显式设为 `true` 才允许 `SELECT *`。 |
 | `OB_REQUIRE_ACCESS_POLICY` | 生产：`true` | 生产环境要求配置 allowlist。 |
 | `OB_INCLUDE_SYSTEM_SCHEMAS` | `false` | 元数据工具是否包含系统 schema。 |
@@ -84,8 +85,14 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 脱敏优先级：
 
 1. `OB_DENIED_COLUMNS` 最强：匹配的列会被禁止出现在查询结果中，也会从元数据里隐藏。
-2. `OB_MASKED_COLUMNS` 不隐藏元数据，只对 `ob_sample_rows` 返回的样例值做脱敏。
-3. 内置敏感字段识别仍然会对 password、token、secret、email、phone 等名称做样例值脱敏。
+2. `OB_MASKED_COLUMNS` 不隐藏元数据，只对查询结果、表上下文样例和字段画像中的值做脱敏。
+3. 内置敏感字段识别仍然会对 password、token、secret、email、phone 等名称做值脱敏。
+
+业务字典：
+
+- `OB_BUSINESS_GLOSSARY_FILE` 指向 JSON 文件，格式见 [business-glossary.example.json](../../examples/business-glossary.example.json)。
+- 字典只影响 `ob_search_business_glossary` 和 `ob_search_catalog` 的搜索提示，不授予额外数据库访问权限。
+- 字典目标仍会经过 profile、schema、table 和 column 策略过滤。被拒绝的表或字段不会出现在返回结果中。
 
 ## HTTP 服务
 

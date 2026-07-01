@@ -26,6 +26,7 @@ Use this skill when a user asks to inspect OceanBase schemas, understand tables,
 Use these tools before SQL:
 
 - `ob_search_catalog` for business terms, table names, column names, and comments.
+- `ob_search_business_glossary` for configured business-term mappings. Treat results as hints and verify with metadata tools.
 - `ob_get_table_context` when available for table structure, indexes, constraints, partitions, related tables, templates, and safe samples.
 - Existing metadata tools as fallback: `ob_get_table_ddl`, `ob_describe_table`, `ob_get_indexes`, `ob_get_constraints`, `ob_get_partitions`, `ob_get_table_stats`, `ob_find_related_tables`, `ob_generate_query`.
 
