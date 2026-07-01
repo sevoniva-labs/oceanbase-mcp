@@ -189,6 +189,7 @@ npm run start:http
 | `ob_explain_error` | v1.0.0 | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
 | `ob_generate_query_examples` | v1.0.0 | 基于表上下文生成常用只读查询示例，不执行 SQL。 |
 | `ob_generate_er_html` | v1.0.0 | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 |
+| `ob_generate_entity_diagram` | v1.0.0 | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
 
 ## Oracle 对象元数据
 

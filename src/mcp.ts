@@ -79,6 +79,7 @@ const compatibilityModeSchema = z.enum(["mysql", "oracle"]);
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
 const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
 const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-compact", "html-detailed"]);
+const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -3024,6 +3025,71 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_generate_entity_diagram",
+    {
+      title: "Generate Entity Diagram",
+      description: "Generate a local entity-focused ER diagram from a business term or table, with Mermaid, JSON, and optional HTML.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        businessTerm: z.string().min(1).optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        maxTables: z.number().int().positive().max(50).optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        includeInferred: z.boolean().optional().default(true),
+        formats: z.array(entityDiagramOutputFormatSchema).min(1).max(3).optional(),
+        htmlFormat: erHtmlFormatSchema.optional().default("html-compact"),
+        title: z.string().min(1).max(120).optional()
+      }
+    },
+    async ({ profile, schema, table, businessTerm, depth, maxTables, minConfidence, includeInferred = true, formats, htmlFormat = "html-compact", title }) => {
+      if (!table && !businessTerm) {
+        throw new Error("Pass table or businessTerm when generating an entity diagram.");
+      }
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const outputFormats = uniqueStrings(formats ?? ["mermaid", "json", "html"]) as Array<"mermaid" | "json" | "html">;
+      const result = await buildErDiagramResult(selected, {
+        schema,
+        table,
+        businessTerm,
+        depth: depth ?? 1,
+        maxTables: maxTables ?? 12,
+        minConfidence,
+        includeInferred
+      });
+      const response: Record<string, unknown> = {
+        mode: result.response.mode,
+        schema: result.response.schema,
+        table: table ?? null,
+        businessTerm: businessTerm ?? null,
+        formats: outputFormats,
+        tableCount: result.response.tableCount,
+        relationshipCount: result.response.relationshipCount,
+        relationshipEvidence: result.diagram.relationships.map(entityRelationshipEvidence),
+        warnings: result.response.warnings
+      };
+      if (outputFormats.includes("mermaid")) {
+        response.mermaid = result.response.mermaid;
+      }
+      if (outputFormats.includes("json")) {
+        response.diagram = result.response.diagram;
+        response.scope = result.response.scope;
+      }
+      if (outputFormats.includes("html")) {
+        response.html = renderErHtml(result.diagram, {
+          title: title ?? defaultErHtmlTitle(result.response),
+          warnings: result.response.warnings,
+          format: htmlFormat
+        });
+        response.htmlFormat = htmlFormat;
+        response.contentType = "text/html";
+      }
+      return toLimitedResult(response, selected.config);
+    }
+  );
+
+  registerTool(
     "ob_get_indexes",
     {
       title: "Get Table Indexes",
@@ -4034,6 +4100,30 @@ function defaultErHtmlTitle(response: ErDiagramToolResponse): string {
     return `OceanBase ER Diagram - ${response.rootTable}`;
   }
   return response.schema ? `OceanBase ER Diagram - ${response.schema}` : "OceanBase ER Diagram";
+}
+
+function entityRelationshipEvidence(relation: TableRelationship) {
+  return {
+    relationType: relation.relationType,
+    direction: relation.direction,
+    confidence: relation.confidence,
+    source: {
+      schema: relation.sourceSchema,
+      table: relation.sourceTable,
+      columns: relation.sourceColumns
+    },
+    target: {
+      schema: relation.targetSchema,
+      table: relation.targetTable,
+      columns: relation.targetColumns
+    },
+    constraintName: relation.constraintName,
+    evidence: relation.evidence.map((item) => ({
+      type: item.type,
+      detail: item.detail,
+      columns: item.columns
+    }))
+  };
 }
 
 function parseErInputTableRef(
