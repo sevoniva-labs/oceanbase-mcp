@@ -140,6 +140,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_profile_table` | v1.0.0 | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 | Return bounded table profiles with key fields, null overview, and sampled field signals. |
 | `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像；v1.0.0 起包含类型策略和枚举候选信号。 | Return bounded-sample column profiles; includes type strategy and enum signals since v1.0.0. |
 | `ob_get_value_distribution` | v1.0.0 | 返回单个可见字段的受限 top value 分布。 | Return bounded top-value distribution for one visible column. |
+| `ob_detect_time_columns` | v1.0.0 | 基于元数据识别创建、更新和业务时间字段。 | Detect likely create, update, and business time columns from metadata. |
 | `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 | Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata without executing a query. |
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 | Build parameterized read-only SELECT statements from validated structured input. |
 | `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 | Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk. |

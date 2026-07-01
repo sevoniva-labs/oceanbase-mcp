@@ -2290,6 +2290,48 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_detect_time_columns",
+    {
+      title: "Detect Time Columns",
+      description: "Detect likely create, update, and business time columns from visible table metadata.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        maxColumns: z.number().int().positive().max(50).optional()
+      }
+    },
+    async ({ profile, table, schema, maxColumns }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadataRows = await withQuerySlot(selected, () =>
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const visibleColumns = filterColumnMetadata(metadataRows, selected.config.policy);
+      const candidates = detectTimeColumnCandidates(
+        visibleColumns,
+        selected.config,
+        effectiveSchema,
+        table,
+        maxColumns ?? 20
+      );
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: effectiveSchema,
+          table,
+          candidates,
+          warnings: candidates.length === 0
+            ? ["No likely time columns were detected from visible metadata. Ask the user to provide the time column explicitly."]
+            : ["Time-column detection is metadata-based; verify semantics before using the column as a business time filter."]
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_find_related_tables",
     {
       title: "Find Related Tables",
@@ -3979,6 +4021,83 @@ function valueDistributionWarnings(
     warnings.add("Distribution values are masked for this column.");
   }
   return [...warnings];
+}
+
+function detectTimeColumnCandidates(
+  rows: unknown[],
+  config: ObConfig,
+  schema: string | undefined,
+  table: string,
+  maxColumns: number
+) {
+  return rows
+    .map((row, index) => {
+      const metadata = profileColumnMetadata(row, config.compatibility);
+      if (!metadata) {
+        return undefined;
+      }
+      const signal = timeColumnSignal(metadata.name, metadata.dataType, metadata.comment);
+      if (signal.confidence < 0.35) {
+        return undefined;
+      }
+      return {
+        column: metadata.name,
+        kind: signal.kind,
+        confidence: signal.confidence,
+        evidence: signal.evidence,
+        dataType: metadata.dataType,
+        nullable: metadata.nullable,
+        comment: metadata.comment,
+        masked: shouldMaskColumnValue(metadata.name, config, schema, table),
+        ordinalPosition: numberRecordValue(row as Record<string, unknown>, "ordinal_position", "ORDINAL_POSITION", "column_id", "COLUMN_ID") ?? index + 1
+      };
+    })
+    .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    .sort((left, right) => right.confidence - left.confidence || left.ordinalPosition - right.ordinalPosition)
+    .slice(0, Math.max(1, Math.min(maxColumns, 50)));
+}
+
+function timeColumnSignal(
+  columnName: string,
+  dataType: string | undefined,
+  comment: string | undefined
+): { kind: string; confidence: number; evidence: string[] } {
+  const normalized = columnName.trim().toLowerCase();
+  const commentText = (comment ?? "").trim().toLowerCase();
+  const typeCategory = profileColumnTypeCategory(dataType);
+  const evidence: string[] = [];
+  let confidence = 0;
+  let kind = "generic_time";
+
+  if (typeCategory === "temporal") {
+    confidence += 0.35;
+    evidence.push(`Data type "${dataType}" is temporal.`);
+  }
+  if (/^(created_at|created_time|create_time|gmt_create|insert_time|created)$/.test(normalized)) {
+    confidence += 0.5;
+    kind = "created_time";
+    evidence.push("Column name matches common create-time naming.");
+  } else if (/^(updated_at|updated_time|update_time|modified_at|modified_time|gmt_modified|last_update|last_modified)$/.test(normalized)) {
+    confidence += 0.5;
+    kind = "updated_time";
+    evidence.push("Column name matches common update-time naming.");
+  } else if (/(event|occur|trade|order|pay|paid|biz|business|effective|start|end).*(time|date|day)$/.test(normalized) || /^(biz_date|business_date)$/.test(normalized)) {
+    confidence += 0.45;
+    kind = "business_time";
+    evidence.push("Column name suggests a business event time.");
+  } else if (/(^|_)(time|date|day|timestamp)$/.test(normalized) || /(time|date|timestamp)/.test(normalized)) {
+    confidence += 0.2;
+    evidence.push("Column name contains a time-related token.");
+  }
+  if (/(created|create time|updated|update time|modified|event time|business time|occurred|trade time|pay time)/.test(commentText)) {
+    confidence += 0.15;
+    evidence.push("Column comment contains time-related wording.");
+  }
+  return {
+    kind,
+    confidence: Math.min(0.98, Number(confidence.toFixed(2))),
+    evidence
+  };
 }
 
 function selectTableProfileColumns(

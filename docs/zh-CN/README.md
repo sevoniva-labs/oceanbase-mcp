@@ -171,6 +171,7 @@ npm run start:http
 | `ob_profile_table` | v1.0.0 | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 |
 | `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像；v1.0.0 起包含类型策略和枚举候选信号。 |
 | `ob_get_value_distribution` | v1.0.0 | 返回单个可见字段的受限 top value 分布。 |
+| `ob_detect_time_columns` | v1.0.0 | 基于元数据识别创建、更新和业务时间字段。 |
 | `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 |
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 |
 | `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 |
