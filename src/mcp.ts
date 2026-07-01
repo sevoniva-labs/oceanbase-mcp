@@ -32,7 +32,7 @@ import {
   type SqlParam
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
-import { buildErDiagram, renderErHtml, type ErDiagram, type ErEntity } from "./er.js";
+import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "./er.js";
 import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
@@ -80,6 +80,7 @@ const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure
 const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
 const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-compact", "html-detailed"]);
 const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
+const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -3145,6 +3146,69 @@ export function createObMcpServer(
           warnings: matches.length > 0
             ? []
             : ["No visible relationship was found between the two tables under the active policy and confidence settings."]
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
+    "ob_generate_er_document",
+    {
+      title: "Generate ER Documentation",
+      description: "Generate Markdown, PlantUML, and DOT documentation from allowed ER metadata and relationship evidence.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        tables: z.array(z.string().min(1)).max(50).optional(),
+        businessTerm: z.string().min(1).optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        maxTables: z.number().int().positive().max(50).optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        includeInferred: z.boolean().optional().default(true),
+        formats: z.array(erDocumentFormatSchema).min(1).max(3).optional(),
+        title: z.string().min(1).max(120).optional()
+      }
+    },
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true, formats, title }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = await buildErDiagramResult(selected, {
+        schema,
+        table,
+        tables,
+        businessTerm,
+        depth,
+        maxTables,
+        minConfidence,
+        includeInferred
+      });
+      const requestedFormats = uniqueStrings(formats ?? ["markdown"]) as Array<"markdown" | "plantuml" | "dot">;
+      const documents: Record<string, string> = {};
+      if (requestedFormats.includes("markdown")) {
+        documents.markdown = renderErMarkdown(result.diagram, {
+          title: title ?? defaultErHtmlTitle(result.response),
+          warnings: result.response.warnings
+        });
+      }
+      if (requestedFormats.includes("plantuml")) {
+        documents.plantuml = renderErPlantUml(result.diagram);
+      }
+      if (requestedFormats.includes("dot")) {
+        documents.dot = renderErDot(result.diagram);
+      }
+      return toLimitedResult(
+        {
+          mode: result.response.mode,
+          schema: result.response.schema,
+          rootTable: result.response.rootTable,
+          businessTerm: result.response.businessTerm,
+          formats: requestedFormats,
+          tableCount: result.response.tableCount,
+          relationshipCount: result.response.relationshipCount,
+          relationshipEvidence: result.diagram.relationships.map(entityRelationshipEvidence),
+          documents,
+          warnings: result.response.warnings
         },
         selected.config
       );

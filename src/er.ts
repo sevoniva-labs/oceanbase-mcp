@@ -34,6 +34,11 @@ export interface ErHtmlOptions {
   format?: ErHtmlFormat;
 }
 
+export interface ErDocumentOptions {
+  title?: string;
+  warnings?: string[];
+}
+
 export function buildErDiagram(
   mode: CompatibilityMode,
   entities: ErEntity[],
@@ -207,6 +212,109 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
   ${format === "html-interactive" ? renderInteractiveScript() : ""}
 </body>
 </html>`;
+}
+
+export function renderErMarkdown(diagram: ErDiagram, options: ErDocumentOptions = {}): string {
+  const title = options.title ?? "OceanBase ER Model";
+  const lines = [
+    `# ${title}`,
+    "",
+    `Mode: ${diagram.mode}`,
+    `Tables: ${diagram.entities.length}`,
+    `Relationships: ${diagram.relationships.length}`,
+    ""
+  ];
+  if (options.warnings && options.warnings.length > 0) {
+    lines.push("## Warnings", "");
+    for (const warning of options.warnings) {
+      lines.push(`- ${warning}`);
+    }
+    lines.push("");
+  }
+  lines.push("## Tables", "");
+  for (const entity of diagram.entities) {
+    lines.push(`### ${tableLabel(entity.schema, entity.table)}`, "");
+    lines.push("| Column | Type | PK | Nullable | Index | Comment |");
+    lines.push("| --- | --- | --- | --- | --- | --- |");
+    for (const column of entity.columns) {
+      lines.push([
+        "",
+        escapeMarkdown(column.name),
+        escapeMarkdown(column.type ?? ""),
+        column.primaryKey ? "yes" : "",
+        column.nullable === false ? "no" : column.nullable === true ? "yes" : "",
+        column.indexed ? escapeMarkdown((column.indexNames ?? []).join(", ")) : "",
+        escapeMarkdown(column.comment ?? ""),
+        ""
+      ].join(" | "));
+    }
+    lines.push("");
+  }
+  lines.push("## Relationships", "");
+  lines.push("| Source | Target | Type | Confidence | Evidence |");
+  lines.push("| --- | --- | --- | --- | --- |");
+  for (const relation of diagram.relationships) {
+    lines.push([
+      "",
+      escapeMarkdown(`${tableLabel(relation.sourceSchema, relation.sourceTable)}.${relation.sourceColumns.join(",")}`),
+      escapeMarkdown(`${tableLabel(relation.targetSchema, relation.targetTable)}.${relation.targetColumns.join(",")}`),
+      relation.relationType,
+      relation.confidence.toFixed(2),
+      escapeMarkdown(relation.evidence.map((item) => item.detail).join(" ")),
+      ""
+    ].join(" | "));
+  }
+  if (diagram.relationships.length === 0) {
+    lines.push("|  |  |  |  | No visible relationships. |");
+  }
+  return lines.join("\n");
+}
+
+export function renderErPlantUml(diagram: ErDiagram): string {
+  const lines = ["@startuml", "hide circle", "skinparam classAttributeIconSize 0"];
+  for (const entity of diagram.entities) {
+    const alias = plantUmlAlias(entity.schema, entity.table);
+    lines.push(`class "${tableLabel(entity.schema, entity.table)}" as ${alias} {`);
+    for (const column of entity.columns.slice(0, 50)) {
+      const prefix = column.primaryKey ? "*" : column.nullable === false ? "+" : "";
+      lines.push(`  ${prefix}${plantUmlText(column.name)} : ${plantUmlText(column.type ?? "string")}`);
+    }
+    lines.push("}");
+  }
+  for (const relation of diagram.relationships) {
+    const source = plantUmlAlias(relation.sourceSchema, relation.sourceTable);
+    const target = plantUmlAlias(relation.targetSchema, relation.targetTable);
+    const label = relation.constraintName ?? relation.relationType;
+    lines.push(`${target} "1" --> "0..*" ${source} : ${plantUmlText(label)}`);
+  }
+  lines.push("@enduml");
+  return lines.join("\n");
+}
+
+export function renderErDot(diagram: ErDiagram): string {
+  const lines = [
+    "digraph oceanbase_er {",
+    "  graph [rankdir=LR];",
+    "  node [shape=record, fontname=\"Helvetica\"];",
+    "  edge [fontname=\"Helvetica\"];"
+  ];
+  for (const entity of diagram.entities) {
+    const id = dotId(entity.schema, entity.table);
+    const columns = entity.columns.slice(0, 20).map((column) => {
+      const flags = [column.primaryKey ? "PK" : "", column.nullable === false ? "NN" : ""].filter(Boolean).join(" ");
+      return `${dotText(column.name)}${column.type ? `: ${dotText(column.type)}` : ""}${flags ? ` [${flags}]` : ""}`;
+    });
+    const label = `{${dotText(tableLabel(entity.schema, entity.table))}|${columns.join("\\l")}\\l}`;
+    lines.push(`  ${id} [label="${label}"];`);
+  }
+  for (const relation of diagram.relationships) {
+    const source = dotId(relation.sourceSchema, relation.sourceTable);
+    const target = dotId(relation.targetSchema, relation.targetTable);
+    const label = dotText(relation.constraintName ?? relation.relationType);
+    lines.push(`  ${target} -> ${source} [label="${label}"];`);
+  }
+  lines.push("}");
+  return lines.join("\n");
 }
 
 function renderMermaidEr(entities: ErEntity[], relationships: TableRelationship[]): string {
@@ -482,6 +590,26 @@ function renderInteractiveScript(): string {
 
 function tableLabel(schema: string | undefined, table: string): string {
   return schema ? `${schema}.${table}` : table;
+}
+
+function escapeMarkdown(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+}
+
+function plantUmlAlias(schema: string | undefined, table: string): string {
+  return `T_${mermaidName(schema ? `${schema}_${table}` : table)}`;
+}
+
+function plantUmlText(value: string): string {
+  return value.replace(/[{}\r\n]/g, " ").replace(/"/g, "'");
+}
+
+function dotId(schema: string | undefined, table: string): string {
+  return mermaidName(schema ? `${schema}_${table}` : table);
+}
+
+function dotText(value: string): string {
+  return value.replace(/["\\{}|<>]/g, "\\$&").replace(/\r?\n/g, " ");
 }
 
 function escapeHtml(value: string): string {

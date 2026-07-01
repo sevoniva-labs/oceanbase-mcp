@@ -71,6 +71,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_generate_er_html", since: "v1.0.0", group: "diagram", mode: "all", description: "Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence." },
   { name: "ob_generate_entity_diagram", since: "v1.0.0", group: "diagram", mode: "all", description: "Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence." },
   { name: "ob_explain_relationship", since: "v1.0.0", group: "diagram", mode: "all", description: "Explain visible relationship evidence and confidence between two tables without inventing missing links." },
+  { name: "ob_generate_er_document", since: "v1.0.0", group: "diagram", mode: "all", description: "Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence." },
   { name: "ob_get_indexes", since: "v0.3.0", group: "metadata", mode: "all", description: "Return table index metadata." },
   { name: "ob_get_constraints", since: "v0.3.0", group: "metadata", mode: "all", description: "Return primary, unique, foreign-key, check, and not-null constraints." },
   { name: "ob_get_partitions", since: "v0.3.0", group: "metadata", mode: "all", description: "Return table partition metadata." },
