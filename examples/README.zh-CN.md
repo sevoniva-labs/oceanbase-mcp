@@ -22,3 +22,11 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 ```
 
 默认不会覆盖已有文件；需要覆盖时显式加 `--overwrite`。
+
+## SQL 扫描
+
+```bash
+ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+```
+
+扫描只输出报告，不修改代码。需要进一步校验表字段时，把报告中的 SQL 交给 `ob_validate_sql_snippet`。

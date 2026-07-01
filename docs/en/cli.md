@@ -116,3 +116,34 @@ Common options:
 | `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
 
 Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only the local HTML file and never modifies the database.
+
+## Scan Project SQL
+
+Scan local project files for SQL snippets. The command reports findings only and does not modify files:
+
+```bash
+ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+```
+
+From a source checkout:
+
+```bash
+npm run build
+node dist/index.js scan-sql --path src --extensions sql,xml,ts,js,java --format text
+```
+
+The scanner covers `.sql`, `.xml`, `.ts`, `.js`, and `.java`. It reports file location, SQL type, rough table references, read-only candidate status, `SELECT *`, missing pagination, write statements, and dynamic SQL hints. For database-level table and column validation, pass a reported SQL snippet to `ob_validate_sql_snippet`.
+
+Common options:
+
+| Option | Description |
+| --- | --- |
+| `--path <path>` | Path to scan. Can be passed more than once. Defaults to the current directory. |
+| `--ignore <pattern>` | Path or glob to ignore. Can be passed more than once. Defaults include `.git`, `node_modules`, `dist`, `build`, `coverage`, `.next`, and `target`. |
+| `--extensions <list>` | Extension list, for example `sql,xml,ts,js,java`. |
+| `--max-files <n>` | Maximum scanned files. Defaults to `500`. |
+| `--max-bytes <n>` | Maximum bytes read per file. Defaults to `524288`. |
+| `--format json\|text` | Output format. Defaults to `json`. |
+| `--fail-on-risk` | Return a non-zero exit code when risky snippets are found. Useful for local checks or CI. |
+
+`scan-sql` does not connect to the database, execute SQL, or write business files. It is a fast project-level locator; before execution, continue to use MCP read-only policy checks, metadata validation, and query preview.

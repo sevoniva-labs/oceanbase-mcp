@@ -22,3 +22,11 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 ```
 
 Existing files are not overwritten by default. Add `--overwrite` only when replacing an existing artifact intentionally.
+
+## SQL Scan
+
+```bash
+ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+```
+
+The scan reports findings only and does not modify code. For table and column validation, pass a reported SQL snippet to `ob_validate_sql_snippet`.

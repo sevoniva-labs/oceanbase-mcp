@@ -116,3 +116,34 @@ node dist/index.js export-er --schema biz_test --business-term 订单 --format d
 | `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
 
 导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 HTML 文件，不修改数据库。
+
+## 扫描项目 SQL
+
+扫描本地项目中的 SQL 片段，默认只输出报告，不修改文件：
+
+```bash
+ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+```
+
+源码仓库内也可以运行：
+
+```bash
+npm run build
+node dist/index.js scan-sql --path src --extensions sql,xml,ts,js,java --format text
+```
+
+扫描范围包括 `.sql`、`.xml`、`.ts`、`.js`、`.java`。命令会报告文件位置、SQL 类型、粗略表引用、只读候选状态、`SELECT *`、缺少分页、写入语句和动态 SQL 提示。需要数据库级表字段校验时，把报告中的 SQL 交给 `ob_validate_sql_snippet`。
+
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--path <path>` | 扫描路径，可重复传入。默认当前目录。 |
+| `--ignore <pattern>` | 忽略路径或 glob，可重复传入。默认忽略 `.git`、`node_modules`、`dist`、`build`、`coverage`、`.next`、`target`。 |
+| `--extensions <list>` | 扫描扩展名列表，例如 `sql,xml,ts,js,java`。 |
+| `--max-files <n>` | 最多扫描文件数。默认 `500`。 |
+| `--max-bytes <n>` | 单文件最大读取字节数。默认 `524288`。 |
+| `--format json\|text` | 输出格式。默认 `json`。 |
+| `--fail-on-risk` | 发现风险片段时返回非 0 退出码，适合本地检查或 CI。 |
+
+`scan-sql` 不连接数据库，不执行 SQL，不写业务文件。它用于快速定位项目里的 SQL 片段；最终执行前仍应走 MCP 只读策略、元数据校验和查询预览。

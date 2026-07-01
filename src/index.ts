@@ -9,6 +9,7 @@ import { runExportErCommand } from "./er-export.js";
 import { runInitCommand } from "./init.js";
 import { createObMcpServer } from "./mcp.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
+import { runScanSqlCommand } from "./sql-scan.js";
 
 const [command, ...args] = process.argv.slice(2);
 
@@ -18,6 +19,8 @@ if (command === "init") {
   process.exitCode = await runDoctorCommand(args);
 } else if (command === "export-er" || command === "ob_export_er_artifact") {
   process.exitCode = await runExportErCommand(args);
+} else if (command === "scan-sql") {
+  process.exitCode = await runScanSqlCommand(args);
 } else if (command === "--help" || command === "-h" || command === "help") {
   printHelp();
 } else if (command) {
@@ -54,6 +57,7 @@ Usage:
   ob-mcp init [options]      Create local OpenCode and OceanBase MCP files
   ob-mcp doctor              Check local setup, config, and OceanBase connectivity
   ob-mcp export-er [options] Export a local ER HTML artifact
+  ob-mcp scan-sql [options]  Scan project files for SQL snippets
 
 Init options:
   --mode mysql|oracle
@@ -77,5 +81,14 @@ Export ER options:
   --format static|interactive|compact|detailed
   --out <file>
   --overwrite
+
+Scan SQL options:
+  --path <path>
+  --ignore <pattern>
+  --extensions <sql,xml,ts,js,java>
+  --max-files <n>
+  --max-bytes <n>
+  --format json|text
+  --fail-on-risk
 `);
 }

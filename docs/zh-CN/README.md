@@ -35,6 +35,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v0.5.1 | 字段画像和业务字典 | 受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 |
 | v0.5.1 | Release 交付补齐 | npm 包、SBOM、amd64/arm64 离线镜像和源码归档，便于内网编译部署。 |
 | v1.0.0 | 本地初始化和能力发现 | 生成本地配置、检查 OpenCode 接入、提供 MCP 使用指南和工具能力清单。 |
+| v1.0.0 | 项目 SQL 辅助 | 扫描本地 SQL 片段，报告只读风险、分页风险和动态 SQL 提示，不修改业务文件。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 

@@ -35,6 +35,7 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 | v0.5.1 | Column profiling and business glossary | Bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
 | v0.5.1 | Release delivery assets | npm package, SBOM, amd64/arm64 offline images, and source archive for internal builds. |
 | v1.0.0 | Local setup and capability discovery | Generate local config, check OpenCode setup, and expose MCP usage guidance and tool capabilities. |
+| v1.0.0 | Project SQL assistance | Scan local SQL snippets, report read-only risk, pagination risk, and dynamic SQL hints without modifying project files. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 

@@ -40,6 +40,7 @@ OceanBase MCP is read-only by design. It has no write tool, rejects write/contro
 | v0.5.1 | 字段画像和业务字典：受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 | Column profiling and business glossary: bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
 | v0.5.1 | Release 交付补齐：npm 包、SBOM、amd64/arm64 离线镜像和源码归档。 | Release delivery assets: npm package, SBOM, amd64/arm64 offline images, and source archive. |
 | v1.0.0 | 本地初始化和能力发现：生成本地配置、检查 OpenCode 接入、提供 MCP 使用指南和工具能力清单。 | Local setup and capability discovery: generate local config, check OpenCode setup, and expose MCP usage guidance and tool capabilities. |
+| v1.0.0 | 项目 SQL 辅助：扫描本地 SQL 片段，报告只读风险、分页风险和动态 SQL 提示，不修改业务文件。 | Project SQL assistance: scan local SQL snippets, report read-only risk, pagination risk, and dynamic SQL hints without modifying project files. |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
