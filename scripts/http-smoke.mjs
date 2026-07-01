@@ -97,6 +97,10 @@ try {
     name: "ob_explain",
     arguments: { sql: countSql, maxRows: 20 }
   });
+  const planAnalysis = await client.callTool({
+    name: "ob_analyze_query_plan",
+    arguments: { sql: countSql, maxRows: 20 }
+  });
   const catalog = await client.callTool({
     name: "ob_search_catalog",
     arguments: { query: smokeSearch, schema: smokeSchema, limit: 20 }
@@ -185,6 +189,7 @@ try {
   const policyExplainResult = parseToolJson(policyExplain);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
+  const planAnalysisResult = parseToolJson(planAnalysis);
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
   const relatedTablesResult = parseToolJson(relatedTables);
@@ -202,6 +207,7 @@ try {
     "ob_config_diagnostics",
     "ob_verify_permissions",
     "ob_policy_explain",
+    "ob_analyze_query_plan",
     "ob_search_catalog",
     "ob_get_table_schema",
     "ob_get_table_ddl",
@@ -225,6 +231,7 @@ try {
     diagnosticsOk: diagnosticsResult.ok === true,
     permissionsOk: Array.isArray(permissionsResult.writablePrivileges),
     policyExplainBlocked: policyExplainResult.allowed === false,
+    planAnalysisOk: ["low", "medium", "high"].includes(planAnalysisResult.analysis?.riskLevel),
     catalogRows: catalogRows.length,
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
@@ -264,6 +271,7 @@ try {
     !output.diagnosticsOk ||
     !output.permissionsOk ||
     !output.policyExplainBlocked ||
+    !output.planAnalysisOk ||
     !output.enterpriseTools ||
     !output.scopedToolsOk ||
     !output.resourcesOk ||

@@ -87,6 +87,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_list_tables` | List visible tables. |
 | `ob_describe_table` | Return column metadata. |
 | `ob_explain` | Run `EXPLAIN` for read-only SQL. |
+| `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
 | `ob_search_catalog` | Search schemas, tables, and columns. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |

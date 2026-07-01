@@ -111,6 +111,7 @@ npm run start:http
 | `ob_list_tables` | 列出可见表。 |
 | `ob_describe_table` | 返回列元数据。 |
 | `ob_explain` | 对只读 SQL 执行 `EXPLAIN`。 |
+| `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
 | `ob_search_catalog` | 搜索 schema、表和列。 |
 | `ob_get_table_schema` | 返回经过策略过滤的表结构。 |
 | `ob_get_table_ddl` | 返回表的原生或结构化 DDL 元数据。 |

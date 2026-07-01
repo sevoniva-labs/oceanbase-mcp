@@ -111,6 +111,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_list_tables` | List visible tables. |
 | `ob_describe_table` | Return column metadata. |
 | `ob_explain` | Run `EXPLAIN` for read-only SQL. |
+| `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
 | `ob_search_catalog` | Search schemas, tables, and columns. |
 | `ob_get_table_schema` | Return policy-filtered table schema. |
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |

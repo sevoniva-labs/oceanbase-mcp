@@ -26,6 +26,7 @@ import { buildErDiagram, type ErEntity } from "./er.js";
 import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonText, type QueryOutput } from "./format.js";
 import { metrics } from "./metrics.js";
+import { analyzeQueryPlan } from "./plan-analysis.js";
 import {
   assertOutputAllowed,
   assertSqlPolicy,
@@ -374,6 +375,49 @@ export function createObMcpServer(
       );
       metrics.recordQueryDuration(Date.now() - started);
       return toLimitedResult(output, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_analyze_query_plan",
+    {
+      title: "Analyze Query Plan",
+      description: "Run EXPLAIN for a strictly read-only SQL statement and return evidence-based plan findings.",
+      inputSchema: {
+        ...profileInput,
+        sql: z.string().min(1),
+        params: z.array(sqlParamSchema).optional().default([]),
+        maxRows: z.number().int().positive().max(10_000).optional()
+      }
+    },
+    async ({ profile, sql, params = [], maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const sqlParams = params as SqlParam[];
+      assertSqlInputLimits(sql, sqlParams, selected.config);
+      assertReadOnlySql(sql);
+      assertSqlPolicy(sql, policyContext(selected.config));
+      const explainSql = buildExplainSql(sql);
+      const started = Date.now();
+      const plan = await withQuerySlot(selected, () =>
+        runReadOnlyQuery(
+          selected.pool,
+          selected.config.compatibility,
+          explainSql,
+          sqlParams,
+          effectiveRowLimit(maxRows, selected.config),
+          selected.config.queryTimeoutMs,
+          selected.config.enforceReadOnlyTransaction
+        )
+      );
+      metrics.recordQueryDuration(Date.now() - started);
+      return toLimitedResult(
+        {
+          sql,
+          analysis: analyzeQueryPlan(plan, sql),
+          plan
+        },
+        selected.config
+      );
     }
   );
 

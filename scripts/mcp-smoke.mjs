@@ -83,6 +83,10 @@ try {
     name: "ob_explain",
     arguments: { sql: selectOneSql, maxRows: 20 }
   });
+  const planAnalysis = await send("tools/call", {
+    name: "ob_analyze_query_plan",
+    arguments: { sql: selectOneSql, maxRows: 20 }
+  });
   const catalog = await send("tools/call", {
     name: "ob_search_catalog",
     arguments: { query: smokeSearch, schema: smokeSchema, limit: 20 }
@@ -162,6 +166,7 @@ try {
   const policyExplainResult = parseToolJson(policyExplain);
   const catalogRows = parseToolJson(catalog);
   const explainOutput = parseToolJson(explain);
+  const planAnalysisResult = parseToolJson(planAnalysis);
   const tableSchemaRows = parseToolJson(tableSchema);
   const tableDdlResult = parseToolJson(tableDdl);
   const relatedTablesResult = parseToolJson(relatedTables);
@@ -178,6 +183,7 @@ try {
     "ob_config_diagnostics",
     "ob_verify_permissions",
     "ob_policy_explain",
+    "ob_analyze_query_plan",
     "ob_search_catalog",
     "ob_get_table_schema",
     "ob_get_table_ddl",
@@ -199,6 +205,7 @@ try {
     pingOk: JSON.parse(ping.content[0].text).ok === true,
     queryRows: JSON.parse(query.content[0].text).rows,
     explainRows: explainOutput.rows.length,
+    planAnalysisOk: ["low", "medium", "high"].includes(planAnalysisResult.analysis?.riskLevel),
     catalogRows: catalogRows.length,
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
@@ -234,6 +241,7 @@ try {
     !output.pingOk ||
     !output.enterpriseTools ||
     !output.resourcesOk ||
+    !output.planAnalysisOk ||
     output.catalogRows < 1 ||
     output.explainRows < 1 ||
     output.tableSchemaRows < 1 ||
