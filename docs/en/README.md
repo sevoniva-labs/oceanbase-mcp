@@ -139,6 +139,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_list_schemas` | v0.3.0 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | Return column metadata. |
+| `ob_get_schema_map` | v1.0.0 | Return compact schema, table, key-field, and relationship summaries. |
 | `ob_explain` | v0.3.0 | Run `EXPLAIN` for read-only SQL. |
 | `ob_analyze_query_plan` | v0.5.0 | Run `EXPLAIN` and return evidence-based plan findings. |
 | `ob_generate_performance_report` | v0.5.0 | Generate a read-only performance advisory report from EXPLAIN and metadata. |

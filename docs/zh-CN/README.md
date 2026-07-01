@@ -139,6 +139,7 @@ npm run start:http
 | `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 |
 | `ob_list_tables` | v0.3.0 | 列出可见表。 |
 | `ob_describe_table` | v0.3.0 | 返回列元数据。 |
+| `ob_get_schema_map` | v1.0.0 | 返回紧凑的 schema、表、关键字段和关系摘要。 |
 | `ob_explain` | v0.3.0 | 对只读 SQL 执行 `EXPLAIN`。 |
 | `ob_analyze_query_plan` | v0.5.0 | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
 | `ob_generate_performance_report` | v0.5.0 | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |

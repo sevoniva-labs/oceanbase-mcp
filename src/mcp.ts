@@ -15,6 +15,7 @@ import {
   listObjects,
   listPartitions,
   listSchemas,
+  listSchemaMapTables,
   listTables,
   ping,
   profileColumns,
@@ -23,6 +24,7 @@ import {
   sampleRows,
   searchCatalog,
   verifyReadOnlyPermissions,
+  type SchemaMapTable,
   type TableRelationship,
   type SqlParam
 } from "./db.js";
@@ -559,6 +561,83 @@ export function createObMcpServer(
         describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_get_schema_map",
+    {
+      title: "Get Schema Map",
+      description: "Return a compact, policy-filtered schema map with table summaries, key fields, and relationship hints.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        tablePattern: z.string().optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
+        includeColumns: z.boolean().optional().default(true),
+        includeRelationships: z.boolean().optional().default(true),
+        maxColumnsPerTable: z.number().int().positive().max(100).optional(),
+        relationshipLimit: z.number().int().positive().max(100).optional()
+      }
+    },
+    async ({
+      profile,
+      schema,
+      tablePattern,
+      maxTables,
+      includeColumns = true,
+      includeRelationships = true,
+      maxColumnsPerTable,
+      relationshipLimit
+    }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
+        throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
+      }
+      const tableLimit = Math.min(maxTables ?? 30, 500);
+      const rawTables = await withQuerySlot(selected, () =>
+        listSchemaMapTables(
+          selected.pool,
+          selected.config.compatibility,
+          effectiveSchema,
+          tablePattern,
+          tableLimit + 1,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const visibleTables = filterSchemaMapTables(rawTables, selected.config).slice(0, tableLimit);
+      const summaries = [];
+
+      for (const tableInfo of visibleTables) {
+        const summary = await buildSchemaMapTableSummary(
+          selected,
+          tableInfo,
+          includeColumns,
+          maxColumnsPerTable ?? 12,
+          includeRelationships,
+          relationshipLimit ?? 12
+        );
+        summaries.push(summary);
+      }
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: effectiveSchema,
+          tablePattern: tablePattern ?? null,
+          maxTables: tableLimit,
+          includeColumns,
+          includeRelationships,
+          truncated: rawTables.length > tableLimit,
+          tableCount: summaries.length,
+          schemas: groupSchemaMapTables(selected.config.compatibility, summaries),
+          warnings: rawTables.length > tableLimit
+            ? [`Only the first ${tableLimit} visible tables are returned. Narrow schema or tablePattern for a smaller map.`]
+            : []
+        },
+        selected.config
+      );
     }
   );
 
@@ -1554,6 +1633,245 @@ function policyContext(config: ObConfig) {
     defaultSchema: config.database,
     policy: config.policy
   };
+}
+
+function filterSchemaMapTables(rows: SchemaMapTable[], config: ObConfig): SchemaMapTable[] {
+  return rows.filter((table) => {
+    try {
+      assertTableAccess(table.schema, table.table, policyContext(config));
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+async function buildSchemaMapTableSummary(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  tableInfo: SchemaMapTable,
+  includeColumns: boolean,
+  maxColumnsPerTable: number,
+  includeRelationships: boolean,
+  relationshipLimit: number
+) {
+  const schema = metadataSchema(selected.config, tableInfo.schema);
+  const table = tableInfo.table;
+  assertTableAccess(schema, table, policyContext(selected.config));
+  const columns = filterColumnMetadata(
+    await withQuerySlot(selected, () =>
+      describeTable(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
+    ),
+    selected.config.policy
+  );
+  const constraints = filterColumnMetadata(
+    await withQuerySlot(selected, () =>
+      listConstraints(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
+    ),
+    selected.config.policy
+  );
+  const compactColumns = compactSchemaColumns(columns, constraints, selected.config, schema, table);
+  const primaryKeys = schemaMapPrimaryKeyColumns(constraints);
+  const uniqueKeys = uniqueKeyGroups(constraints);
+  const timeFields = compactColumns.filter((column) => column.roles.includes("time")).map((column) => column.name);
+  const statusFields = compactColumns.filter((column) => column.roles.includes("status")).map((column) => column.name);
+  const keyFields = importantSchemaMapFields(compactColumns, primaryKeys, timeFields, statusFields);
+  const relationSummary = includeRelationships
+    ? await buildSchemaMapRelationshipSummary(selected, schema, table, relationshipLimit)
+    : undefined;
+
+  return {
+    schema,
+    table,
+    tableType: tableInfo.tableType,
+    engine: tableInfo.engine,
+    comment: tableInfo.comment,
+    rowEstimate: tableInfo.rowEstimate,
+    primaryKeys,
+    uniqueKeys,
+    keyFields,
+    timeFields,
+    statusFields,
+    columns: includeColumns ? compactColumns.slice(0, Math.max(1, Math.min(maxColumnsPerTable, 100))) : undefined,
+    columnsTruncated: includeColumns && compactColumns.length > Math.max(1, Math.min(maxColumnsPerTable, 100)),
+    relationSummary
+  };
+}
+
+async function buildSchemaMapRelationshipSummary(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string,
+  relationshipLimit: number
+) {
+  const result = await withQuerySlot(selected, () =>
+    findRelatedTables(
+      selected.pool,
+      selected.config.compatibility,
+      table,
+      schema,
+      1,
+      Math.max(1, Math.min(relationshipLimit, 100)),
+      selected.config.queryTimeoutMs
+    )
+  );
+  const relations = result.relations.filter((relation) => isRelationshipAllowed(relation, selected.config));
+  const outbound = relations.filter((relation) => relation.direction === "outbound").length;
+  const inbound = relations.filter((relation) => relation.direction === "inbound").length;
+  const inferred = relations.filter((relation) => relation.relationType === "name_inference").length;
+
+  return {
+    outbound,
+    inbound,
+    inferred,
+    policyFiltered: relations.length !== result.relations.length,
+    truncated: result.truncated,
+    relations: relations.slice(0, Math.max(1, Math.min(relationshipLimit, 100))).map((relation) => ({
+      relationType: relation.relationType,
+      direction: relation.direction,
+      confidence: relation.confidence,
+      sourceSchema: relation.sourceSchema,
+      sourceTable: relation.sourceTable,
+      sourceColumns: relation.sourceColumns,
+      targetSchema: relation.targetSchema,
+      targetTable: relation.targetTable,
+      targetColumns: relation.targetColumns,
+      evidence: relation.evidence.map((item) => ({
+        type: item.type,
+        detail: item.detail,
+        columns: item.columns
+      }))
+    }))
+  };
+}
+
+function compactSchemaColumns(
+  rows: unknown[],
+  constraints: unknown[],
+  config: ObConfig,
+  schema: string | undefined,
+  table: string
+): Array<{
+  name: string;
+  type?: string;
+  nullable?: boolean;
+  comment?: string;
+  roles: string[];
+  masked: boolean;
+}> {
+  const primaryKeys = new Set(schemaMapPrimaryKeyColumns(constraints).map((column) => normalizeTableName(config.compatibility, column)));
+  return rows
+    .map((row) => profileColumnMetadata(row, config.compatibility))
+    .filter((column): column is { name: string; dataType?: string; nullable?: boolean; comment?: string } => Boolean(column))
+    .map((column) => {
+      const normalized = normalizeTableName(config.compatibility, column.name);
+      const roles = schemaColumnRoles(column.name, primaryKeys.has(normalized));
+      return {
+        name: column.name,
+        type: column.dataType,
+        nullable: column.nullable,
+        comment: column.comment,
+        roles,
+        masked: shouldMaskColumnValue(column.name, config, schema, table)
+      };
+    });
+}
+
+function schemaMapPrimaryKeyColumns(constraints: unknown[]): string[] {
+  return uniqueStrings(
+    constraints
+      .map((row) => {
+        const record = row as Record<string, unknown>;
+        const type = stringRecordValue(record, "constraint_type", "CONSTRAINT_TYPE");
+        if (!type || !["PRIMARY KEY", "P"].includes(type.toUpperCase())) {
+          return undefined;
+        }
+        return stringRecordValue(record, "column_name", "COLUMN_NAME");
+      })
+      .filter((value): value is string => Boolean(value))
+  );
+}
+
+function uniqueKeyGroups(constraints: unknown[]): Array<{ name: string; columns: string[] }> {
+  const grouped = new Map<string, string[]>();
+  for (const row of constraints) {
+    const record = row as Record<string, unknown>;
+    const type = stringRecordValue(record, "constraint_type", "CONSTRAINT_TYPE");
+    if (!type || !["UNIQUE", "U"].includes(type.toUpperCase())) {
+      continue;
+    }
+    const name = stringRecordValue(record, "constraint_name", "CONSTRAINT_NAME") ?? "UNIQUE";
+    const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    if (!column) {
+      continue;
+    }
+    grouped.set(name, [...(grouped.get(name) ?? []), column]);
+  }
+  return [...grouped.entries()].map(([name, columns]) => ({ name, columns: uniqueStrings(columns) }));
+}
+
+function schemaColumnRoles(columnName: string, primaryKey: boolean): string[] {
+  const roles = [];
+  if (primaryKey) {
+    roles.push("primary_key");
+  }
+  if (/(^id$|_id$)/i.test(columnName)) {
+    roles.push("identifier");
+  }
+  if (/(created|updated|modified|time|date|timestamp|gmt_)/i.test(columnName)) {
+    roles.push("time");
+  }
+  if (/(status|state|type|category|kind|level|channel|region)/i.test(columnName)) {
+    roles.push("status");
+  }
+  return roles;
+}
+
+function importantSchemaMapFields(
+  columns: Array<{ name: string; roles: string[] }>,
+  primaryKeys: string[],
+  timeFields: string[],
+  statusFields: string[]
+): string[] {
+  return uniqueStrings([
+    ...primaryKeys,
+    ...columns.filter((column) => column.roles.includes("identifier")).map((column) => column.name),
+    ...timeFields,
+    ...statusFields
+  ]).slice(0, 20);
+}
+
+function groupSchemaMapTables(
+  mode: ObConfig["compatibility"],
+  tables: Array<{ schema?: string; table: string }>
+) {
+  const grouped = new Map<string, Array<Record<string, unknown>>>();
+  for (const table of tables) {
+    const schema = table.schema ?? "";
+    grouped.set(schema, [...(grouped.get(schema) ?? []), table as Record<string, unknown>]);
+  }
+  return [...grouped.entries()]
+    .sort(([left], [right]) => normalizeTableName(mode, left).localeCompare(normalizeTableName(mode, right)))
+    .map(([schema, schemaTables]) => ({
+      schema: schema || undefined,
+      tableCount: schemaTables.length,
+      tables: schemaTables.sort((left, right) =>
+        normalizeTableName(mode, String(left.table ?? "")).localeCompare(normalizeTableName(mode, String(right.table ?? "")))
+      )
+    }));
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const output = [];
+  for (const value of values) {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    output.push(value);
+  }
+  return output;
 }
 
 function isRelationshipAllowed(relation: TableRelationship, config: ObConfig): boolean {

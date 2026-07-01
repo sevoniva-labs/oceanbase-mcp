@@ -97,6 +97,19 @@ export interface TableStats {
   warnings: string[];
 }
 
+export interface SchemaMapTable {
+  schema?: string;
+  table: string;
+  tableType?: string;
+  engine?: string;
+  comment?: string;
+  rowEstimate?: {
+    value: number;
+    exact: false;
+    source: string;
+  };
+}
+
 export interface ColumnProfileRequest {
   name: string;
   dataType?: string;
@@ -565,6 +578,81 @@ export async function getTableStats(
   return mode === "oracle"
     ? getOracleTableStats(pool, resolvedSchema, resolvedTable, timeoutMs)
     : getMysqlTableStats(pool, resolvedSchema!, resolvedTable, timeoutMs);
+}
+
+export async function listSchemaMapTables(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  tablePattern: string | undefined,
+  limit: number,
+  timeoutMs: number
+): Promise<SchemaMapTable[]> {
+  const safeTableLimit = safeLimit(limit);
+  if (mode === "oracle") {
+    const owner = schema?.trim().toUpperCase();
+    const pattern = tablePattern?.trim() ? `%${tablePattern.trim()}%` : null;
+    const [rows] = await pool.query({
+      sql: `
+        SELECT ${oracleTimeoutHint(timeoutMs)} *
+        FROM (
+          SELECT t.owner, t.table_name, tc.comments AS table_comment, t.num_rows
+          FROM all_tables t
+          LEFT JOIN all_tab_comments tc
+            ON tc.owner = t.owner
+           AND tc.table_name = t.table_name
+          WHERE (? IS NULL OR t.owner = ?)
+            AND (? IS NULL OR LOWER(t.table_name) LIKE LOWER(?) OR LOWER(tc.comments) LIKE LOWER(?))
+          ORDER BY t.owner, t.table_name
+        )
+        WHERE ROWNUM <= ?
+      `,
+      values: [owner ?? null, owner ?? null, pattern, pattern, pattern, safeTableLimit],
+      timeout: timeoutMs
+    });
+    return (Array.isArray(rows) ? rows as unknown[] : []).map((row) => {
+      const record = rowRecord(row);
+      const rowEstimate = numberField(record, "num_rows", "NUM_ROWS");
+      return {
+        schema: stringField(record, "owner", "OWNER"),
+        table: stringField(record, "table_name", "TABLE_NAME") ?? "",
+        tableType: "BASE TABLE",
+        comment: stringField(record, "table_comment", "TABLE_COMMENT", "comments", "COMMENTS"),
+        rowEstimate: rowEstimate == null
+          ? undefined
+          : { value: rowEstimate, exact: false as const, source: "all_tables.num_rows" }
+      };
+    }).filter((table) => table.table);
+  }
+
+  const resolvedSchema = schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  const pattern = tablePattern?.trim() ? `%${tablePattern.trim()}%` : null;
+  const [rows] = await pool.query({
+    sql: `
+      SELECT table_schema, table_name, table_type, engine, table_comment, table_rows
+      FROM information_schema.tables
+      WHERE (? IS NULL OR table_schema = ?)
+        AND (? IS NULL OR table_name LIKE ? OR table_comment LIKE ?)
+      ORDER BY table_schema, table_name
+      LIMIT ?
+    `,
+    values: [resolvedSchema ?? null, resolvedSchema ?? null, pattern, pattern, pattern, safeTableLimit],
+    timeout: timeoutMs
+  });
+  return (Array.isArray(rows) ? rows as unknown[] : []).map((row) => {
+    const record = rowRecord(row);
+    const rowEstimate = numberField(record, "table_rows", "TABLE_ROWS");
+    return {
+      schema: stringField(record, "table_schema", "TABLE_SCHEMA"),
+      table: stringField(record, "table_name", "TABLE_NAME") ?? "",
+      tableType: stringField(record, "table_type", "TABLE_TYPE"),
+      engine: stringField(record, "engine", "ENGINE"),
+      comment: stringField(record, "table_comment", "TABLE_COMMENT"),
+      rowEstimate: rowEstimate == null
+        ? undefined
+        : { value: rowEstimate, exact: false as const, source: "information_schema.tables.table_rows" }
+    };
+  }).filter((table) => table.table);
 }
 
 export function normalizeOracleObjectType(value: string): OracleObjectType {
