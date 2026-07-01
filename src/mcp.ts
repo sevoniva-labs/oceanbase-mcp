@@ -1,6 +1,7 @@
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
+import { buildUsageGuide, listCapabilities, SERVER_VERSION, TOOL_CAPABILITIES } from "./capabilities.js";
 import type { AuthPrincipal, GatewayConfig, HttpConfig, ObConfig } from "./config.js";
 import { publicConfig } from "./config.js";
 import {
@@ -73,7 +74,7 @@ export function createObMcpServer(
 ): McpServer {
   const server = new McpServer({
     name: "ob-mcp",
-    version: "0.5.1"
+    version: SERVER_VERSION
   });
   const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) =>
     safeTool(name, handler, context);
@@ -168,6 +169,46 @@ export function createObMcpServer(
         runtime,
         context
       )
+  );
+
+  registerTool(
+    "ob_get_usage_guide",
+    {
+      title: "Get OceanBase MCP Usage Guide",
+      description: "Return the recommended read-only OpenCode workflow, safety rules, and MySQL/Oracle notes.",
+      inputSchema: profileInput
+    },
+    async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      return toLimitedResult(
+        buildUsageGuide({
+          profile: selected.profile,
+          compatibility: selected.config.compatibility
+        }),
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
+    "ob_list_capabilities",
+    {
+      title: "List OceanBase MCP Capabilities",
+      description: "List supported tool groups, tool versions, active compatibility mode, and read-only limits.",
+      inputSchema: profileInput
+    },
+    async ({ profile }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const visibleTools = TOOL_CAPABILITIES.filter((tool) => isToolAllowed(tool.name, context.principal));
+      return toLimitedResult(
+        listCapabilities({
+          profile: selected.profile,
+          compatibility: selected.config.compatibility,
+          tools: visibleTools
+        }),
+        selected.config
+      );
+    }
   );
 
   registerTool(

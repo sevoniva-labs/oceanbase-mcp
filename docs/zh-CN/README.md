@@ -34,6 +34,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v0.5.1 | 查询体验增强 | 表上下文、查询预览、分页查询、列元数据、Markdown 预览、结果警告和结构化错误提示。 |
 | v0.5.1 | 字段画像和业务字典 | 受限字段分布分析，以及业务词到 schema/table/column 的可见映射。 |
 | v0.5.1 | Release 交付补齐 | npm 包、SBOM、amd64/arm64 离线镜像和源码归档，便于内网编译部署。 |
+| v1.0.0 | 本地初始化和能力发现 | 生成本地配置、检查 OpenCode 接入、提供 MCP 使用指南和工具能力清单。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -126,6 +127,8 @@ npm run start:http
 | --- | --- | --- |
 | `ob_list_profiles` | v0.3.0 | 列出已配置 profile，并隐藏敏感信息。 |
 | `ob_config_diagnostics` | v0.3.0 | 输出部署和策略诊断。 |
+| `ob_get_usage_guide` | v1.0.0 | 返回 OpenCode 推荐工作流、只读规则和 MySQL/Oracle 差异。 |
+| `ob_list_capabilities` | v1.0.0 | 返回当前 MCP 能力、工具分组、版本和只读限制。 |
 | `ob_verify_permissions` | v0.4.0 | 检查当前数据库账号是否包含写入或管理权限。 |
 | `ob_ping` | v0.3.0 | 验证 OceanBase 连接。 |
 | `ob_policy_explain` | v0.3.0 | 解释 SQL 是否会被允许。 |

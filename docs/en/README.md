@@ -34,6 +34,7 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 | v0.5.1 | Query workflow improvements | Table context, query preview, paged queries, column metadata, Markdown preview, result warnings, and structured SQL error hints. |
 | v0.5.1 | Column profiling and business glossary | Bounded column distribution analysis and visible business-term mappings to schemas, tables, and columns. |
 | v0.5.1 | Release delivery assets | npm package, SBOM, amd64/arm64 offline images, and source archive for internal builds. |
+| v1.0.0 | Local setup and capability discovery | Generate local config, check OpenCode setup, and expose MCP usage guidance and tool capabilities. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -126,6 +127,8 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | --- | --- | --- |
 | `ob_list_profiles` | v0.3.0 | List configured profiles with secrets redacted. |
 | `ob_config_diagnostics` | v0.3.0 | Report deployment and policy checks. |
+| `ob_get_usage_guide` | v1.0.0 | Return the recommended OpenCode workflow, read-only rules, and MySQL/Oracle notes. |
+| `ob_list_capabilities` | v1.0.0 | Return MCP capabilities, tool groups, versions, and read-only limits. |
 | `ob_verify_permissions` | v0.4.0 | Check current database grants for write or administrative privileges. |
 | `ob_ping` | v0.3.0 | Verify the OceanBase connection. |
 | `ob_policy_explain` | v0.3.0 | Explain whether SQL would be allowed. |
