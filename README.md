@@ -117,6 +117,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_search_business_glossary` | v0.5.1 | 搜索业务词到 schema/table/column 的可见映射。 | Search visible business-term mappings to schemas, tables, and columns. |
 | `ob_find_tables_by_business_term` | v1.0.0 | 按业务词返回候选表、依据和关联表摘要。 | Find candidate tables for a business term with evidence and related tables. |
 | `ob_find_columns` | v1.0.0 | 按字段名、注释、类型、表名模式或业务词查找字段。 | Find visible columns by name, comment, type, table pattern, or business term. |
+| `ob_get_table_summary` | v1.0.0 | 汇总单表用途推断、关键字段、关系和查询入口。 | Summarize one table with inferred purpose, key fields, relationships, and query entry points. |
 | `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle 对象。 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
 | `ob_get_table_schema` | v0.3.0 | 返回经过策略过滤的表结构。 | Return policy-filtered table schema. |

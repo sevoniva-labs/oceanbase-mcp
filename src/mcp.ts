@@ -1360,6 +1360,69 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_get_table_summary",
+    {
+      title: "Get Table Summary",
+      description: "Return a compact table summary with inferred purpose, key fields, relationship hints, and query entry points.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        includeRelated: z.boolean().optional().default(true),
+        relationshipLimit: z.number().int().positive().max(50).optional(),
+        maxColumns: z.number().int().positive().max(100).optional()
+      }
+    },
+    async ({ profile, table, schema, includeRelated = true, relationshipLimit, maxColumns }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadata = await withQuerySlot(selected, () =>
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const columns = filterColumnMetadata(metadata.columns, selected.config.policy);
+      const constraints = filterColumnMetadata(metadata.constraints, selected.config.policy);
+      const compactColumns = compactSchemaColumns(columns, constraints, selected.config, metadata.schema, metadata.table);
+      const primaryKeys = schemaMapPrimaryKeyColumns(constraints);
+      const uniqueKeys = uniqueKeyGroups(constraints);
+      const timeFields = compactColumns.filter((column) => column.roles.includes("time")).map((column) => column.name);
+      const statusFields = compactColumns.filter((column) => column.roles.includes("status")).map((column) => column.name);
+      const keyFields = importantSchemaMapFields(compactColumns, primaryKeys, timeFields, statusFields);
+      const tableInfo = await findSchemaMapTableInfo(selected, metadata.schema, metadata.table);
+      const statistics = await withQuerySlot(selected, () =>
+        getTableStats(selected.pool, selected.config.compatibility, metadata.table, metadata.schema, selected.config.queryTimeoutMs)
+      );
+      const relationSummary = includeRelated
+        ? await buildSchemaMapRelationshipSummary(selected, metadata.schema, metadata.table, Math.min(relationshipLimit ?? 10, 50))
+        : undefined;
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: metadata.schema,
+          table: metadata.table,
+          purpose: inferTablePurpose(metadata.table, tableInfo?.comment, compactColumns),
+          rowEstimate: tableInfo?.rowEstimate ?? statistics.rowEstimate,
+          statistics,
+          primaryKeys,
+          uniqueKeys,
+          keyFields,
+          timeFields,
+          statusFields,
+          columns: compactColumns.slice(0, Math.min(maxColumns ?? 20, 100)),
+          columnsTruncated: compactColumns.length > Math.min(maxColumns ?? 20, 100),
+          relatedTables: relationSummary,
+          queryEntryPoints: tableSummaryQueryEntryPoints(primaryKeys, timeFields, statusFields, relationSummary),
+          warnings: [
+            "Purpose and field roles are inferred from visible metadata; verify with domain knowledge before using them as business facts."
+          ]
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_profile_columns",
     {
       title: "Profile Table Columns",
@@ -2065,6 +2128,120 @@ function uniqueStrings(values: string[]): string[] {
     output.push(value);
   }
   return output;
+}
+
+async function findSchemaMapTableInfo(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string
+): Promise<SchemaMapTable | undefined> {
+  const rows = filterSchemaMapTables(
+    await withQuerySlot(selected, () =>
+      listSchemaMapTables(
+        selected.pool,
+        selected.config.compatibility,
+        schema,
+        table,
+        20,
+        selected.config.queryTimeoutMs
+      )
+    ),
+    selected.config
+  );
+  return rows.find((row) => sameTableName(selected.config.compatibility, row.table, table));
+}
+
+function inferTablePurpose(
+  table: string,
+  tableComment: string | undefined,
+  columns: Array<{ name: string; comment?: string; roles: string[] }>
+) {
+  const evidence: Array<{ source: string; value: string; reason: string }> = [];
+  if (tableComment) {
+    evidence.push({
+      source: "table_comment",
+      value: tableComment,
+      reason: "Uses database table comment."
+    });
+  }
+  evidence.push({
+    source: "table_name",
+    value: table,
+    reason: "Uses visible table name."
+  });
+  for (const column of columns.filter((item) => item.comment).slice(0, 5)) {
+    evidence.push({
+      source: "column_comment",
+      value: `${column.name}: ${column.comment}`,
+      reason: "Uses visible column comment."
+    });
+  }
+  const roleSummary = [
+    columns.some((column) => column.roles.includes("primary_key")) ? "primary key" : undefined,
+    columns.some((column) => column.roles.includes("time")) ? "time fields" : undefined,
+    columns.some((column) => column.roles.includes("status")) ? "status or dimension fields" : undefined
+  ].filter((item): item is string => Boolean(item));
+
+  return {
+    inferred: true,
+    summary: tableComment
+      ? `Likely purpose is described by the table comment: ${tableComment}`
+      : `Likely represents data named by table "${table}".`,
+    confidence: tableComment ? 0.78 : 0.58,
+    roleSummary,
+    evidence: evidence.slice(0, 10)
+  };
+}
+
+function tableSummaryQueryEntryPoints(
+  primaryKeys: string[],
+  timeFields: string[],
+  statusFields: string[],
+  relationSummary: Awaited<ReturnType<typeof buildSchemaMapRelationshipSummary>> | undefined
+) {
+  const entries = [];
+  if (primaryKeys.length > 0) {
+    entries.push({
+      type: "primary_key_lookup",
+      fields: primaryKeys,
+      reason: "Primary-key metadata is available."
+    });
+  }
+  if (timeFields.length > 0) {
+    entries.push({
+      type: "time_range",
+      fields: timeFields.slice(0, 5),
+      reason: "Time-like fields were detected from column names."
+    });
+  }
+  if (statusFields.length > 0) {
+    entries.push({
+      type: "status_filter",
+      fields: statusFields.slice(0, 5),
+      reason: "Status or dimension-like fields were detected from column names."
+    });
+  }
+  if (relationSummary && relationSummary.relations.length > 0) {
+    entries.push({
+      type: "join",
+      fields: relationSummary.relations.slice(0, 5).map((relation) => ({
+        table: relation.direction === "outbound" ? relation.targetTable : relation.sourceTable,
+        columns: relation.direction === "outbound" ? relation.sourceColumns : relation.targetColumns,
+        confidence: relation.confidence
+      })),
+      reason: "Relationship metadata or conservative relationship inference is available."
+    });
+  }
+  entries.push({
+    type: "paged_scan",
+    fields: primaryKeys.length > 0 ? primaryKeys : timeFields.slice(0, 1),
+    reason: "Use only with explicit columns, a row limit, and stable ORDER BY when available."
+  });
+  return entries;
+}
+
+function sameTableName(mode: ObConfig["compatibility"], left: string, right: string): boolean {
+  return normalizeTableName(mode, left) === normalizeTableName(mode, right);
 }
 
 function isRelationshipAllowed(relation: TableRelationship, config: ObConfig): boolean {
