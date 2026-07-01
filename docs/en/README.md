@@ -144,6 +144,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_analyze_query_plan` | v0.5.0 | Run `EXPLAIN` and return evidence-based plan findings. |
 | `ob_generate_performance_report` | v0.5.0 | Generate a read-only performance advisory report from EXPLAIN and metadata. |
 | `ob_search_catalog` | v0.3.0 | Search schemas, tables, and columns; business glossary matches can be included since v0.5.1. |
+| `ob_search_everything` | v1.0.0 | Search schemas, tables, columns, comments, and business terms with evidence. |
 | `ob_search_business_glossary` | v0.5.1 | Search visible business-term mappings to schemas, tables, and columns. |
 | `ob_list_objects` | v0.5.0 | List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages. |
 | `ob_get_object_metadata` | v0.5.0 | Return bounded metadata and source preview for one Oracle object. |

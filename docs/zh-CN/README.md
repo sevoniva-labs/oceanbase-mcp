@@ -144,6 +144,7 @@ npm run start:http
 | `ob_analyze_query_plan` | v0.5.0 | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
 | `ob_generate_performance_report` | v0.5.0 | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
 | `ob_search_catalog` | v0.3.0 | 搜索 schema、表和列；v0.5.1 起可合并业务字典命中。 |
+| `ob_search_everything` | v1.0.0 | 统一搜索 schema、表、字段、注释和业务词，并返回依据。 |
 | `ob_search_business_glossary` | v0.5.1 | 搜索业务词到 schema/table/column 的可见映射。 |
 | `ob_list_objects` | v0.5.0 | 列出经过策略过滤的 Oracle view、sequence、synonym、procedure、function 和 package。 |
 | `ob_get_object_metadata` | v0.5.0 | 返回单个 Oracle 对象的有限元数据和源码预览。 |
