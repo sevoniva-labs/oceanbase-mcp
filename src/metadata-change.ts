@@ -377,6 +377,73 @@ export function compareMetadataSnapshots(
   };
 }
 
+export function renderMetadataComparisonMarkdown(
+  comparison: MetadataSnapshotComparison,
+  title = "OceanBase Metadata Snapshot Diff"
+): string {
+  const lines = [
+    `# ${title}`,
+    "",
+    "## Summary",
+    "",
+    `- Before: ${comparison.before.capturedAt ?? "(unknown)"} (${comparison.before.fingerprint ?? "no fingerprint"})`,
+    `- After: ${comparison.after.capturedAt ?? "(unknown)"} (${comparison.after.fingerprint ?? "no fingerprint"})`,
+    `- Total changes: ${comparison.summary.totalChanges}`,
+    `- Breaking changes: ${comparison.summary.breakingChanges}`,
+    `- Fingerprint equal: ${comparison.fingerprintEqual ? "yes" : "no"}`,
+    "",
+    "| Category | Count |",
+    "| --- | ---: |",
+    ...Object.entries(comparison.summary.byCategory)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([category, count]) => `| ${markdownCell(category)} | ${count} |`),
+    "",
+    "## Changes",
+    ""
+  ];
+
+  for (const [label, changes] of comparisonChangeGroups(comparison)) {
+    if (changes.length === 0) {
+      continue;
+    }
+    lines.push(`### ${label}`);
+    lines.push("");
+    lines.push("| Severity | Change | Object | Breaking | Evidence |");
+    lines.push("| --- | --- | --- | --- | --- |");
+    for (const change of changes) {
+      lines.push([
+        change.severity,
+        change.changeType,
+        changeObjectLabel(change),
+        change.breaking ? "yes" : "no",
+        change.evidence.join("; ")
+      ].map((value) => markdownCell(String(value))).join(" | ").replace(/^/, "| ").replace(/$/, " |"));
+    }
+    lines.push("");
+  }
+
+  if (comparison.breakingChanges.length > 0) {
+    lines.push("## Review Items");
+    lines.push("");
+    for (const change of comparison.breakingChanges) {
+      lines.push(`- ${changeObjectLabel(change)}: ${change.evidence.join("; ")}`);
+    }
+    lines.push("");
+  }
+
+  if (comparison.warnings.length > 0) {
+    lines.push("## Limits");
+    lines.push("");
+    for (const warning of comparison.warnings) {
+      lines.push(`- ${warning}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("No executable DDL, DCL, or DML is included in this report.");
+  return lines.join("\n");
+}
+
 export function stableHash(value: unknown): string {
   return createHash("sha256").update(stableStringify(value)).digest("hex");
 }
@@ -664,6 +731,36 @@ function summarizeComparisonChanges(changes: MetadataSnapshotChange[]): Metadata
     byCategory,
     bySeverity
   };
+}
+
+function comparisonChangeGroups(comparison: MetadataSnapshotComparison): Array<[string, MetadataSnapshotChange[]]> {
+  return [
+    ["Schemas", comparison.changes.schemas],
+    ["Tables", comparison.changes.tables],
+    ["Columns", comparison.changes.columns],
+    ["Indexes", comparison.changes.indexes],
+    ["Constraints", comparison.changes.constraints],
+    ["Partitions", comparison.changes.partitions],
+    ["Oracle Objects", comparison.changes.oracleObjects],
+    ["Relationships", comparison.changes.relationships]
+  ];
+}
+
+function changeObjectLabel(change: MetadataSnapshotChange): string {
+  const object = change.affectedObject;
+  if (object.objectName) {
+    return `${object.schema ? `${object.schema}.` : ""}${object.objectName}${object.objectType ? ` (${object.objectType})` : ""}`;
+  }
+  if (object.column) {
+    return `${object.schema ? `${object.schema}.` : ""}${object.table ?? "*"}.${object.column}`;
+  }
+  if (object.name) {
+    return `${object.schema ? `${object.schema}.` : ""}${object.table ?? "*"}.${object.name}`;
+  }
+  if (object.table) {
+    return `${object.schema ? `${object.schema}.` : ""}${object.table}`;
+  }
+  return object.schema ?? "(unknown)";
 }
 
 function tableMap(mode: CompatibilityMode, tables: MetadataSnapshotTable[]): Map<string, MetadataSnapshotTable> {
@@ -1273,4 +1370,8 @@ function uniqueStrings(values: string[]): string[] {
     output.push(value);
   }
   return output;
+}
+
+function markdownCell(value: string): string {
+  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
 }
