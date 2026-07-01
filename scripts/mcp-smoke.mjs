@@ -156,6 +156,62 @@ try {
     name: "ob_generate_er_diagram",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, maxTables: 10 }
   });
+  const schemaMap = await send("tools/call", {
+    name: "ob_get_schema_map",
+    arguments: { schema: smokeSchema, tablePattern: smokeTable, includeRelationships: false, maxTables: 5, maxColumnsPerTable: 5 }
+  });
+  const preparedQuery = await send("tools/call", {
+    name: "ob_prepare_query",
+    arguments: { question: `show recent rows from ${smokeTable}`, schema: smokeSchema, table: smokeTable }
+  });
+  const builtSelect = await send("tools/call", {
+    name: "ob_build_select",
+    arguments: {
+      schema: smokeSchema,
+      table: smokeTable,
+      columns: [smokeIdColumn],
+      orderBy: [{ column: smokeIdColumn, direction: "asc" }],
+      pageSize: 2,
+      page: 1
+    }
+  });
+  const sqlLint = await send("tools/call", {
+    name: "ob_lint_sql",
+    arguments: { sql: pageSql, runExplain: false }
+  });
+  const querySessionStart = await send("tools/call", {
+    name: "ob_start_query_session",
+    arguments: {
+      schema: smokeSchema,
+      table: smokeTable,
+      columns: [smokeIdColumn],
+      sql: pageSql,
+      page: 1,
+      pageSize: 2,
+      orderBy: smokeIdColumn
+    }
+  });
+  const querySessionStartResult = parseToolJson(querySessionStart);
+  const querySessionRead = await send("tools/call", {
+    name: "ob_get_query_session",
+    arguments: { sessionId: querySessionStartResult.sessionId }
+  });
+  const querySessionClose = await send("tools/call", {
+    name: "ob_close_query_session",
+    arguments: { sessionId: querySessionStartResult.sessionId }
+  });
+  const erHtml = await send("tools/call", {
+    name: "ob_generate_er_html",
+    arguments: { schema: smokeSchema, table: smokeTable, format: "html-static", includeInferred: false, maxTables: 5 }
+  });
+  const databaseDictionary = await send("tools/call", {
+    name: "ob_get_database_dictionary",
+    arguments: { schema: smokeSchema, tablePattern: smokeTable, format: "json", maxTables: 5, maxColumnsPerTable: 5 }
+  });
+  const sqlSnippetValidation = await send("tools/call", {
+    name: "ob_validate_sql_snippet",
+    arguments: { schema: smokeSchema, sql: pageSql }
+  });
   const indexes = await send("tools/call", {
     name: "ob_get_indexes",
     arguments: { schema: smokeSchema, table: smokeTable }
@@ -227,6 +283,15 @@ try {
   const columnProfileResult = parseToolJson(columnProfile);
   const queryTemplateResult = parseToolJson(queryTemplates);
   const erDiagramResult = parseToolJson(erDiagram);
+  const schemaMapResult = parseToolJson(schemaMap);
+  const preparedQueryResult = parseToolJson(preparedQuery);
+  const builtSelectResult = parseToolJson(builtSelect);
+  const sqlLintResult = parseToolJson(sqlLint);
+  const querySessionReadResult = parseToolJson(querySessionRead);
+  const querySessionCloseResult = parseToolJson(querySessionClose);
+  const erHtmlResult = parseToolJson(erHtml);
+  const databaseDictionaryResult = parseToolJson(databaseDictionary);
+  const sqlSnippetValidationResult = parseToolJson(sqlSnippetValidation);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
   const partitionRows = parseToolJson(partitions);
@@ -256,6 +321,16 @@ try {
     "ob_profile_columns",
     "ob_generate_query",
     "ob_generate_er_diagram",
+    "ob_get_schema_map",
+    "ob_prepare_query",
+    "ob_build_select",
+    "ob_lint_sql",
+    "ob_start_query_session",
+    "ob_get_query_session",
+    "ob_close_query_session",
+    "ob_generate_er_html",
+    "ob_get_database_dictionary",
+    "ob_validate_sql_snippet",
     "ob_get_indexes",
     "ob_get_constraints",
     "ob_get_partitions",
@@ -308,6 +383,40 @@ try {
       queryTemplateResult.templates.length > 0 &&
       queryTemplateResult.templates.every((template) => template.policy?.allowed === true),
     erDiagramOk: typeof erDiagramResult.mermaid === "string" && erDiagramResult.mermaid.includes("erDiagram"),
+    schemaMapOk:
+      schemaMapResult.mode === compatibility &&
+      schemaMapResult.tableCount >= 1 &&
+      schemaMapResult.schemas.some((schema) => schema.schema === smokeSchema),
+    preparedQueryOk:
+      preparedQueryResult.executed === false &&
+      preparedQueryResult.mode === compatibility &&
+      preparedQueryResult.candidateCount >= 1 &&
+      preparedQueryResult.candidates.some((candidate) => candidate.table === smokeTable),
+    builtSelectOk:
+      builtSelectResult.executed === false &&
+      builtSelectResult.policy?.allowed === true &&
+      builtSelectResult.pagination?.pageSize === 2,
+    sqlLintOk:
+      sqlLintResult.executed === false &&
+      sqlLintResult.explainRun === false &&
+      Array.isArray(sqlLintResult.findings),
+    querySessionOk:
+      querySessionStartResult.executed === false &&
+      querySessionReadResult.sessionId === querySessionStartResult.sessionId &&
+      querySessionReadResult.paramCount === 0 &&
+      querySessionCloseResult.closed === true,
+    erHtmlOk:
+      erHtmlResult.contentType === "text/html" &&
+      erHtmlResult.format === "html-static" &&
+      typeof erHtmlResult.html === "string" &&
+      erHtmlResult.html.includes("<!doctype html>"),
+    databaseDictionaryOk:
+      databaseDictionaryResult.format === "json" &&
+      databaseDictionaryResult.dictionary?.tables?.some((table) => table.schema === smokeSchema && table.table === smokeTable),
+    sqlSnippetValidationOk:
+      sqlSnippetValidationResult.executed === false &&
+      Array.isArray(sqlSnippetValidationResult.findings) &&
+      sqlSnippetValidationResult.metadata?.tables?.some((table) => table.schema === smokeSchema && table.table === smokeTable),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
     partitionRows: partitionRows.length,
@@ -356,6 +465,14 @@ try {
     !output.columnProfileOk ||
     !output.queryTemplatesOk ||
     !output.erDiagramOk ||
+    !output.schemaMapOk ||
+    !output.preparedQueryOk ||
+    !output.builtSelectOk ||
+    !output.sqlLintOk ||
+    !output.querySessionOk ||
+    !output.erHtmlOk ||
+    !output.databaseDictionaryOk ||
+    !output.sqlSnippetValidationOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
     !output.sampleMaskOk ||
