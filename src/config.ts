@@ -17,6 +17,7 @@ export interface AccessPolicy {
   deniedSchemas: string[];
   deniedTables: string[];
   deniedColumns: string[];
+  maskedColumns: string[];
   allowSelectStar: boolean;
   includeSystemSchemas: boolean;
   requireAccessPolicy: boolean;
@@ -512,6 +513,7 @@ function loadAccessPolicy(env: NodeJS.ProcessEnv, productionMode: boolean): Acce
     deniedSchemas,
     deniedTables: parseList(env.OB_DENIED_TABLES, []),
     deniedColumns,
+    maskedColumns: parseList(env.OB_MASKED_COLUMNS, []),
     allowSelectStar: parseBoolean(env.OB_ALLOW_SELECT_STAR, false),
     includeSystemSchemas: parseBoolean(env.OB_INCLUDE_SYSTEM_SCHEMAS, false),
     requireAccessPolicy: parseBoolean(env.OB_REQUIRE_ACCESS_POLICY, productionMode)

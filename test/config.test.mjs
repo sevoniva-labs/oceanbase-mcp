@@ -20,6 +20,7 @@ test("loadConfig uses local OceanBase defaults outside production", () => {
   assert.equal(config.maxRows, 100);
   assert.equal(config.maxResultBytes, 1_048_576);
   assert.equal(config.maxConcurrentQueries, 5);
+  assert.deepEqual(config.policy.maskedColumns, []);
 });
 
 test("loadConfig builds user from OceanBase username tenant and cluster", () => {
@@ -30,6 +31,14 @@ test("loadConfig builds user from OceanBase username tenant and cluster", () => 
     OB_PASSWORD: "secret"
   });
   assert.equal(config.user, "alice@tenant1#cluster1");
+});
+
+test("loadConfig parses field-level masking rules", () => {
+  const config = loadConfig({
+    OB_MASKED_COLUMNS: "biz_test.users.email,*.orders.phone,access_token"
+  });
+
+  assert.deepEqual(config.policy.maskedColumns, ["biz_test.users.email", "*.orders.phone", "access_token"]);
 });
 
 test("loadConfig reads password from file", () => {

@@ -8,7 +8,8 @@ import {
   explainSqlPolicy,
   filterColumnMetadata,
   filterObjects,
-  filterSchemas
+  filterSchemas,
+  isMaskedColumn
 } from "../dist/policy.js";
 
 const basePolicy = {
@@ -17,6 +18,7 @@ const basePolicy = {
   deniedSchemas: ["information_schema", "mysql", "oceanbase", "performance_schema", "sys"],
   deniedTables: [],
   deniedColumns: ["password", "token", "secret"],
+  maskedColumns: [],
   allowSelectStar: false,
   includeSystemSchemas: false,
   requireAccessPolicy: true
@@ -134,6 +136,20 @@ test("object policy uses schema and object name allow rules", () => {
     ),
     [{ OWNER: "biz_test", OBJECT_NAME: "orders_view", OBJECT_TYPE: "VIEW" }]
   );
+});
+
+test("isMaskedColumn supports exact and wildcard column references", () => {
+  const policy = {
+    ...basePolicy,
+    maskedColumns: ["biz_test.users.email", "*.orders.phone", "access_token", "audit_*.payload"]
+  };
+
+  assert.equal(isMaskedColumn("email", policy, "biz_test", "users"), true);
+  assert.equal(isMaskedColumn("email", policy, "other_schema", "users"), false);
+  assert.equal(isMaskedColumn("phone", policy, "biz_test", "orders"), true);
+  assert.equal(isMaskedColumn("access_token", policy, "any_schema", "any_table"), true);
+  assert.equal(isMaskedColumn("payload", policy, "biz_test", "audit_log"), true);
+  assert.equal(isMaskedColumn("name", policy, "biz_test", "users"), false);
 });
 
 test("filterTables recognizes Oracle table owner metadata columns", async () => {

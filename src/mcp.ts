@@ -41,7 +41,8 @@ import {
   filterSchemas,
   filterTables,
   isSchemaAllowed,
-  isDeniedColumn
+  isDeniedColumn,
+  isMaskedColumn
 } from "./policy.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "./query-generation.js";
 import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "./runtime.js";
@@ -982,7 +983,7 @@ export function createObMcpServer(
         )
       );
       assertOutputAllowed(output, selected.config.policy);
-      return toLimitedResult(maskOutput(output, selected.config), selected.config);
+      return toLimitedResult(maskOutput(output, selected.config, effectiveSchema, table), selected.config);
     }
   );
 
@@ -1219,7 +1220,7 @@ function columnNames(rows: unknown[]): string[] {
   return [...new Set(names)];
 }
 
-function maskOutput(output: QueryOutput, config: ObConfig): QueryOutput {
+function maskOutput(output: QueryOutput, config: ObConfig, schema?: string, table?: string): QueryOutput {
   return {
     ...output,
     rows: output.rows.map((row) => {
@@ -1228,11 +1229,19 @@ function maskOutput(output: QueryOutput, config: ObConfig): QueryOutput {
       }
       const masked: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(row)) {
-        masked[key] = isDeniedColumn(key, config.policy) || SENSITIVE_SAMPLE_PATTERN.test(key) ? "***MASKED***" : value;
+        masked[key] = shouldMaskColumnValue(key, config, schema, table) ? "***MASKED***" : value;
       }
       return masked;
     })
   };
+}
+
+export function shouldMaskColumnValue(column: string, config: ObConfig, schema?: string, table?: string): boolean {
+  return (
+    isMaskedColumn(column, config.policy, schema, table) ||
+    isDeniedColumn(column, config.policy) ||
+    SENSITIVE_SAMPLE_PATTERN.test(column)
+  );
 }
 
 function sanitizeObjectMetadata(metadata: unknown, config: ObConfig): Record<string, unknown> {

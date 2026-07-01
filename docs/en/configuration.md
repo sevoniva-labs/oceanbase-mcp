@@ -70,6 +70,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_DENIED_SCHEMAS` | system schemas | Comma-separated denied schemas. |
 | `OB_DENIED_TABLES` | unset | Comma-separated denied tables; glob-style `*` is supported. |
 | `OB_DENIED_COLUMNS` | sensitive names | Comma-separated denied column/identifier names. |
+| `OB_MASKED_COLUMNS` | unset | Comma-separated sample-output masking rules. Supports `schema.table.column`, `table.column`, `column`, and `*` globs. |
 | `OB_ALLOW_SELECT_STAR` | `false` | Allows `SELECT *` only when explicitly set to `true`. |
 | `OB_REQUIRE_ACCESS_POLICY` | production: `true` | Requires allowlist policy in production. |
 | `OB_INCLUDE_SYSTEM_SCHEMAS` | `false` | Includes system schemas in metadata tools. |
@@ -79,6 +80,12 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MAX_SQL_LENGTH` | `20000` | Maximum SQL text length. |
 | `OB_MAX_PARAM_COUNT` | `500` | Maximum SQL parameter count. |
 | `OB_MAX_CONCURRENT_QUERIES` | `5` | Maximum concurrent database operations per profile. |
+
+Masking priority:
+
+1. `OB_DENIED_COLUMNS` is strongest: matching columns are blocked from query output and hidden from metadata.
+2. `OB_MASKED_COLUMNS` keeps the column visible in metadata but masks values returned by `ob_sample_rows`.
+3. Built-in sensitive-name detection still masks sample fields such as password, token, secret, email, phone, and similar names.
 
 ## HTTP Server
 

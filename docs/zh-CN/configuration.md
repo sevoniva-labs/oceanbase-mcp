@@ -70,6 +70,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_DENIED_SCHEMAS` | 系统 schema | 被拒绝的 schema 列表。 |
 | `OB_DENIED_TABLES` | 未设置 | 被拒绝的表列表，支持 `*`。 |
 | `OB_DENIED_COLUMNS` | 敏感名称 | 被拒绝的列名/标识符列表。 |
+| `OB_MASKED_COLUMNS` | 未设置 | 样例输出脱敏规则，支持 `schema.table.column`、`table.column`、`column` 和 `*` 通配。 |
 | `OB_ALLOW_SELECT_STAR` | `false` | 只有显式设为 `true` 才允许 `SELECT *`。 |
 | `OB_REQUIRE_ACCESS_POLICY` | 生产：`true` | 生产环境要求配置 allowlist。 |
 | `OB_INCLUDE_SYSTEM_SCHEMAS` | `false` | 元数据工具是否包含系统 schema。 |
@@ -79,6 +80,12 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MAX_SQL_LENGTH` | `20000` | SQL 文本长度上限。 |
 | `OB_MAX_PARAM_COUNT` | `500` | SQL 参数数量上限。 |
 | `OB_MAX_CONCURRENT_QUERIES` | `5` | 每个 profile 同时执行的数据库操作上限。 |
+
+脱敏优先级：
+
+1. `OB_DENIED_COLUMNS` 最强：匹配的列会被禁止出现在查询结果中，也会从元数据里隐藏。
+2. `OB_MASKED_COLUMNS` 不隐藏元数据，只对 `ob_sample_rows` 返回的样例值做脱敏。
+3. 内置敏感字段识别仍然会对 password、token、secret、email、phone 等名称做样例值脱敏。
 
 ## HTTP 服务
 

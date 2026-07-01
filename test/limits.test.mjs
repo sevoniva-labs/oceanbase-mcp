@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { assertJsonByteLimit } from "../dist/format.js";
-import { effectiveRowLimit, isToolAllowed } from "../dist/mcp.js";
+import { effectiveRowLimit, isToolAllowed, shouldMaskColumnValue } from "../dist/mcp.js";
 import { withQuerySlot } from "../dist/runtime.js";
 
 test("effectiveRowLimit treats OB_MAX_ROWS as a hard cap", () => {
@@ -47,4 +47,26 @@ test("isToolAllowed supports scoped bearer token tool visibility", () => {
   assert.equal(isToolAllowed("ob_query", { name: "default" }), true);
   assert.equal(isToolAllowed("ob_query", { name: "limited", tools: ["ob_query"] }), true);
   assert.equal(isToolAllowed("ob_ping", { name: "limited", tools: ["ob_query"] }), false);
+});
+
+test("shouldMaskColumnValue applies configured and automatic sample masking", () => {
+  const config = {
+    policy: {
+      allowedSchemas: [],
+      allowedTables: [],
+      deniedSchemas: [],
+      deniedTables: [],
+      deniedColumns: ["secret"],
+      maskedColumns: ["biz_test.users.email", "*.orders.phone"],
+      allowSelectStar: false,
+      includeSystemSchemas: false,
+      requireAccessPolicy: false
+    }
+  };
+
+  assert.equal(shouldMaskColumnValue("email", config, "biz_test", "users"), true);
+  assert.equal(shouldMaskColumnValue("phone", config, "biz_test", "orders"), true);
+  assert.equal(shouldMaskColumnValue("api_token", config, "biz_test", "users"), true);
+  assert.equal(shouldMaskColumnValue("secret", config, "biz_test", "users"), true);
+  assert.equal(shouldMaskColumnValue("name", config, "biz_test", "users"), false);
 });

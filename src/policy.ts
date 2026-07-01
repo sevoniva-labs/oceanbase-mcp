@@ -269,6 +269,18 @@ export function isDeniedColumn(column: string, policy: AccessPolicy): boolean {
   return policy.deniedColumns.some((pattern) => matchesPattern(normalized, pattern));
 }
 
+export function isMaskedColumn(
+  column: string,
+  policy: AccessPolicy,
+  schema?: string,
+  table?: string
+): boolean {
+  const columnName = normalizeName(column);
+  const tableName = table ? normalizeName(table) : undefined;
+  const schemaName = schema ? normalizeName(schema) : undefined;
+  return policy.maskedColumns.some((pattern) => matchesColumnRefPattern(schemaName, tableName, columnName, pattern));
+}
+
 function runCheck(name: string, check: () => void): PolicyExplanationCheck {
   try {
     check();
@@ -417,6 +429,35 @@ function matchesPattern(value: string, pattern: string): boolean {
     "i"
   );
   return regex.test(value);
+}
+
+function matchesColumnRefPattern(
+  schema: string | undefined,
+  table: string | undefined,
+  column: string,
+  pattern: string
+): boolean {
+  const parts = pattern
+    .split(".")
+    .map((part) => normalizeName(part))
+    .filter(Boolean);
+
+  if (parts.length === 1) {
+    return matchesPattern(column, parts[0]);
+  }
+  if (parts.length === 2) {
+    return table != null && matchesPattern(table, parts[0]) && matchesPattern(column, parts[1]);
+  }
+  if (parts.length === 3) {
+    return (
+      schema != null &&
+      table != null &&
+      matchesPattern(schema, parts[0]) &&
+      matchesPattern(table, parts[1]) &&
+      matchesPattern(column, parts[2])
+    );
+  }
+  return false;
 }
 
 function normalizeName(value: string): string {

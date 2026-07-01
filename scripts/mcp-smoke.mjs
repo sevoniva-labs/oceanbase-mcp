@@ -6,6 +6,7 @@ const smokeSchema = process.env.OB_SMOKE_SCHEMA ?? (isOracle ? "OB_USER" : "biz_
 const smokeTable = process.env.OB_SMOKE_TABLE ?? (isOracle ? "OB_MCP_SMOKE_SAMPLE" : "ob_sample");
 const smokeSearch = process.env.OB_SMOKE_SEARCH ?? smokeTable;
 const smokeIdColumn = process.env.OB_SMOKE_ID_COLUMN ?? (isOracle ? "ID" : "id");
+const smokeMaskedColumn = process.env.OB_SMOKE_MASKED_COLUMN ?? (isOracle ? "NAME" : "name");
 const qualifiedTable = `${smokeSchema}.${smokeTable}`;
 const selectOneSql = isOracle ? "SELECT 1 AS mcp_ok FROM DUAL" : "SELECT 1 AS mcp_ok";
 const requirePartitions = process.env.OB_SMOKE_REQUIRE_PARTITIONS === "true" || isOracle;
@@ -15,6 +16,7 @@ const child = spawn(process.execPath, ["dist/index.js"], {
   env: {
     ...process.env,
     OB_ALLOWED_SCHEMAS: process.env.OB_ALLOWED_SCHEMAS ?? smokeSchema,
+    OB_MASKED_COLUMNS: process.env.OB_MASKED_COLUMNS ?? `${smokeSchema}.${smokeTable}.${smokeMaskedColumn}`,
     OB_ALLOW_SELECT_STAR: "false"
   },
   stdio: ["pipe", "pipe", "pipe"]
@@ -254,6 +256,7 @@ try {
     partitionRows: partitionRows.length,
     partitionsOk: !requirePartitions || partitionRows.length > 0,
     sampleRows: sampleOutput.rows.length,
+    sampleMaskOk: sampleOutput.rows.every((row) => row[smokeMaskedColumn] === "***MASKED***"),
     enterpriseTools: expectedEnterpriseTools.every((name) => toolNames.includes(name)),
     resourcesOk:
       resources.resources.some((resource) => resource.uri === "ob://connection") &&
@@ -292,6 +295,7 @@ try {
     !output.erDiagramOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
+    !output.sampleMaskOk ||
     !output.blockedWrite ||
     !output.blockedSelectStar ||
     !output.blockedShow ||
