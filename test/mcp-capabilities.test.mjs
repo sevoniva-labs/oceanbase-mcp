@@ -38,7 +38,9 @@ test("ob_get_usage_guide returns workflow and dialect notes", async () => {
   const result = JSON.parse((await server.executeToolHandler(server._registeredTools.ob_get_usage_guide, {}, {})).content[0].text);
 
   assert.equal(result.compatibility, "oracle");
-  assert(result.workflow.some((step) => /schemas, tables, and columns/i.test(step)));
+  assert(result.workflow.some((step) => /schemas, tables, columns/i.test(step)));
+  assert(result.recommendedTools.includes("ob_prepare_query"));
+  assert(result.recommendedTools.includes("ob_generate_er_html"));
   assert(result.safetyRules.some((rule) => /write SQL/i.test(rule)));
   assert(result.dialectNotes.oracle.some((note) => /uppercase/i.test(note)));
 });

@@ -147,12 +147,13 @@ export function buildUsageGuide(input: { compatibility: CompatibilityMode; profi
     profile: input.profile,
     compatibility: input.compatibility,
     workflow: [
-      "Search business terms, schemas, tables, and columns before writing SQL.",
-      "Read table context before selecting columns or joins.",
-      "Generate SQL with explicit columns only.",
-      "Preview or explain policy and plan risk before execution.",
-      "Use paged queries for data inspection.",
-      "Summarize SQL, row count, page state, warnings, masking, and assumptions."
+      "Search business terms, schemas, tables, columns, comments, and glossary hints before writing SQL.",
+      "Read table context, schema map, table summary, or onboarding documentation before selecting columns or joins.",
+      "Use ob_prepare_query or ob_build_select to generate explicit-column read-only SQL.",
+      "Use ob_lint_sql or ob_query_preview before execution.",
+      "Use query sessions and paged queries for data inspection.",
+      "Use profiling, ER, dictionary, and documentation tools when the user asks for structure or data understanding.",
+      "Summarize SQL, row count, page state, warnings, masking, truncation, and assumptions."
     ],
     safetyRules: [
       "Do not run or suggest write SQL, DDL, DCL, procedure calls, sequence NEXTVAL, locks, file functions, sleep functions, or multi-statement SQL.",
@@ -172,17 +173,25 @@ export function buildUsageGuide(input: { compatibility: CompatibilityMode; profi
       ]
     },
     recommendedTools: [
-      "ob_search_catalog",
+      "ob_search_everything",
       "ob_search_business_glossary",
+      "ob_get_schema_map",
       "ob_get_table_context",
+      "ob_prepare_query",
+      "ob_build_select",
+      "ob_lint_sql",
       "ob_query_preview",
+      "ob_start_query_session",
       "ob_query_page",
+      "ob_query_next_page",
+      "ob_summarize_result",
       "ob_profile_columns",
-      "ob_generate_er_diagram"
+      "ob_generate_er_html",
+      "ob_generate_data_dictionary",
+      "ob_generate_onboarding_doc"
     ],
     erDiagram: {
-      currentFormats: ["mermaid", "json"],
-      plannedFormats: ["html-static", "html-interactive", "html-compact", "html-detailed", "markdown", "dot", "plantuml"],
+      currentFormats: ["mermaid", "json", "html-static", "html-interactive", "html-compact", "html-detailed", "markdown", "dot", "plantuml"],
       rule: "Relationships must come from metadata or relationship discovery evidence."
     }
   };

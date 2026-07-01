@@ -29,6 +29,13 @@ test("createInitPlan creates local mysql files without real secrets", () => {
     const opencode = JSON.parse(plan.files.find((file) => file.path.endsWith("opencode.jsonc")).content);
     assert.deepEqual(opencode.mcp.oceanbase.command, ["ob-mcp"]);
     assert.equal(opencode.mcp.oceanbase.environment.OB_BUSINESS_GLOSSARY_FILE, "business-glossary.json");
+
+    const agent = plan.files.find((file) => file.path.endsWith(".opencode/agents/oceanbase-developer.md")).content;
+    const skill = plan.files.find((file) => file.path.endsWith(".opencode/skills/oceanbase-query/SKILL.md")).content;
+    assert.match(agent, /ob_prepare_query/);
+    assert.match(agent, /ob_generate_er_html/);
+    assert.match(skill, /ob_build_select/);
+    assert.match(skill, /ob_start_query_session/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

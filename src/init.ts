@@ -267,20 +267,21 @@ function renderOpenCodeConfig(input: {
 function renderAgent(): string {
   return `---
 name: oceanbase-developer
-description: Uses OceanBase MCP for read-only OceanBase schema discovery, SQL assistance, paged querying, ER diagrams, and result explanation.
+description: Uses OceanBase MCP for metadata-first OceanBase development, read-only SQL, paged querying, ER diagrams, and data documentation.
 ---
 
-Use this agent for OceanBase development tasks that need database metadata, read-only SQL, query previews, paged result lookup, ER diagrams, or data dictionary output.
+Use this agent for OceanBase development tasks that need database metadata, read-only SQL, query previews, paged result lookup, ER diagrams, or data documentation.
 
 Rules:
 
 1. Search metadata before writing SQL.
 2. Do not guess table names, column names, or relationships.
-3. Read table context before choosing columns or joins.
-4. Generate only read-only SQL with explicit columns.
+3. Read table context, schema map, or onboarding documentation before choosing columns or joins.
+4. Use ob_prepare_query or ob_build_select for SQL assistance.
 5. Preview or lint SQL before execution.
-6. Use paged queries for data inspection.
-7. Report masking, truncation, unstable ordering, and assumptions clearly.
+6. Use query sessions and paged queries for data inspection.
+7. Use ob_generate_er_html, data dictionary, and documentation tools for structure questions.
+8. Report masking, truncation, unstable ordering, and assumptions clearly.
 
 Never run or suggest write SQL, DDL, DCL, procedure calls, sequence NEXTVAL, locks, file functions, sleep functions, or multi-statement SQL.
 `;
@@ -289,7 +290,7 @@ Never run or suggest write SQL, DDL, DCL, procedure calls, sequence NEXTVAL, loc
 function renderSkill(): string {
   return `---
 name: oceanbase-query
-description: Guide OpenCode to use OceanBase MCP for read-only schema discovery, SQL drafting, query preview, paged querying, ER diagrams, and result explanation.
+description: Guide OpenCode to use OceanBase MCP for metadata-first OceanBase querying, SQL assistance, ER diagrams, and result documentation.
 license: MIT
 compatibility: opencode
 metadata:
@@ -300,18 +301,19 @@ metadata:
 ## Workflow
 
 1. Search metadata and business glossary first.
-2. Read table context before SQL.
-3. Build or lint a read-only query before execution.
-4. Use query preview for user-facing SQL.
-5. Query with pagination.
+2. Read table context, schema map, or onboarding documentation before SQL.
+3. Use ob_prepare_query or ob_build_select to create explicit-column SELECT SQL.
+4. Use ob_lint_sql or ob_query_preview before execution.
+5. Query with a session and pagination.
 6. Summarize SQL, rows, page state, warnings, masking, and assumptions.
 
 ## Tool Preference
 
-- Use metadata tools before SQL.
-- Use query preview or lint before execution.
-- Use paged query tools for data lookup.
-- Use ER and data dictionary tools for structure questions.
+- Use ob_search_everything, ob_get_schema_map, ob_find_tables_by_business_term, ob_find_columns, and ob_get_table_context before SQL.
+- Use ob_prepare_query, ob_build_select, ob_lint_sql, and ob_query_preview for SQL assistance.
+- Use ob_start_query_session, ob_query_page, ob_query_next_page, and ob_query_prev_page for data lookup.
+- Use ER HTML, entity diagrams, relationship explanation, data dictionary, table/schema/query docs, and onboarding docs for structure questions.
+- Use ob_get_cache_status or ob_refresh_metadata_cache only when metadata appears stale.
 - Use Oracle-compatible syntax when the profile is Oracle mode.
 
 Do not invent tables, fields, joins, or relationships. If metadata is insufficient, ask for a business term, schema, or table name.

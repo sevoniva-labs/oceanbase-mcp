@@ -107,13 +107,14 @@ Keep both directories at the project root. OpenCode loads the `oceanbase-develop
 
 The agent uses this query workflow:
 
-1. Search business terms, schemas, tables, and columns first.
-2. Read table context.
-3. Generate only read-only SQL.
-4. Preview policy and plan risk before execution.
-5. Use paged queries for data inspection.
-6. Use column profiling when field distributions are needed.
-7. Summarize SQL, row count, page state, masking, and truncation.
+1. Use `ob_search_everything`, the business glossary, schema map, or column search to confirm tables and fields.
+2. Read table context, table summary, or onboarding documentation before choosing tables and joins.
+3. Use `ob_prepare_query` or `ob_build_select` to generate explicit-column read-only SQL.
+4. Use `ob_lint_sql` or `ob_query_preview` before execution.
+5. Use query sessions and paged tools for data inspection.
+6. Use table profiles, column profiles, or value distribution tools when field distributions are needed.
+7. Use ER HTML, entity diagrams, data dictionaries, and documentation tools for structure work.
+8. Summarize SQL, row count, page state, masking, truncation, and assumptions.
 
 Do not let the agent guess table names, column names, or relationships. When context is insufficient, provide a business term, schema, or table name first.
 
