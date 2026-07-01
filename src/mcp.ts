@@ -871,6 +871,47 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_compare_query_results",
+    {
+      title: "Compare Query Results",
+      description: "Compare two already returned query results without reading the database or storing row values.",
+      inputSchema: {
+        ...profileInput,
+        leftName: z.string().optional(),
+        rightName: z.string().optional(),
+        leftRows: z.array(z.record(z.string(), z.unknown())).max(1_000),
+        rightRows: z.array(z.record(z.string(), z.unknown())).max(1_000),
+        columns: z.array(resultSummaryColumnSchema).max(200).optional(),
+        keyColumns: z.array(z.string().min(1)).max(20).optional(),
+        compareColumns: z.array(z.string().min(1)).max(100).optional(),
+        maxDifferences: z.number().int().positive().max(100).optional()
+      }
+    },
+    async ({ profile, leftName, rightName, leftRows, rightRows, columns, keyColumns, compareColumns, maxDifferences }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const comparison = compareQueryResultRows(
+        leftRows as Array<Record<string, unknown>>,
+        rightRows as Array<Record<string, unknown>>,
+        columns ?? [],
+        keyColumns ?? [],
+        compareColumns,
+        selected.config,
+        Math.min(maxDifferences ?? 20, 100)
+      );
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          leftName: leftName ?? "left",
+          rightName: rightName ?? "right",
+          ...comparison,
+          executed: false
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_list_schemas",
     {
       title: "List Schemas",
@@ -5269,6 +5310,138 @@ function resultSummaryNextSteps(
     steps.push("Use ob_query_refine to add filters, ordering, or pagination before running a follow-up query.");
   }
   return steps;
+}
+
+function compareQueryResultRows(
+  leftRows: Array<Record<string, unknown>>,
+  rightRows: Array<Record<string, unknown>>,
+  columns: ResultSummaryColumn[],
+  keyColumns: string[],
+  compareColumns: string[] | undefined,
+  config: ObConfig,
+  maxDifferences: number
+) {
+  const allColumns = resultSummaryColumnNames([...leftRows, ...rightRows], columns);
+  const selectedColumns = compareColumns && compareColumns.length > 0
+    ? uniqueStrings(compareColumns)
+    : allColumns;
+  const metadata = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  const columnPresence = allColumns.map((name) => ({
+    name,
+    inLeft: leftRows.some((row) => Object.prototype.hasOwnProperty.call(row, name)),
+    inRight: rightRows.some((row) => Object.prototype.hasOwnProperty.call(row, name))
+  }));
+  const valueDifferences = selectedColumns
+    .filter((name) => columnPresence.some((column) => column.name === name && column.inLeft && column.inRight))
+    .map((name) => compareResultColumn(name, leftRows, rightRows, metadata.get(name.toLowerCase()), config, maxDifferences))
+    .filter((item) => item.changed);
+  const keyComparison = keyColumns.length > 0
+    ? compareResultKeys(leftRows, rightRows, keyColumns, metadata, config)
+    : undefined;
+  return {
+    rowCounts: {
+      left: leftRows.length,
+      right: rightRows.length,
+      delta: rightRows.length - leftRows.length
+    },
+    columnPresence,
+    keyComparison,
+    valueDifferences,
+    warnings: compareResultWarnings(columns, keyColumns, compareColumns)
+  };
+}
+
+function compareResultColumn(
+  name: string,
+  leftRows: Array<Record<string, unknown>>,
+  rightRows: Array<Record<string, unknown>>,
+  metadata: ResultSummaryColumn | undefined,
+  config: ObConfig,
+  maxDifferences: number
+) {
+  const masked = Boolean(metadata?.masked) || shouldMaskColumnValue(name, config, metadata?.schema, metadata?.table);
+  const leftValues = leftRows.map((row) => row[name]).filter((value) => value != null);
+  const rightValues = rightRows.map((row) => row[name]).filter((value) => value != null);
+  const leftCounts = new Map(valueCounts(leftValues, maxDifferences * 2).map((item) => [summaryValueKey(item.value), item]));
+  const rightCounts = new Map(valueCounts(rightValues, maxDifferences * 2).map((item) => [summaryValueKey(item.value), item]));
+  const keys = uniqueStrings([...leftCounts.keys(), ...rightCounts.keys()]);
+  const valueDeltas = keys
+    .map((key) => {
+      const left = leftCounts.get(key);
+      const right = rightCounts.get(key);
+      return {
+        value: masked ? "[masked]" : left?.value ?? right?.value,
+        leftCount: left?.count ?? 0,
+        rightCount: right?.count ?? 0,
+        delta: (right?.count ?? 0) - (left?.count ?? 0)
+      };
+    })
+    .filter((item) => item.delta !== 0)
+    .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta))
+    .slice(0, maxDifferences);
+  const leftNumeric = masked ? undefined : numericSummary(leftValues);
+  const rightNumeric = masked ? undefined : numericSummary(rightValues);
+  return {
+    column: name,
+    masked,
+    changed: valueDeltas.length > 0 || JSON.stringify(leftNumeric) !== JSON.stringify(rightNumeric),
+    distinct: {
+      left: new Set(leftValues.map(summaryValueKey)).size,
+      right: new Set(rightValues.map(summaryValueKey)).size
+    },
+    valueDeltas,
+    numericRange: {
+      left: leftNumeric,
+      right: rightNumeric
+    }
+  };
+}
+
+function compareResultKeys(
+  leftRows: Array<Record<string, unknown>>,
+  rightRows: Array<Record<string, unknown>>,
+  keyColumns: string[],
+  metadata: Map<string, ResultSummaryColumn>,
+  config: ObConfig
+) {
+  const keyMasked = keyColumns.some((column) => {
+    const columnMetadata = metadata.get(column.toLowerCase());
+    return Boolean(columnMetadata?.masked) || shouldMaskColumnValue(column, config, columnMetadata?.schema, columnMetadata?.table);
+  });
+  const leftKeys = new Set(leftRows.map((row) => resultRowKey(row, keyColumns)));
+  const rightKeys = new Set(rightRows.map((row) => resultRowKey(row, keyColumns)));
+  const onlyLeft = [...leftKeys].filter((key) => !rightKeys.has(key));
+  const onlyRight = [...rightKeys].filter((key) => !leftKeys.has(key));
+  return {
+    keyColumns,
+    keyValuesHidden: keyMasked,
+    onlyInLeftCount: onlyLeft.length,
+    onlyInRightCount: onlyRight.length,
+    sampleOnlyInLeft: keyMasked ? [] : onlyLeft.slice(0, 10),
+    sampleOnlyInRight: keyMasked ? [] : onlyRight.slice(0, 10)
+  };
+}
+
+function resultRowKey(row: Record<string, unknown>, keyColumns: string[]): string {
+  return keyColumns.map((column) => String(summaryValue(row[column]))).join("|");
+}
+
+function compareResultWarnings(
+  columns: ResultSummaryColumn[],
+  keyColumns: string[],
+  compareColumns: string[] | undefined
+): string[] {
+  const warnings: string[] = [];
+  if (keyColumns.length === 0) {
+    warnings.push("No keyColumns were supplied; row-level comparison is limited to row counts and column value distributions.");
+  }
+  if (compareColumns && compareColumns.length > 0) {
+    warnings.push("Only requested compareColumns were compared for value differences.");
+  }
+  if (columns.some((column) => column.masked)) {
+    warnings.push("Masked columns are compared by counts only; raw values are not returned.");
+  }
+  return warnings;
 }
 
 function cleanOptionalString(value: string | undefined): string | undefined {

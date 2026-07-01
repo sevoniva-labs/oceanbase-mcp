@@ -29,6 +29,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_query_prev_page", since: "v1.0.0", group: "query", mode: "all", description: "Run the previous page for a read-only query session." },
   { name: "ob_query_refine", since: "v1.0.0", group: "query", mode: "all", description: "Build refined read-only SELECT SQL from a query session without executing it." },
   { name: "ob_summarize_result", since: "v1.0.0", group: "query", mode: "all", description: "Summarize already returned rows without reading the database." },
+  { name: "ob_compare_query_results", since: "v1.0.0", group: "query", mode: "all", description: "Compare two already returned query results without reading the database." },
   { name: "ob_list_schemas", since: "v0.3.0", group: "metadata", mode: "all", description: "List visible schemas or databases." },
   { name: "ob_list_tables", since: "v0.3.0", group: "metadata", mode: "all", description: "List visible tables." },
   { name: "ob_describe_table", since: "v0.3.0", group: "metadata", mode: "all", description: "Return column metadata." },
