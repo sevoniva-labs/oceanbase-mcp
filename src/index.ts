@@ -4,6 +4,7 @@ import "dotenv/config";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 
 import { loadGatewayConfig } from "./config.js";
+import { runDoctorCommand } from "./doctor-runner.js";
 import { runInitCommand } from "./init.js";
 import { createObMcpServer } from "./mcp.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
@@ -12,6 +13,8 @@ const [command, ...args] = process.argv.slice(2);
 
 if (command === "init") {
   process.exitCode = await runInitCommand(args);
+} else if (command === "doctor") {
+  process.exitCode = await runDoctorCommand(args);
 } else if (command === "--help" || command === "-h" || command === "help") {
   printHelp();
 } else if (command) {
@@ -46,6 +49,7 @@ function printHelp() {
 Usage:
   ob-mcp                 Start the stdio MCP server
   ob-mcp init [options]  Create local OpenCode and OceanBase MCP files
+  ob-mcp doctor          Check local setup, config, and OceanBase connectivity
 
 Init options:
   --mode mysql|oracle
@@ -57,5 +61,8 @@ Init options:
   --cluster <cluster>
   --dry-run
   --force
+
+Doctor options:
+  --skip-connect
 `);
 }

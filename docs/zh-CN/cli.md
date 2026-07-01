@@ -52,3 +52,25 @@ ob-mcp init --mode oracle --schema OB_USER
 | `--force` | 覆盖已存在的生成文件。 |
 
 默认不会覆盖已有文件。确实需要重新生成时再使用 `--force`。
+
+## Doctor
+
+检查本地配置、构建产物、OpenCode 文件、业务字典、只读策略和 OceanBase 连接：
+
+```bash
+ob-mcp doctor
+```
+
+源码仓库内也可以运行：
+
+```bash
+npm run config:doctor
+```
+
+如果只想检查本地文件和配置，不检查数据库连接：
+
+```bash
+ob-mcp doctor --skip-connect
+```
+
+输出为 JSON，检查项使用 `pass`、`warn`、`fail` 标记。`doctor` 不输出密码、token 或完整连接串。

@@ -52,3 +52,25 @@ Generated files:
 | `--force` | Overwrite existing generated files. |
 
 Existing files are not overwritten by default. Use `--force` only when regenerating local setup files intentionally.
+
+## Doctor
+
+Check local config, build output, OpenCode files, business glossary, read-only policy, and OceanBase connectivity:
+
+```bash
+ob-mcp doctor
+```
+
+From a source checkout:
+
+```bash
+npm run config:doctor
+```
+
+To check local files and config without opening a database connection:
+
+```bash
+ob-mcp doctor --skip-connect
+```
+
+Output is JSON. Checks use `pass`, `warn`, and `fail`. `doctor` does not print passwords, tokens, or full connection strings.
