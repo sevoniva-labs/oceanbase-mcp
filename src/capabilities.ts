@@ -53,6 +53,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_profile_columns", since: "v0.5.1", group: "data_understanding", mode: "all", description: "Return bounded column profiles with masking, type strategy, and enum signals." },
   { name: "ob_get_value_distribution", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Return bounded top-value distribution for one visible column." },
   { name: "ob_detect_time_columns", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Detect likely create, update, and business time columns from metadata." },
+  { name: "ob_detect_dimension_columns", since: "v1.0.0", group: "data_understanding", mode: "all", description: "Detect likely status, type, channel, region, flag, and category columns from metadata." },
   { name: "ob_prepare_query", since: "v1.0.0", group: "sql", mode: "all", description: "Prepare candidate tables, fields, SQL drafts, and safety previews from visible metadata." },
   { name: "ob_build_select", since: "v1.0.0", group: "sql", mode: "all", description: "Build parameterized read-only SELECT statements from validated structured input." },
   { name: "ob_lint_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk." },
