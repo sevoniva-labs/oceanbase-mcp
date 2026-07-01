@@ -169,7 +169,7 @@ npm run start:http
 | `ob_find_related_tables` | v0.5.0 | 查找外键关系和保守的命名推断表关系。 |
 | `ob_get_table_stats` | v0.5.0 | 返回表行数估算、对象计数和存储统计。 |
 | `ob_profile_table` | v1.0.0 | 返回受限样本内的表级画像、关键字段、空值概览和字段信号。 |
-| `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像，并对敏感值脱敏。 |
+| `ob_profile_columns` | v0.5.1 | 返回受限样本内的字段画像；v1.0.0 起包含类型策略和枚举候选信号。 |
 | `ob_prepare_query` | v1.0.0 | 基于可见元数据准备候选表、字段、SQL 草稿和安全预览，不执行查询。 |
 | `ob_build_select` | v1.0.0 | 用经过校验的结构化输入生成参数化只读 SELECT。 |
 | `ob_lint_sql` | v1.0.0 | 检查只读 SQL 的策略、方言、分页、排序、敏感字段和计划风险。 |

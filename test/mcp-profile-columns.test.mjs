@@ -25,11 +25,13 @@ test("ob_profile_columns returns bounded profiles and masks sensitive values", a
   assert.equal(profile.schema, "biz_test");
   assert.equal(profile.table, "orders");
   assert.equal(profile.rowLimit, 5);
-  assert.deepEqual(profile.columns.map((column) => column.column), ["id", "status"]);
+  assert.deepEqual(profile.columns.map((column) => column.column), ["id", "status", "created_at"]);
   assert(profile.warnings.some((warning) => /bounded sample/.test(warning)));
   assert(profile.warnings.some((warning) => /row estimate is 42/i.test(warning)));
 
   const id = profile.columns.find((column) => column.column === "id");
+  assert.equal(id.typeCategory, "numeric");
+  assert.equal(id.profileStrategy.numericRange, true);
   assert.equal(id.sampledRows, 5);
   assert.equal(id.nulls.count, 0);
   assert.equal(id.distinct.value, 5);
@@ -38,12 +40,20 @@ test("ob_profile_columns returns bounded profiles and masks sensitive values", a
   assert.deepEqual(id.sampleValues, [1, 2]);
 
   const status = profile.columns.find((column) => column.column === "status");
+  assert.equal(status.typeCategory, "string");
+  assert.equal(status.profileStrategy.dimensionSignals, true);
+  assert.equal(status.enumCandidate.likely, true);
   assert.equal(status.masked, true);
   assert.equal(status.nulls.count, 1);
   assert.equal(status.min, "***MASKED***");
   assert.equal(status.max, "***MASKED***");
   assert.deepEqual(status.topValues.map((item) => item.value), ["***MASKED***", "***MASKED***"]);
   assert.deepEqual(status.sampleValues, ["***MASKED***", "***MASKED***"]);
+
+  const createdAt = profile.columns.find((column) => column.column === "created_at");
+  assert.equal(createdAt.typeCategory, "temporal");
+  assert.equal(createdAt.profileStrategy.timeRange, true);
+  assert.deepEqual(createdAt.timeRange, { min: "2026-01-01 00:00:00", max: "2026-01-05 00:00:00" });
 });
 
 function runtime(config) {
@@ -63,7 +73,7 @@ async function query({ sql }) {
     return [[{ item_count: 1 }], []];
   }
   if (/COUNT\(\*\) AS item_count FROM information_schema\.columns/i.test(sql)) {
-    return [[{ item_count: 3 }], []];
+    return [[{ item_count: 4 }], []];
   }
   if (/COUNT\(\*\) AS item_count\s+FROM information_schema\.partitions/i.test(sql)) {
     return [[{ item_count: 0 }], []];
@@ -100,11 +110,20 @@ async function query({ sql }) {
       {
         table_schema: "biz_test",
         table_name: "orders",
+        column_name: "created_at",
+        column_type: "datetime",
+        data_type: "datetime",
+        is_nullable: "NO",
+        ordinal_position: 3
+      },
+      {
+        table_schema: "biz_test",
+        table_name: "orders",
         column_name: "secret_token",
         column_type: "varchar(128)",
         data_type: "varchar",
         is_nullable: "YES",
-        ordinal_position: 3
+        ordinal_position: 4
       }
     ], []];
   }
@@ -120,6 +139,9 @@ async function query({ sql }) {
     return [[{ distinct_count: column === "status" ? 2 : 5 }], []];
   }
   if (/MIN\(profile_value\)/i.test(sql)) {
+    if (column === "created_at") {
+      return [[{ min_value: "2026-01-01 00:00:00", max_value: "2026-01-05 00:00:00" }], []];
+    }
     return [[column === "status" ? { min_value: "NEW", max_value: "PAID" } : { min_value: 1, max_value: 5 }], []];
   }
   if (/GROUP BY profile_value/i.test(sql)) {
@@ -146,6 +168,9 @@ function profileColumn(sql) {
   }
   if (/`status` AS profile_value/i.test(sql)) {
     return "status";
+  }
+  if (/`created_at` AS profile_value/i.test(sql)) {
+    return "created_at";
   }
   if (/secret_token/i.test(sql)) {
     throw new Error("Denied column was queried");
