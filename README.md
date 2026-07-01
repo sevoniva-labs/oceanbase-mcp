@@ -110,6 +110,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_close_query_session` | v1.0.0 | 关闭内存查询上下文。 | Close an in-memory query session. |
 | `ob_query_next_page` | v1.0.0 | 基于查询上下文读取下一页，继续执行只读策略和行数限制。 | Run the next page for a query session with read-only policy and row limits enforced. |
 | `ob_query_prev_page` | v1.0.0 | 基于查询上下文读取上一页，继续执行只读策略和行数限制。 | Run the previous page for a query session with read-only policy and row limits enforced. |
+| `ob_query_refine` | v1.0.0 | 基于查询上下文生成细化后的只读 SELECT，不执行 SQL。 | Build refined read-only SELECT SQL from a query session without executing it. |
 | `ob_list_schemas` | v0.3.0 | 列出可见 schema/database。 | List visible schemas/databases. |
 | `ob_list_tables` | v0.3.0 | 列出可见表。 | List visible tables. |
 | `ob_describe_table` | v0.3.0 | 返回列元数据。 | Return column metadata. |

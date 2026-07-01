@@ -738,6 +738,96 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_query_refine",
+    {
+      title: "Refine Query Session SQL",
+      description: "Build a refined read-only SELECT from a query session using structured columns, filters, ordering, and pagination without executing it.",
+      inputSchema: {
+        ...profileInput,
+        sessionId: z.string().min(1),
+        columns: z.array(z.string().min(1)).min(1).max(100).optional(),
+        addColumns: z.array(z.string().min(1)).max(100).optional().default([]),
+        keepExistingColumns: z.boolean().optional().default(true),
+        filters: z.array(buildSelectFilterSchema).max(50).optional().default([]),
+        orderBy: z.array(buildSelectOrderBySchema).max(20).optional(),
+        pageSize: z.number().int().positive().max(10_000).optional(),
+        page: z.number().int().positive().max(100_000).optional(),
+        updateSession: z.boolean().optional().default(false)
+      }
+    },
+    async ({ profile, sessionId, columns, addColumns = [], keepExistingColumns = true, filters = [], orderBy, pageSize, page, updateSession = false }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      cleanupQuerySessions(querySessions);
+      const session = getQuerySessionForProfile(querySessions, sessionId, selected.profile);
+      if (!session.table) {
+        throw new Error(`Query session "${session.id}" does not have a table context to refine.`);
+      }
+      const refinedColumns = refinedQueryColumns(session, columns, addColumns, keepExistingColumns);
+      const rows = filterColumnMetadata(
+        await withQuerySlot(selected, () =>
+          describeTable(selected.pool, selected.config.compatibility, session.table!, session.schema, selected.config.queryTimeoutMs)
+        ),
+        selected.config.policy
+      );
+      const built = buildStructuredSelect(
+        selected.config,
+        session.schema,
+        session.table,
+        rows,
+        {
+          columns: refinedColumns,
+          filters,
+          orderBy: orderBy ?? sessionOrderByForStructuredInput(session),
+          pageSize: pageSize ?? session.pageSize,
+          page: page ?? session.page
+        }
+      );
+      const warnings = uniqueStrings([
+        ...built.warnings,
+        ...refineWarnings(session, filters, columns, addColumns)
+      ]);
+      if (updateSession) {
+        updateSessionFromRefinedSql(
+          session,
+          built.sql,
+          built.params,
+          built.columns.map((column) => column.name),
+          built.pagination.page,
+          built.pagination.pageSize,
+          built.orderBy,
+          warnings
+        );
+      }
+      return toLimitedResult(
+        {
+          sessionId: session.id,
+          mode: selected.config.compatibility,
+          schema: session.schema ?? null,
+          table: session.table,
+          sql: built.sql,
+          params: built.params,
+          paramHints: built.paramHints,
+          changes: refinedQueryChanges(session, refinedColumns, filters, orderBy, pageSize, page),
+          preview: {
+            policy: built.policy,
+            shape: queryShape(built.sql, selected.config.compatibility),
+            sensitiveColumnRisk: sensitiveSqlTerms(built.sql, selected.config),
+            warnings
+          },
+          columns: built.columns,
+          filters: built.filters,
+          orderBy: built.orderBy,
+          pagination: built.pagination,
+          sessionUpdated: updateSession,
+          session: updateSession ? publicQuerySession(session) : undefined,
+          executed: false
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_list_schemas",
     {
       title: "List Schemas",
@@ -4873,6 +4963,92 @@ function querySessionOrderBy(
     return undefined;
   }
   return sessionOrderBy;
+}
+
+function refinedQueryColumns(
+  session: QuerySessionState,
+  columns: string[] | undefined,
+  addColumns: string[],
+  keepExistingColumns: boolean
+): string[] | undefined {
+  if (columns && columns.length > 0) {
+    return uniqueStrings(columns.map((column) => column.trim()).filter(Boolean));
+  }
+  const base = keepExistingColumns ? session.columns : [];
+  const output = uniqueStrings([...base, ...addColumns].map((column) => column.trim()).filter(Boolean));
+  return output.length > 0 ? output : undefined;
+}
+
+function sessionOrderByForStructuredInput(session: QuerySessionState): BuildSelectOrderBy[] {
+  if (!session.orderBy || session.orderBy.includes(",") || /\s/.test(session.orderBy.trim())) {
+    return [];
+  }
+  return [{ column: session.orderBy }];
+}
+
+function refineWarnings(
+  session: QuerySessionState,
+  filters: BuildSelectFilter[],
+  columns: string[] | undefined,
+  addColumns: string[]
+): string[] {
+  const warnings: string[] = [];
+  if (session.sql && /\bwhere\b/i.test(session.sql) && filters.length === 0) {
+    warnings.push("Previous WHERE conditions were not parsed. Pass required filters explicitly when refining a session query.");
+  }
+  if (!columns && addColumns.length > 0) {
+    warnings.push("Added columns are selected from table metadata; verify they match the intended application projection.");
+  }
+  return warnings;
+}
+
+function refinedQueryChanges(
+  session: QuerySessionState,
+  columns: string[] | undefined,
+  filters: BuildSelectFilter[],
+  orderBy: BuildSelectOrderBy[] | undefined,
+  pageSize: number | undefined,
+  page: number | undefined
+): string[] {
+  const changes: string[] = [];
+  if (columns && columns.length > 0) {
+    const previous = session.columns.length > 0 ? session.columns.join(", ") : "default visible columns";
+    changes.push(`Projection changed from ${previous} to ${columns.join(", ")}.`);
+  }
+  if (filters.length > 0) {
+    changes.push(`Added ${filters.length} structured filter${filters.length === 1 ? "" : "s"}.`);
+  }
+  if (orderBy && orderBy.length > 0) {
+    changes.push(`Updated ordering to ${orderBy.map((item) => `${item.column}${item.direction ? ` ${item.direction}` : ""}`).join(", ")}.`);
+  }
+  if (pageSize || page) {
+    changes.push(`Updated pagination to page ${page ?? session.page}, pageSize ${pageSize ?? session.pageSize ?? "default"}.`);
+  }
+  return changes.length > 0 ? changes : ["Rebuilt SELECT from the current query session context."];
+}
+
+function updateSessionFromRefinedSql(
+  session: QuerySessionState,
+  sql: string,
+  params: SqlParam[],
+  columns: string[],
+  page: number,
+  pageSize: number,
+  orderBy: BuildSelectOrderBy[],
+  warnings: string[]
+) {
+  const now = new Date();
+  session.sql = sql;
+  session.params = params;
+  session.columns = columns;
+  session.page = page;
+  session.pageSize = pageSize;
+  if (orderBy.length === 1) {
+    session.orderBy = orderBy[0].column;
+  }
+  session.updatedAt = now.toISOString();
+  session.expiresAt = new Date(now.getTime() + QUERY_SESSION_TTL_MS).toISOString();
+  session.warnings = uniqueStrings([...session.warnings, ...warnings]);
 }
 
 function cleanOptionalString(value: string | undefined): string | undefined {
