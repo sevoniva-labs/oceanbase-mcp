@@ -119,6 +119,7 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |
 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | Return table row estimates, counts, and storage statistics. |
+| `ob_generate_query` | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | Generate Mermaid and JSON ER metadata from allowed tables. |
 | `ob_get_indexes` | Return table index metadata. |
 | `ob_get_constraints` | Return primary, unique, foreign-key, check, and not-null constraints. |
@@ -130,6 +131,10 @@ When binding to a non-local interface such as `0.0.0.0`, the server requires:
 `ob_list_objects` and `ob_get_object_metadata` support Oracle-compatible `view`, `sequence`, `synonym`, `procedure`, `function`, `package`, and `package_body` objects. Object names are filtered by the same schema and object-name policy used for table metadata.
 
 Procedure, function, and package source is returned as a bounded preview, not as an unrestricted dump. Source previews are capped and passed through sensitive-name redaction before output. Synonym metadata is returned only when the connected database account can see the synonym in `all_synonyms`.
+
+## Query Templates
+
+`ob_generate_query` produces read-only SQL templates for primary-key lookup, pagination, time-range filtering, aggregation, and related-table joins. It returns SQL text, parameter descriptions, notes, and policy checks; it does not execute the generated SQL.
 
 ## Resources
 

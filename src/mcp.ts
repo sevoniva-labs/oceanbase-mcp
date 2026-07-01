@@ -43,11 +43,13 @@ import {
   isSchemaAllowed,
   isDeniedColumn
 } from "./policy.js";
+import { generateQueryTemplates, type QueryTemplateScenario } from "./query-generation.js";
 import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "./runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, prepareReadOnlySql } from "./sql.js";
 
 const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
+const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -666,6 +668,73 @@ export function createObMcpServer(
         getTableStats(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(stats, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_generate_query",
+    {
+      title: "Generate Read-only Query Templates",
+      description: "Generate read-only SQL templates from policy-filtered table metadata without executing them.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        scenarios: z.array(queryScenarioSchema).optional(),
+        maxColumns: z.number().int().min(1).max(50).optional(),
+        maxRows: z.number().int().positive().optional()
+      }
+    },
+    async ({ profile, table, schema, scenarios, maxColumns, maxRows }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const columns = filterColumnMetadata(
+        await withQuerySlot(selected, () =>
+          describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        ),
+        selected.config.policy
+      );
+      const constraints = filterColumnMetadata(
+        await withQuerySlot(selected, () =>
+          listConstraints(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        ),
+        selected.config.policy
+      );
+      const relationshipResult = await withQuerySlot(selected, () =>
+        findRelatedTables(selected.pool, selected.config.compatibility, table, effectiveSchema, 1, 20, selected.config.queryTimeoutMs)
+      );
+      const relationships = relationshipResult.relations.filter((relation) =>
+        isRelationshipAllowed(relation, selected.config) &&
+        relation.sourceColumns.every((column) => !isDeniedColumn(column, selected.config.policy)) &&
+        relation.targetColumns.every((column) => !isDeniedColumn(column, selected.config.policy))
+      );
+      const generated = generateQueryTemplates({
+        mode: selected.config.compatibility,
+        schema: effectiveSchema,
+        table,
+        columns,
+        constraints,
+        relationships,
+        scenarios: scenarios as QueryTemplateScenario[] | undefined,
+        maxColumns: maxColumns ?? 12,
+        rowLimit: effectiveRowLimit(maxRows, selected.config)
+      });
+      const templates = generated.templates.map((template) => ({
+        ...template,
+        policy: explainGeneratedQuery(template.sql, template.parameters.length, selected.config)
+      }));
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: effectiveSchema,
+          table,
+          templates,
+          warnings: generated.warnings,
+          executed: false
+        },
+        selected.config
+      );
     }
   );
 
@@ -1307,6 +1376,20 @@ function runExplainCheck(name: string, check: () => void) {
   } catch (error) {
     return { name, ok: false, message: (error as Error).message };
   }
+}
+
+function explainGeneratedQuery(sql: string, paramCount: number, config: ObConfig) {
+  const params = Array.from({ length: paramCount }, () => null);
+  const sqlChecks = [
+    runExplainCheck("input_limits", () => assertSqlInputLimits(sql, params, config)),
+    runExplainCheck("read_only_sql", () => assertReadOnlySql(sql))
+  ];
+  const policy = explainSqlPolicy(sql, policyContext(config));
+  return {
+    allowed: sqlChecks.every((check) => check.ok) && policy.allowed,
+    checks: [...sqlChecks, ...policy.checks],
+    tableRefs: policy.tableRefs
+  };
 }
 
 function safeTool<Args>(

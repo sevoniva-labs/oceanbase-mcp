@@ -95,6 +95,7 @@ Use `OB_MCP_HOST=0.0.0.0` only behind TLS/reverse proxy or a trusted network bou
 | `ob_get_table_ddl` | Return native or structured table DDL metadata. |
 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
 | `ob_get_table_stats` | Return table row estimates, counts, and storage statistics. |
+| `ob_generate_query` | Generate read-only SQL templates from table metadata. |
 | `ob_generate_er_diagram` | Generate Mermaid and JSON ER metadata from allowed tables. |
 | `ob_get_indexes` | Return table index metadata. |
 | `ob_get_constraints` | Return primary, unique, foreign-key, check, and not-null constraints. |

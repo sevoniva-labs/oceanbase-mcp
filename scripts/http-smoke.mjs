@@ -138,6 +138,10 @@ try {
     name: "ob_get_table_stats",
     arguments: { schema: smokeSchema, table: smokeTable }
   });
+  const queryTemplates = await client.callTool({
+    name: "ob_generate_query",
+    arguments: { schema: smokeSchema, table: smokeTable, maxRows: 20 }
+  });
   const erDiagram = await client.callTool({
     name: "ob_generate_er_diagram",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, maxTables: 10 }
@@ -215,6 +219,7 @@ try {
   const tableDdlResult = parseToolJson(tableDdl);
   const relatedTablesResult = parseToolJson(relatedTables);
   const tableStatsResult = parseToolJson(tableStats);
+  const queryTemplateResult = parseToolJson(queryTemplates);
   const erDiagramResult = parseToolJson(erDiagram);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
@@ -237,6 +242,7 @@ try {
     "ob_get_table_ddl",
     "ob_find_related_tables",
     "ob_get_table_stats",
+    "ob_generate_query",
     "ob_generate_er_diagram",
     "ob_get_indexes",
     "ob_get_constraints",
@@ -264,6 +270,10 @@ try {
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
     relatedTablesOk: Array.isArray(relatedTablesResult.relations),
     tableStatsOk: Number.isInteger(tableStatsResult.counts?.columns),
+    queryTemplatesOk:
+      queryTemplateResult.executed === false &&
+      queryTemplateResult.templates.length > 0 &&
+      queryTemplateResult.templates.every((template) => template.policy?.allowed === true),
     erDiagramOk: typeof erDiagramResult.mermaid === "string" && erDiagramResult.mermaid.includes("erDiagram"),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
@@ -311,6 +321,7 @@ try {
     !output.tableDdlOk ||
     !output.relatedTablesOk ||
     !output.tableStatsOk ||
+    !output.queryTemplatesOk ||
     !output.erDiagramOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
