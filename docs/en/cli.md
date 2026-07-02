@@ -123,7 +123,7 @@ Common options:
 | `--chunk-size <n>` | Table count per chunk, up to 100. |
 | `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
 
-Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only the local HTML file and never modifies the database.
+Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only the local HTML file and never modifies the database. Chunked export bypasses the MCP inline HTML cap, but each chunk is still controlled by `OB_MAX_RESULT_BYTES`; for large schemas, reduce `--chunk-size` or raise `OB_MAX_RESULT_BYTES` deliberately.
 
 ## Metadata Change
 

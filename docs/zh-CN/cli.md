@@ -123,7 +123,7 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 | `--chunk-size <n>` | 每个分片的表数量，最大 100。 |
 | `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
 
-导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 HTML 文件，不修改数据库。
+导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 HTML 文件，不修改数据库。分片导出会绕开 MCP inline HTML 上限，但单个分片仍受 `OB_MAX_RESULT_BYTES` 控制；大库可以调小 `--chunk-size` 或适当调高 `OB_MAX_RESULT_BYTES`。
 
 ## 元数据变更
 

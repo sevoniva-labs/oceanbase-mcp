@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
-import { loadGatewayConfig } from "./config.js";
+import { loadGatewayConfig, type GatewayConfig } from "./config.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
 import { createObMcpServer } from "./mcp.js";
 
@@ -53,7 +53,9 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
       return 0;
     }
 
-    runtime = createGatewayRuntime(loadGatewayConfig());
+    const gatewayConfig = loadGatewayConfig();
+    allowLocalErHtmlExport(gatewayConfig);
+    runtime = createGatewayRuntime(gatewayConfig);
     server = createObMcpServer(runtime) as unknown as ToolExecutorServer;
     if (options.outputDir) {
       return await runExportErDirectory(server, options, cwd);
@@ -86,6 +88,15 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
     if (runtime) {
       await closeGatewayRuntime(runtime);
     }
+  }
+}
+
+function allowLocalErHtmlExport(config: GatewayConfig): void {
+  for (const profile of Object.values(config.profiles)) {
+    profile.erInlineHtmlMaxBytes = Math.max(
+      profile.erInlineHtmlMaxBytes,
+      Math.min(profile.maxResultBytes, 64 * 1024 * 1024)
+    );
   }
 }
 
