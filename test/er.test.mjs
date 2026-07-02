@@ -105,12 +105,18 @@ test("renderErHtml uses overview layout for large schemas", () => {
     evidence: [{ type: "foreign_key", detail: "Relationship comes from database metadata.", columns: ["parent_id"] }]
   }));
   const diagram = buildErDiagram("mysql", entities, relationships);
-  const html = renderErHtml(diagram, { format: "html-interactive", title: "Large ER" });
+  const html = renderErHtml(diagram, {
+    format: "html-interactive",
+    title: "Large ER",
+    warnings: ["Large schema warning", "Column limit warning"]
+  });
 
   assert.match(html, /8-column overview layout \/ key fields first/);
   assert.match(html, /Showing up to 6 fields per table/);
   assert.match(html, /data-layout-columns="8"/);
   assert.match(html, /id="er-filter-count"/);
+  assert.match(html, /Warnings \(2\)/);
+  assert.match(html, /warning-list/);
   assert.match(html, /Schema Overview/);
   assert.match(html, /Most Connected Tables/);
   assert.match(html, /scrollNodeIntoView/);

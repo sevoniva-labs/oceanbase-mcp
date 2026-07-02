@@ -606,7 +606,7 @@ function renderWarnings(warnings: string[]): string {
     return "";
   }
   return `<section class="warnings">
-    <h2>Warnings</h2>
+    <h2>Warnings (${warnings.length})</h2>
     <ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>
   </section>`;
 }
@@ -637,7 +637,8 @@ function renderExportShell(title: string, body: string): string {
     .stats div { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fafbfc; }
     .stats span { display: block; color: var(--muted); font-size: 12px; }
     .stats strong { display: block; margin-top: 4px; overflow-wrap: anywhere; }
-    .warnings { border-color: #f0cf84; background: var(--warn-bg); color: var(--warn); }
+    .warnings { border-color: #f0cf84; background: var(--warn-bg); color: var(--warn); max-height: 240px; overflow: auto; }
+    .warnings ul { margin-bottom: 0; }
   </style>
 </head>
 <body>

@@ -119,10 +119,12 @@ test("ER export directory pages link chunks tables and metadata", () => {
   assert.match(index, /chunks\/er-part-001\.html/);
   assert.match(index, /tables\/biz_test\.orders\.html/);
   assert.match(index, /Planned relationships/);
+  assert.match(index, /Warnings \(1\)/);
 
   const overview = renderErExportOverviewHtml(summary);
   assert.match(overview, /metadata-only/);
   assert.match(overview, /Chunk 1/);
+  assert.match(overview, /Warnings \(1\)/);
 
   const table = renderErExportTableHtml({
     table: "biz_test.orders",

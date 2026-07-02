@@ -249,6 +249,16 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
       border-radius: 8px;
       padding: 12px 14px;
       margin: 16px 16px 0;
+      max-height: 168px;
+      overflow: auto;
+    }
+    .warnings-title {
+      margin-bottom: 6px;
+      font-weight: 700;
+    }
+    .warning-list {
+      display: grid;
+      gap: 4px;
     }
     table {
       width: 100%;
@@ -345,7 +355,7 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
         <span class="pill">Generated: ${escapeHtml(generatedAt)}</span>
       </div>
     </header>
-    ${warnings.length > 0 ? `<section class="warnings">${warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</section>` : ""}
+    ${warnings.length > 0 ? `<section class="warnings" aria-label="Warnings"><div class="warnings-title">Warnings (${warnings.length})</div><div class="warning-list">${warnings.map((warning) => `<div>${escapeHtml(warning)}</div>`).join("")}</div></section>` : ""}
     <div class="workspace">
       <aside class="panel sidebar">
         <div class="panel-head">
