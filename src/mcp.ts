@@ -82,14 +82,14 @@ import {
   queryResultWarnings,
   renderMarkdownPreview,
   shouldMaskColumnValue
-} from "./query-output.js";
+} from "./query/output.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "./query-generation.js";
 import { selectRuntimeProfile, withMetadataCache, withQuerySlot, type GatewayRuntime } from "./runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "./sql.js";
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "./sql-scan.js";
 import { findSqlUsages } from "./sql-usage.js";
 
-export { effectiveRowLimit, shouldMaskColumnValue } from "./query-output.js";
+export { effectiveRowLimit, shouldMaskColumnValue } from "./query/output.js";
 
 const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const buildSelectFilterSchema = z.object({

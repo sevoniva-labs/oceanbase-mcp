@@ -1,6 +1,6 @@
-import type { ObConfig } from "./config.js";
-import { jsonByteLength, type QueryOutput } from "./format.js";
-import { isDeniedColumn, isMaskedColumn } from "./policy.js";
+import type { ObConfig } from "../config.js";
+import { jsonByteLength, type QueryOutput } from "../format.js";
+import { isDeniedColumn, isMaskedColumn } from "../policy.js";
 
 const SENSITIVE_SAMPLE_PATTERN =
   /(password|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|credential|session|cookie|email|phone|mobile|id[_-]?card|ssn)/i;
