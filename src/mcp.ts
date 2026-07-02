@@ -15,6 +15,7 @@ import {
   getObjectMetadata,
   getTableDdlMetadata,
   getTableStats,
+  loadErMetadataBatch,
   listConstraints,
   listIndexes,
   listObjects,
@@ -30,6 +31,7 @@ import {
   searchCatalog,
   verifyReadOnlyPermissions,
   type SchemaMapTable,
+  type TableRef,
   type TableRelationship,
   type SqlParam
 } from "./db.js";
@@ -5849,11 +5851,14 @@ async function buildErDiagramResult(
   const initialRefs = [...scope.values()];
   let discoveredRelationshipCount = 0;
   let filteredRelationshipCount = 0;
+  const relationshipKeys = new Set<string>();
   if (relationshipMode === "none") {
     skippedStages.push("relationships");
     warnings.push("Relationship discovery was skipped because relationshipMode=none.");
   } else {
-    for (const ref of initialRefs) {
+    let frontier: TableRef[] = initialRefs.map((ref) => ({ schema: ref.schema, table: ref.table }));
+    const visitedRelationshipRefs = new Set<string>();
+    for (let depth = 1; depth <= depthLimit && frontier.length > 0; depth += 1) {
       if (timeExpired()) {
         truncated = true;
         skippedStages.push("relationships_timeout");
@@ -5866,22 +5871,36 @@ async function buildErDiagramResult(
         warnings.push(`Relationship discovery stopped at maxRelationships=${maxRelationships}.`);
         break;
       }
-      const result = await stageQuery(() =>
-        findRelatedTables(
-          selected.pool,
-          selected.config.compatibility,
-          ref.table,
-          ref.schema,
-          depthLimit,
-          maxRelationships,
-          erTimeoutMs,
-          includeInferred
-        )
+      const batchRefs = frontier.filter((ref) => {
+        const key = tableRefKey(selected.config.compatibility, ref.schema, ref.table);
+        if (visitedRelationshipRefs.has(key)) {
+          return false;
+        }
+        visitedRelationshipRefs.add(key);
+        return true;
+      });
+      frontier = [];
+      if (batchRefs.length === 0) {
+        continue;
+      }
+      const batch = await withQuerySlot(selected, () =>
+        loadErMetadataBatch(selected.pool, selected.config.compatibility, batchRefs, {
+          relationshipMode,
+          maxRelationships: Math.max(1, maxRelationships - relationships.length),
+          timeoutMs: erTimeoutMs
+        })
       );
-      for (const relation of result.relations) {
+      queryCount += batch.queryCount;
+      warnings.push(...batch.warnings);
+      for (const relation of batch.relationships) {
         discoveredRelationshipCount += 1;
-        if (!isErRelationshipVisible(relation, selected.config, relationConfidenceFloor, includeInferred)) {
+        const scopedRelation = { ...relation, depth };
+        if (!isErRelationshipVisible(scopedRelation, selected.config, relationConfidenceFloor, includeInferred)) {
           filteredRelationshipCount += 1;
+          continue;
+        }
+        const key = erRelationshipKey(selected.config.compatibility, scopedRelation);
+        if (relationshipKeys.has(key)) {
           continue;
         }
         if (relationships.length >= maxRelationships) {
@@ -5889,20 +5908,33 @@ async function buildErDiagramResult(
           relationshipScopeLimited = true;
           break;
         }
-        relationships.push(relation);
-        const evidence = relation.evidence.map((item) => item.detail).slice(0, 5);
-        const addedSource = addErScopeTable(scope, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit, {
+        relationshipKeys.add(key);
+        relationships.push(scopedRelation);
+        const evidence = scopedRelation.evidence.map((item) => item.detail).slice(0, 5);
+        const sourceKey = tableRefKey(selected.config.compatibility, scopedRelation.sourceSchema, scopedRelation.sourceTable);
+        const targetKey = tableRefKey(selected.config.compatibility, scopedRelation.targetSchema, scopedRelation.targetTable);
+        const hadSource = scope.has(sourceKey);
+        const hadTarget = scope.has(targetKey);
+        const addedSource = addErScopeTable(scope, selected.config.compatibility, scopedRelation.sourceSchema, scopedRelation.sourceTable, tableLimit, {
           source: "relationship",
-          confidence: relation.confidence,
+          confidence: scopedRelation.confidence,
           evidence
         });
-        const addedTarget = addErScopeTable(scope, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit, {
+        const addedTarget = addErScopeTable(scope, selected.config.compatibility, scopedRelation.targetSchema, scopedRelation.targetTable, tableLimit, {
           source: "relationship",
-          confidence: relation.confidence,
+          confidence: scopedRelation.confidence,
           evidence
         });
         if (!addedSource || !addedTarget) {
           relationshipScopeLimited = true;
+        }
+        if (depth < depthLimit) {
+          if (addedSource && !hadSource) {
+            frontier.push({ schema: scopedRelation.sourceSchema, table: scopedRelation.sourceTable });
+          }
+          if (addedTarget && !hadTarget) {
+            frontier.push({ schema: scopedRelation.targetSchema, table: scopedRelation.targetTable });
+          }
         }
       }
       if (truncated) {
@@ -5913,49 +5945,35 @@ async function buildErDiagramResult(
 
   const entities: ErEntity[] = [];
   let loadedColumns = 0;
-  for (const ref of scope.values()) {
+  const finalRefs = [...scope.values()].map((ref) => ({ schema: ref.schema, table: ref.table }));
+  let columnsByTable = new Map<string, unknown[]>();
+  let constraintsByTable = new Map<string, unknown[]>();
+  let indexesByTable = new Map<string, unknown[]>();
+  if (finalRefs.length > 0) {
     if (timeExpired()) {
       truncated = true;
       skippedStages.push("entities_timeout");
       warnings.push(`ER table metadata loading stopped after OB_ER_TOTAL_TIMEOUT_MS=${selected.config.erTotalTimeoutMs}.`);
-      break;
+    } else {
+      const batch = await withQuerySlot(selected, () =>
+        loadErMetadataBatch(selected.pool, selected.config.compatibility, finalRefs, {
+          relationshipMode: "none",
+          maxRelationships: 1,
+          timeoutMs: erTimeoutMs
+        })
+      );
+      queryCount += batch.queryCount;
+      warnings.push(...batch.warnings);
+      columnsByTable = groupErMetadataRows(selected.config.compatibility, filterColumnMetadata(batch.columns, selected.config.policy));
+      constraintsByTable = groupErMetadataRows(selected.config.compatibility, filterColumnMetadata(batch.constraints, selected.config.policy));
+      indexesByTable = groupErMetadataRows(selected.config.compatibility, filterColumnMetadata(batch.indexes, selected.config.policy));
     }
-    const columns = filterColumnMetadata(
-      await stageQuery(() =>
-        describeTable(
-          selected.pool,
-          selected.config.compatibility,
-          ref.table,
-          ref.schema,
-          erTimeoutMs
-        )
-      ),
-      selected.config.policy
-    );
-    const constraints = filterColumnMetadata(
-      await stageQuery(() =>
-        listConstraints(
-          selected.pool,
-          selected.config.compatibility,
-          ref.table,
-          ref.schema,
-          erTimeoutMs
-        )
-      ),
-      selected.config.policy
-    );
-    const indexes = filterColumnMetadata(
-      await stageQuery(() =>
-        listIndexes(
-          selected.pool,
-          selected.config.compatibility,
-          ref.table,
-          ref.schema,
-          erTimeoutMs
-        )
-      ),
-      selected.config.policy
-    );
+  }
+  for (const ref of scope.values()) {
+    const key = tableRefKey(selected.config.compatibility, ref.schema, ref.table);
+    const columns = columnsByTable.get(key) ?? [];
+    const constraints = constraintsByTable.get(key) ?? [];
+    const indexes = indexesByTable.get(key) ?? [];
     loadedColumns += columns.length;
     const visibleColumns = columns.slice(0, selected.config.erMaxColumnsPerTable);
     if (columns.length > visibleColumns.length) {
@@ -6370,6 +6388,21 @@ function erIndexMap(mode: ObConfig["compatibility"], indexes: unknown[]): Map<st
   return output;
 }
 
+function groupErMetadataRows(mode: ObConfig["compatibility"], rows: unknown[]): Map<string, unknown[]> {
+  const output = new Map<string, unknown[]>();
+  for (const row of rows) {
+    const record = row as Record<string, unknown>;
+    const table = stringRecordValue(record, "table_name", "TABLE_NAME");
+    if (!table) {
+      continue;
+    }
+    const schema = stringRecordValue(record, "table_schema", "TABLE_SCHEMA", "owner", "OWNER", "table_owner", "TABLE_OWNER");
+    const key = tableRefKey(mode, schema, table);
+    output.set(key, [...(output.get(key) ?? []), row]);
+  }
+  return output;
+}
+
 function primaryKeyColumns(mode: ObConfig["compatibility"], constraints: unknown[]): string[] {
   return constraints
     .filter((row) => {
@@ -6403,19 +6436,23 @@ function dedupeRelationships(mode: ObConfig["compatibility"], relationships: Tab
   const output: TableRelationship[] = [];
   const keys = new Set<string>();
   for (const relationship of relationships) {
-    const key = [
-      relationship.relationType,
-      tableRefKey(mode, relationship.sourceSchema, relationship.sourceTable),
-      relationship.sourceColumns.map((column) => normalizeTableName(mode, column)).join(","),
-      tableRefKey(mode, relationship.targetSchema, relationship.targetTable),
-      relationship.targetColumns.map((column) => normalizeTableName(mode, column)).join(",")
-    ].join(":");
+    const key = erRelationshipKey(mode, relationship);
     if (!keys.has(key)) {
       keys.add(key);
       output.push(relationship);
     }
   }
   return output;
+}
+
+function erRelationshipKey(mode: ObConfig["compatibility"], relationship: TableRelationship): string {
+  return [
+    relationship.relationType,
+    tableRefKey(mode, relationship.sourceSchema, relationship.sourceTable),
+    relationship.sourceColumns.map((column) => normalizeTableName(mode, column)).join(","),
+    tableRefKey(mode, relationship.targetSchema, relationship.targetTable),
+    relationship.targetColumns.map((column) => normalizeTableName(mode, column)).join(",")
+  ].join(":");
 }
 
 function tableRefKey(mode: ObConfig["compatibility"], schema: string | undefined, table: string): string {

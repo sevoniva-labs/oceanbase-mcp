@@ -1,0 +1,100 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import { loadConfig } from "../dist/config.js";
+import { createObMcpServer } from "../dist/mcp.js";
+
+test("ob_generate_er_diagram loads large schema metadata in bounded batches", async () => {
+  const queryLog = [];
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "big_model",
+    OB_ER_MAX_TABLES: "250",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "4",
+    OB_MAX_RESULT_BYTES: "4000000"
+  });
+  const server = createObMcpServer({
+    defaultProfile: "default",
+    configs: { default: config },
+    pools: { default: { query: largeSchemaQuery(queryLog) } },
+    queryLimiters: { default: { active: 0, limit: 5 } }
+  });
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_er_diagram, {
+    schema: "big_model",
+    maxTables: 200,
+    relationshipMode: "none"
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.tableCount, 200);
+  assert.equal(payload.stats.loadedTables, 200);
+  assert.equal(payload.stats.queryCount, 4);
+  assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name, column_type/i.test(entry.sql)).length, 1);
+  assert.equal(queryLog.filter((entry) => /information_schema\.statistics/i.test(entry.sql)).length, 1);
+  assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 1);
+});
+
+function largeSchemaQuery(queryLog) {
+  return async ({ sql, values = [] }) => {
+    queryLog.push({ sql, values });
+    if (/FROM information_schema\.tables/i.test(sql)) {
+      return [Array.from({ length: 200 }, (_, index) => ({
+        table_schema: "big_model",
+        table_name: `t_${String(index + 1).padStart(3, "0")}`,
+        table_type: "BASE TABLE",
+        table_comment: `table ${index + 1}`
+      })), []];
+    }
+    if (/FROM information_schema\.statistics/i.test(sql)) {
+      return [tableNamesFromPairs(values).map((table) => ({
+        table_schema: "big_model",
+        table_name: table,
+        index_name: `idx_${table}_code`,
+        non_unique: 1,
+        seq_in_index: 1,
+        column_name: "code",
+        index_type: "BTREE"
+      })), []];
+    }
+    if (/constraints_with_not_null/i.test(sql)) {
+      return [tableNamesFromPairs(values).map((table) => ({
+        table_schema: "big_model",
+        table_name: table,
+        constraint_name: `pk_${table}`,
+        constraint_type: "PRIMARY KEY",
+        column_name: "id",
+        ordinal_position: 1
+      })), []];
+    }
+    if (/FROM information_schema\.columns/i.test(sql)) {
+      return [tableNamesFromPairs(values).flatMap((table) => [
+        column(table, "id", "bigint", "NO", 1),
+        column(table, "code", "varchar(64)", "NO", 2),
+        column(table, "status", "varchar(32)", "YES", 3),
+        column(table, "created_at", "datetime", "YES", 4),
+        column(table, "updated_at", "datetime", "YES", 5)
+      ]), []];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  };
+}
+
+function tableNamesFromPairs(values) {
+  const tables = [];
+  for (let index = 1; index < values.length; index += 2) {
+    tables.push(values[index]);
+  }
+  return tables;
+}
+
+function column(table, name, type, nullable, position) {
+  return {
+    table_schema: "big_model",
+    table_name: table,
+    column_name: name,
+    column_type: type,
+    data_type: type.replace(/\(.*/, ""),
+    is_nullable: nullable,
+    ordinal_position: position
+  };
+}
