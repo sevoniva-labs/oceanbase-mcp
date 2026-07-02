@@ -3820,10 +3820,19 @@ export function createObMcpServer(
           selected.config.queryTimeoutMs
         )
       );
-      const matches = dedupeRelationships(selected.config.compatibility, result.relations)
-        .filter((relation) => isErRelationshipVisible(relation, selected.config, confidenceFloor, includeInferred))
+      const visibleRelations = dedupeRelationships(selected.config.compatibility, result.relations)
+        .filter((relation) => isErRelationshipVisible(relation, selected.config, confidenceFloor, includeInferred));
+      const matches = visibleRelations
         .filter((relation) => relationshipConnectsTables(selected.config.compatibility, relation, sourceRef, targetRef))
         .map(entityRelationshipEvidence);
+      const paths = relationshipPaths(
+        selected.config.compatibility,
+        visibleRelations,
+        sourceRef,
+        targetRef,
+        depthLimit,
+        10
+      );
 
       return toLimitedResult(
         {
@@ -3833,10 +3842,12 @@ export function createObMcpServer(
           depth: depthLimit,
           minConfidence: confidenceFloor,
           includeInferred,
-          conclusion: matches.length > 0 ? "relationship_found" : "not_found",
+          conclusion: matches.length > 0 || paths.length > 0 ? "relationship_found" : "not_found",
           relationshipCount: matches.length,
+          pathCount: paths.length,
           relationships: matches,
-          warnings: matches.length > 0
+          paths,
+          warnings: matches.length > 0 || paths.length > 0
             ? []
             : ["No visible relationship was found between the two tables under the active policy and confidence settings."]
         },
@@ -5924,6 +5935,109 @@ function relationshipConnectsTables(
     sameTableRef(mode, source, right) &&
     sameTableRef(mode, target, left)
   );
+}
+
+function relationshipPaths(
+  mode: ObConfig["compatibility"],
+  relations: TableRelationship[],
+  source: { schema?: string; table: string },
+  target: { schema?: string; table: string },
+  maxDepth: number,
+  maxPaths: number
+): Array<{
+  tables: Array<{ schema?: string; table: string }>;
+  relationshipCount: number;
+  confidence: number;
+  relationships: Array<ReturnType<typeof entityRelationshipEvidence>>;
+  evidence: string[];
+}> {
+  const sourceKey = tableRefKey(mode, source.schema, source.table);
+  const targetKey = tableRefKey(mode, target.schema, target.table);
+  if (sourceKey === targetKey) {
+    return [];
+  }
+
+  const adjacency = new Map<string, Array<{ node: { schema?: string; table: string }; relation: TableRelationship }>>();
+  const addEdge = (
+    from: { schema?: string; table: string },
+    to: { schema?: string; table: string },
+    relation: TableRelationship
+  ) => {
+    const key = tableRefKey(mode, from.schema, from.table);
+    const next = { schema: to.schema, table: to.table };
+    adjacency.set(key, [...(adjacency.get(key) ?? []), { node: next, relation }]);
+  };
+
+  for (const relation of relations) {
+    const relationSource = { schema: relation.sourceSchema, table: relation.sourceTable };
+    const relationTarget = { schema: relation.targetSchema, table: relation.targetTable };
+    addEdge(relationSource, relationTarget, relation);
+    addEdge(relationTarget, relationSource, relation);
+  }
+
+  const depthLimit = Math.max(1, Math.min(maxDepth, 3));
+  const pathLimit = Math.max(1, maxPaths);
+  const paths: Array<{
+    tables: Array<{ schema?: string; table: string }>;
+    relationshipCount: number;
+    confidence: number;
+    relationships: Array<ReturnType<typeof entityRelationshipEvidence>>;
+    evidence: string[];
+  }> = [];
+  const emitted = new Set<string>();
+  const queue: Array<{
+    key: string;
+    tables: Array<{ schema?: string; table: string }>;
+    relations: TableRelationship[];
+    visited: Set<string>;
+  }> = [{
+    key: sourceKey,
+    tables: [{ schema: source.schema, table: source.table }],
+    relations: [],
+    visited: new Set([sourceKey])
+  }];
+
+  while (queue.length > 0 && paths.length < pathLimit) {
+    const current = queue.shift()!;
+    if (current.relations.length >= depthLimit) {
+      continue;
+    }
+    for (const edge of adjacency.get(current.key) ?? []) {
+      const nextKey = tableRefKey(mode, edge.node.schema, edge.node.table);
+      if (current.visited.has(nextKey)) {
+        continue;
+      }
+      const nextTables = [...current.tables, edge.node];
+      const nextRelations = [...current.relations, edge.relation];
+      if (nextKey === targetKey) {
+        const pathKey = nextTables.map((item) => tableRefKey(mode, item.schema, item.table)).join(">");
+        if (!emitted.has(pathKey)) {
+          emitted.add(pathKey);
+          paths.push({
+            tables: nextTables,
+            relationshipCount: nextRelations.length,
+            confidence: Number(Math.min(...nextRelations.map((relation) => relation.confidence)).toFixed(3)),
+            relationships: nextRelations.map(entityRelationshipEvidence),
+            evidence: uniqueStrings(
+              nextRelations.flatMap((relation) => relation.evidence.map((item) => item.detail))
+            ).slice(0, 20)
+          });
+          if (paths.length >= pathLimit) {
+            break;
+          }
+        }
+        continue;
+      }
+      queue.push({
+        key: nextKey,
+        tables: nextTables,
+        relations: nextRelations,
+        visited: new Set([...current.visited, nextKey])
+      });
+    }
+  }
+
+  return paths;
 }
 
 function sameTableRef(
