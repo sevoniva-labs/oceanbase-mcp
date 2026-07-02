@@ -825,20 +825,20 @@ function renderErMapScript(overviewHtml: string): string {
     map.dataset.visibleTables = String(elements.nodes.length);
     map.dataset.visibleRelationships = String(elements.edges.length);
     visibleRelationshipCount.textContent = String(elements.edges.length);
-    const largeGraph = elements.nodes.length > 80;
+    const readableGraph = elements.nodes.length > 12;
     cy.layout({
       name: "dagre",
       rankDir: "LR",
       nodeSep: 70,
       rankSep: 120,
       edgeSep: 24,
-      fit: !largeGraph,
+      fit: !readableGraph,
       padding: 40
     }).run();
-    if (largeGraph) {
+    if (readableGraph) {
       const firstNode = cy.nodes()[0];
       if (firstNode) {
-        cy.zoom(0.65);
+        cy.zoom(elements.nodes.length > 80 ? 0.65 : 0.9);
         cy.center(firstNode);
       }
     }

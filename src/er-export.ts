@@ -702,7 +702,7 @@ export function renderErExportIndexHtml(summary: ErDirectorySummary): string {
       <p>${escapeHtml(summary.schema ? `Schema: ${summary.schema}` : "Local ER export")}</p>
     </section>
     ${renderSummaryStats(summary)}
-    ${renderWarnings(summary.warnings)}
+    ${renderExportDiagnosticsPanel(summary)}
     <section>
       <h2>Files</h2>
       <ul>
@@ -831,7 +831,7 @@ export function renderErExportOverviewHtml(summary: ErDirectorySummary, relation
       <p>Open a cluster for the diagram, or use table pages to jump from a table name to its cluster.</p>
     </section>
     ${renderSummaryStats(summary)}
-    ${renderWarnings(summary.warnings)}
+    ${renderExportDiagnosticsPanel(summary)}
     <section>
       <h2>Cluster Navigation</h2>
       <ul>${chunkList}</ul>
@@ -897,13 +897,30 @@ function renderSummaryStats(summary: ErDirectorySummary): string {
   </section>`;
 }
 
-function renderWarnings(warnings: string[]): string {
-  if (warnings.length === 0) {
-    return "";
-  }
-  return `<section class="warnings">
-    <h2>Warnings (${warnings.length})</h2>
-    <ul>${warnings.map((warning) => `<li>${escapeHtml(warning)}</li>`).join("")}</ul>
+function renderExportDiagnosticsPanel(summary: ErDirectorySummary): string {
+  const diagnostics = summary.warnings.map((warning) => ({
+    level: "warning",
+    message: warning
+  }));
+  const status = erExportStatus(diagnostics);
+  const statusText = status === "OK"
+    ? "Export completed without diagnostics."
+    : status === "Needs Scope"
+      ? "Export completed with scope or coverage notes."
+      : "Export completed with partial diagnostics.";
+  const details = diagnostics.length === 0
+    ? ""
+    : `<details class="diagnostics-details">
+        <summary>Diagnostics (${diagnostics.length})</summary>
+        <ul>${diagnostics.map((diagnostic) => `<li>${escapeHtml(diagnostic.message)}</li>`).join("")}</ul>
+      </details>`;
+  return `<section class="diagnostics-panel">
+    <div class="status-card status-${status.toLowerCase().replace(/\s+/g, "-")}">
+      <span>Status</span>
+      <strong>${escapeHtml(status)}</strong>
+      <p>${escapeHtml(statusText)}</p>
+    </div>
+    ${details}
   </section>`;
 }
 
@@ -915,7 +932,7 @@ function renderExportShell(title: string, body: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
   <style>
-    :root { color-scheme: light; --bg: #f5f7f9; --panel: #fff; --text: #16202a; --muted: #607080; --line: #d8e0e8; --accent: #0f766e; --warn: #8a5a00; --warn-bg: #fff6db; }
+    :root { color-scheme: light; --bg: #f5f7f9; --panel: #fff; --text: #16202a; --muted: #607080; --line: #d8e0e8; --accent: #0f766e; --ok: #11613a; --ok-bg: #edf8f3; --warn: #8a5a00; --warn-bg: #fff6db; }
     * { box-sizing: border-box; }
     body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     main { max-width: 1180px; margin: 0 auto; padding: 24px; }
@@ -933,8 +950,16 @@ function renderExportShell(title: string, body: string): string {
     .stats div { border: 1px solid var(--line); border-radius: 6px; padding: 10px; background: #fafbfc; }
     .stats span { display: block; color: var(--muted); font-size: 12px; }
     .stats strong { display: block; margin-top: 4px; overflow-wrap: anywhere; }
-    .warnings { border-color: #f0cf84; background: var(--warn-bg); color: var(--warn); max-height: 240px; overflow: auto; }
-    .warnings ul { margin-bottom: 0; }
+    .diagnostics-panel { display: grid; gap: 12px; }
+    .status-card { border: 1px solid var(--line); border-radius: 6px; padding: 12px; background: #fafbfc; }
+    .status-card span { display: block; color: var(--muted); font-size: 12px; }
+    .status-card strong { display: block; margin-top: 2px; font-size: 18px; }
+    .status-card p { margin-top: 4px; }
+    .status-ok { border-color: #b9e2cf; background: var(--ok-bg); color: var(--ok); }
+    .status-needs-scope, .status-partial { border-color: #f0cf84; background: var(--warn-bg); color: var(--warn); }
+    .diagnostics-details { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: #fafbfc; }
+    .diagnostics-details summary { cursor: pointer; font-weight: 700; }
+    .diagnostics-details ul { margin-bottom: 0; }
   </style>
 </head>
 <body>

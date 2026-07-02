@@ -139,7 +139,9 @@ test("ER export directory pages link chunks tables and metadata", () => {
   assert.match(index, /clusters\/cluster-001\.html/);
   assert.match(index, /tables\/biz_test\.orders\.html/);
   assert.match(index, /Planned relationships/);
-  assert.match(index, /Warnings \(1\)/);
+  assert.match(index, /Status/);
+  assert.match(index, /Needs Scope/);
+  assert.match(index, /Diagnostics \(1\)/);
 
   const overview = renderErExportOverviewHtml(summary, [
     {
@@ -156,7 +158,7 @@ test("ER export directory pages link chunks tables and metadata", () => {
   assert.match(overview, /metadata-only/);
   assert.match(overview, /Cluster 1/);
   assert.match(overview, /Cross-Cluster Relationships/);
-  assert.match(overview, /Warnings \(1\)/);
+  assert.match(overview, /Diagnostics \(1\)/);
 
   const table = renderErExportTableHtml({
     table: "biz_test.orders",
