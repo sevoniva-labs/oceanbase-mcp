@@ -94,6 +94,7 @@ test("ob_generate_er_html skips schema-level inline rendering for large scopes",
   assert.equal("html" in payload, false);
   assert.match(payload.exportCommand, /ob-mcp export-er/);
   assert(payload.warnings.some((warning) => /Schema-level ER HTML rendering was skipped/.test(warning)));
+  assert(payload.warnings.some((warning) => /cluster export/.test(warning)));
 });
 
 test("ob_plan_er_export returns chunked local export commands", async () => {

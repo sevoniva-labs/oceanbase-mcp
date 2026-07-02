@@ -127,6 +127,114 @@ test("renderErHtml uses interactive graph map for large schemas", () => {
   assert.doesNotMatch(html, /<script[^>]+src=/i);
 });
 
+test("renderErHtml keeps Oracle and non-ASCII identifiers out of DOM ids", () => {
+  const diagram = buildErDiagram(
+    "oracle",
+    [
+      {
+        schema: "APP",
+        table: "订单-账户",
+        columns: [
+          { name: "ID", type: "NUMBER", primaryKey: true, nullable: false },
+          { name: "用户_ID", type: "NUMBER", nullable: false, indexed: true, indexNames: ["IDX_ORDER_USER"] },
+          { name: "备注<字段>", type: "VARCHAR2(200)", nullable: true, comment: "中文备注" }
+        ],
+        comment: "订单账户"
+      },
+      {
+        schema: "APP",
+        table: "USERS",
+        columns: [
+          { name: "ID", type: "NUMBER", primaryKey: true, nullable: false },
+          { name: "NAME", type: "VARCHAR2(64)", nullable: true }
+        ]
+      },
+      {
+        schema: "APP",
+        table: "PAYMENT$LOG",
+        columns: [
+          { name: "ID", type: "NUMBER", primaryKey: true, nullable: false },
+          { name: "ORDER_ID", type: "NUMBER", nullable: false }
+        ]
+      },
+      {
+        schema: "APP",
+        table: "AUDIT.LOG",
+        columns: [
+          { name: "ID", type: "NUMBER", primaryKey: true, nullable: false },
+          { name: "ORDER_ID", type: "NUMBER", nullable: true }
+        ]
+      },
+      {
+        schema: "APP",
+        table: "REF_STATUS",
+        columns: [
+          { name: "STATUS", type: "VARCHAR2(32)", primaryKey: true, nullable: false }
+        ]
+      }
+    ],
+    [
+      {
+        relationType: "foreign_key",
+        direction: "outbound",
+        confidence: 1,
+        sourceSchema: "APP",
+        sourceTable: "订单-账户",
+        sourceColumns: ["用户_ID"],
+        targetSchema: "APP",
+        targetTable: "USERS",
+        targetColumns: ["ID"],
+        constraintName: "FK_ORDER_USER",
+        depth: 1,
+        evidence: [{ type: "foreign_key", detail: "Oracle foreign-key metadata.", columns: ["用户_ID"] }]
+      },
+      {
+        relationType: "name_inference",
+        direction: "outbound",
+        confidence: 0.72,
+        sourceSchema: "APP",
+        sourceTable: "PAYMENT$LOG",
+        sourceColumns: ["ORDER_ID"],
+        targetSchema: "APP",
+        targetTable: "订单-账户",
+        targetColumns: ["ID"],
+        depth: 1,
+        evidence: [{ type: "naming", detail: "ORDER_ID matches the order primary key.", columns: ["ORDER_ID"] }]
+      },
+      {
+        relationType: "name_inference",
+        direction: "outbound",
+        confidence: 0.42,
+        sourceSchema: "APP",
+        sourceTable: "AUDIT.LOG",
+        sourceColumns: ["ORDER_ID"],
+        targetSchema: "APP",
+        targetTable: "订单-账户",
+        targetColumns: ["ID"],
+        depth: 1,
+        evidence: [{ type: "naming", detail: "Weak ORDER_ID naming signal.", columns: ["ORDER_ID"] }]
+      }
+    ]
+  );
+  const html = renderErHtml(diagram, { format: "html-interactive", title: "Oracle ER" });
+  const graph = JSON.parse(html.match(/<script type="application\/json" id="er-graph-data">([\s\S]*?)<\/script>/)[1]);
+
+  assert.equal(graph.mode, "oracle");
+  assert.equal(graph.summary.tableCount, 5);
+  assert.equal(graph.summary.confirmedRelationships, 1);
+  assert.equal(graph.summary.probableRelationships, 1);
+  assert.equal(graph.summary.possibleRelationships, 1);
+  assert.equal(graph.summary.hiddenRelationships, 1);
+  assert(graph.nodes.every((node) => /^t_[a-f0-9]{14}$/.test(node.id)));
+  assert(graph.edges.every((edge) => /^r_[a-f0-9]{14}$/.test(edge.id)));
+  assert(graph.nodes.some((node) => node.label === "APP.订单-账户"));
+  assert(graph.nodes.some((node) => node.label === "APP.AUDIT.LOG"));
+  assert(graph.edges.some((edge) => edge.relationClass === "probable" && edge.visibleByDefault === true));
+  assert(graph.edges.some((edge) => edge.relationClass === "possible" && edge.visibleByDefault === false));
+  assert(graph.nodes.some((node) => node.comments.columns.some((column) => column.column === "备注<字段>" && column.comment === "中文备注")));
+  assert.doesNotMatch(html, /id="APP\.订单-账户"/);
+});
+
 test("ER document renderers output Markdown PlantUML and DOT", () => {
   const diagram = buildErDiagram(
     "mysql",
