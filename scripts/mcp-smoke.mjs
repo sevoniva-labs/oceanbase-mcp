@@ -204,6 +204,10 @@ try {
     name: "ob_generate_er_html",
     arguments: { schema: smokeSchema, table: smokeTable, format: "html-static", includeInferred: false, maxTables: 5 }
   });
+  const erPlan = await send("tools/call", {
+    name: "ob_plan_er_export",
+    arguments: { schema: smokeSchema, table: smokeTable, format: "html-interactive", includeInferred: false, maxTables: 5, chunkSize: 2, outputDir: "tmp/er-smoke" }
+  });
   const databaseDictionary = await send("tools/call", {
     name: "ob_get_database_dictionary",
     arguments: { schema: smokeSchema, tablePattern: smokeTable, format: "json", maxTables: 5, maxColumnsPerTable: 5 }
@@ -336,6 +340,7 @@ try {
   const querySessionReadResult = parseToolJson(querySessionRead);
   const querySessionCloseResult = parseToolJson(querySessionClose);
   const erHtmlResult = parseToolJson(erHtml);
+  const erPlanResult = parseToolJson(erPlan);
   const databaseDictionaryResult = parseToolJson(databaseDictionary);
   const sqlUsageResult = parseToolJson(sqlUsages);
   const changeSqlImpactResult = parseToolJson(changeSqlImpact);
@@ -371,6 +376,7 @@ try {
     "ob_profile_columns",
     "ob_generate_query",
     "ob_generate_er_diagram",
+    "ob_plan_er_export",
     "ob_get_schema_map",
     "ob_prepare_query",
     "ob_build_select",
@@ -466,6 +472,10 @@ try {
       erHtmlResult.format === "html-static" &&
       typeof erHtmlResult.html === "string" &&
       erHtmlResult.html.includes("<!doctype html>"),
+    erPlanOk:
+      erPlanResult.format === "html-interactive" &&
+      erPlanResult.chunkCount >= 1 &&
+      erPlanResult.chunks.every((chunk) => chunk.command.includes("ob-mcp export-er")),
     databaseDictionaryOk:
       databaseDictionaryResult.format === "json" &&
       databaseDictionaryResult.dictionary?.tables?.some((table) => table.schema === smokeSchema && table.table === smokeTable),
@@ -553,6 +563,7 @@ try {
     !output.sqlLintOk ||
     !output.querySessionOk ||
     !output.erHtmlOk ||
+    !output.erPlanOk ||
     !output.databaseDictionaryOk ||
     !output.metadataSnapshotOk ||
     !output.metadataDiffOk ||

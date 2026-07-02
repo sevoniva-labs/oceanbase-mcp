@@ -169,6 +169,10 @@ try {
     name: "ob_generate_er_diagram",
     arguments: { schema: smokeSchema, table: smokeTable, depth: 1, maxTables: 10 }
   });
+  const erPlan = await client.callTool({
+    name: "ob_plan_er_export",
+    arguments: { schema: smokeSchema, table: smokeTable, format: "html-interactive", includeInferred: false, maxTables: 5, chunkSize: 2, outputDir: "tmp/er-smoke" }
+  });
   const indexes = await client.callTool({
     name: "ob_get_indexes",
     arguments: { schema: smokeSchema, table: smokeTable }
@@ -249,6 +253,7 @@ try {
   const columnProfileResult = parseToolJson(columnProfile);
   const queryTemplateResult = parseToolJson(queryTemplates);
   const erDiagramResult = parseToolJson(erDiagram);
+  const erPlanResult = parseToolJson(erPlan);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
   const partitionRows = parseToolJson(partitions);
@@ -279,6 +284,7 @@ try {
     "ob_profile_columns",
     "ob_generate_query",
     "ob_generate_er_diagram",
+    "ob_plan_er_export",
     "ob_get_indexes",
     "ob_get_constraints",
     "ob_get_partitions",
@@ -333,6 +339,10 @@ try {
       queryTemplateResult.templates.length > 0 &&
       queryTemplateResult.templates.every((template) => template.policy?.allowed === true),
     erDiagramOk: typeof erDiagramResult.mermaid === "string" && erDiagramResult.mermaid.includes("erDiagram"),
+    erPlanOk:
+      erPlanResult.format === "html-interactive" &&
+      erPlanResult.chunkCount >= 1 &&
+      erPlanResult.chunks.every((chunk) => chunk.command.includes("ob-mcp export-er")),
     indexRows: indexRows.length,
     constraintRows: constraintRows.length,
     partitionRows: partitionRows.length,
@@ -388,6 +398,7 @@ try {
     !output.columnProfileOk ||
     !output.queryTemplatesOk ||
     !output.erDiagramOk ||
+    !output.erPlanOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
     !output.sampleMaskOk ||
