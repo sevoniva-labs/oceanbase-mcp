@@ -72,7 +72,7 @@ test("renderErHtml supports compact and detailed formats", () => {
   assert.match(detailed, /PRIMARY/);
 });
 
-test("renderErHtml uses overview layout for large schemas", () => {
+test("renderErHtml uses interactive graph map for large schemas", () => {
   const entities = Array.from({ length: 220 }, (_, index) => {
     const suffix = String(index + 1).padStart(3, "0");
     return {
@@ -111,15 +111,20 @@ test("renderErHtml uses overview layout for large schemas", () => {
     warnings: ["Large schema warning", "Column limit warning"]
   });
 
-  assert.match(html, /8-column overview layout \/ key fields first/);
-  assert.match(html, /Showing up to 6 fields per table/);
-  assert.match(html, /data-layout-columns="8"/);
-  assert.match(html, /id="er-filter-count"/);
-  assert.match(html, /Warnings \(2\)/);
-  assert.match(html, /warning-list/);
-  assert.match(html, /Schema Overview/);
-  assert.match(html, /Most Connected Tables/);
-  assert.match(html, /scrollNodeIntoView/);
+  assert.ok(html.includes('id="er-map" aria-label="OceanBase ER graph"'));
+  assert.ok(html.includes('id="er-graph-data"'));
+  assert.ok(html.includes('data-relation-filter="confirmed" checked'));
+  assert.ok(html.includes('data-relation-filter="probable" checked'));
+  assert.ok(html.includes('data-relation-filter="possible"'));
+  assert.ok(html.includes("Status: OK"));
+  assert.ok(html.includes("Tables: 220"));
+  assert.ok(html.includes('Visible relationships: <span id="er-visible-relationships">219</span>'));
+  assert.ok(html.includes("Schema Overview"));
+  assert.ok(html.includes("Diagnostics (2)"));
+  assert.ok(html.includes("Large schema warning"));
+  assert.ok(html.includes('"relationClass":"confirmed"'));
+  assert.ok(html.includes("cytoscape("));
+  assert.doesNotMatch(html, /<script[^>]+src=/i);
 });
 
 test("ER document renderers output Markdown PlantUML and DOT", () => {

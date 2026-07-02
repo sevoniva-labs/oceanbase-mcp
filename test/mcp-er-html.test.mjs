@@ -7,7 +7,8 @@ import { createObMcpServer } from "../dist/mcp.js";
 test("ob_generate_er_html returns self-contained ER HTML from visible metadata", async () => {
   const config = loadConfig({
     OB_ALLOWED_SCHEMAS: "biz_test",
-    OB_DENIED_COLUMNS: "secret_token"
+    OB_DENIED_COLUMNS: "secret_token",
+    OB_ER_INLINE_HTML_MAX_BYTES: "1048576"
   });
   const server = createObMcpServer(runtime(config));
 
@@ -24,12 +25,15 @@ test("ob_generate_er_html returns self-contained ER HTML from visible metadata",
   assert.equal(payload.format, "html-interactive");
   assert.equal(payload.tableCount, 2);
   assert.equal(payload.relationshipCount, 1);
-  assert.match(payload.html, /<svg role="img" aria-label="OceanBase ER diagram"/);
+  assert.equal(payload.inline, true);
+  assert.match(payload.html, /id="er-map" aria-label="OceanBase ER graph"/);
+  assert.match(payload.html, /id="er-graph-data"/);
   assert.match(payload.html, /Order ER/);
   assert.match(payload.html, /fk_orders_user/);
   assert.match(payload.html, /id="er-search"/);
-  assert.match(payload.html, /Zoom in/);
-  assert.match(payload.html, /Mermaid Source/);
+  assert.match(payload.html, /data-relation-filter="confirmed" checked/);
+  assert.match(payload.html, /Schema Overview/);
+  assert.match(payload.html, /cytoscape\(/);
   assert.doesNotMatch(payload.html, /<link/i);
   assert.doesNotMatch(payload.html, /src=["']/i);
   assert.doesNotMatch(payload.html, /secret_token/);
