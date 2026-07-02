@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本，例如 v1.1.0"
+        description: "发布版本，例如 v1.1.1"
         required: true
         type: string
       prerelease:
@@ -41,7 +41,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必须是 vX.Y.Z，例如 v1.1.0" >&2
+            echo "版本必须是 vX.Y.Z，例如 v1.1.1" >&2
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -233,18 +233,16 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release adds metadata change analysis for local OceanBase development. It helps developers capture metadata snapshots, compare iteration changes, map changes to project SQL usage, and generate review reports. The server remains strictly read-only.
+          This release improves large-schema ER stability for local OceanBase development. It adds bounded ER defaults, batched metadata loading, chunked local ER export planning, and a more usable ER HTML browser. The server remains strictly read-only.
 
           ## 新增能力
 
-          - 元数据快照：`ob_capture_metadata_snapshot` 和 `ob-mcp metadata snapshot` 采集表、字段、索引、约束、分区、关系、统计信息、注释和 Oracle 对象元数据。
-          - 快照对比：`ob_compare_metadata_snapshots` 和 `ob-mcp metadata diff` 输出结构化 diff、风险等级和 Markdown 摘要。
-          - SQL 使用索引：`ob-mcp scan-sql --index-out` 为项目 SQL 生成静态索引。
-          - SQL 使用查询：`ob_find_sql_usages` 按表、字段或业务词查找项目 SQL 引用。
-          - 影响分析：`ob_analyze_metadata_impact` 和 `ob_analyze_change_sql_impact` 汇总受影响对象、SQL、文件、关系和风险证据。
-          - 变更报告：`ob_generate_metadata_change_report` 和 `ob-mcp metadata report` 输出 Markdown 或简版 HTML。
-          - 关系路径：`ob_explain_relationship` 增加有限深度 relationship path，显示路径表、关系数、confidence 和 evidence。
-          - OpenCode 工作流：Agent/Skill 增加“迭代开始快照 -> SQL index -> 迭代结束快照 -> diff -> impact -> report”的流程。
+          - 大库 ER 默认收敛：默认使用真实 FK/约束关系，命名推断需显式开启。
+          - 批量元数据加载：ER 生成批量读取 columns、indexes、constraints 和关系，减少逐表查询放大。
+          - `ob_plan_er_export`：为大 schema 返回分片导出计划、chunk 命令、stats 和 warnings，不返回超大 inline HTML。
+          - CLI 分片导出：`ob-mcp export-er --out-dir` 写出 `index.html`、`overview.html`、`chunks/`、`tables/` 和 `metadata/`。
+          - ER HTML 浏览器：大图使用多列概览布局、关键字段优先、表筛选计数、schema 概览和选中表定位。
+          - OpenCode 工作流：大库先规划，再分片；默认 `relationshipMode=foreign_key`，不直接请求全库 inline ER。
 
           ## Delivery Assets
 
@@ -270,16 +268,17 @@ jobs:
 
           ## 验证要求
 
-          - OceanBase MySQL 模式 smoke test 覆盖核心 1.1 能力。
-          - OceanBase Oracle 模式 smoke test 覆盖核心 1.1 能力。
+          - OceanBase MySQL 模式 smoke test 覆盖 ER plan、默认 FK 关系、HTML 降级和分片导出。
+          - OceanBase Oracle 模式 smoke test 覆盖 ER plan、默认 FK 关系、HTML 降级和分片导出。
+          - 本地 MySQL 220 表和 Oracle 220 表大 schema 验证通过。
           - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
 
           ## 生产注意事项
 
           - 建议数据库账号仍使用只读权限；MCP 会继续拦截写入、DDL、DCL、过程调用和序列 `NEXTVAL`。
-          - 元数据变更报告只输出风险、证据和评审建议，不输出可直接执行的 DDL。
-          - 大 schema 建议使用 schema、tablePattern 和 max 限制控制采集范围。
-          - SQL 使用索引来自静态扫描。动态 SQL 会标记为不确定，需要人工复核。
+          - 大 schema 先使用 `ob_plan_er_export`，再用 CLI 分片导出。
+          - `relationshipMode=inferred` 只用于明确的小范围关系推断，必须查看 confidence 和 evidence。
+          - 大图单个 chunk 仍受 `OB_MAX_RESULT_BYTES` 控制；必要时调小 `--chunk-size`。
           - OpenCode 使用前建议先加载随包提供的 Agent/Skill 配置。
           EOF
 
