@@ -13,7 +13,7 @@ test("ob_get_table_context returns policy-filtered metadata and masked sample ro
   const pool = {
     async query({ sql }) {
       if (/SHOW CREATE TABLE/i.test(sql)) {
-        return [[{ "Create Table": "CREATE TABLE `biz_test`.`orders` (`id` bigint NOT NULL, `status` varchar(32), PRIMARY KEY (`id`))" }], []];
+        return [[{ "Create Table": "CREATE TABLE `biz_test`.`orders` (`id` bigint NOT NULL, `status` varchar(32), `payload` longtext, PRIMARY KEY (`id`))" }], []];
       }
       if (/COUNT\(DISTINCT index_name\)/i.test(sql)) {
         return [[{ item_count: 1 }], []];
@@ -22,7 +22,7 @@ test("ob_get_table_context returns policy-filtered metadata and masked sample ro
         return [[{ item_count: 2 }], []];
       }
       if (/COUNT\(\*\) AS item_count FROM information_schema\.columns/i.test(sql)) {
-        return [[{ item_count: 2 }], []];
+        return [[{ item_count: 3 }], []];
       }
       if (/COUNT\(\*\) AS item_count\s+FROM information_schema\.partitions/i.test(sql)) {
         return [[{ item_count: 0 }], []];
@@ -79,6 +79,16 @@ test("ob_get_table_context returns policy-filtered metadata and masked sample ro
             is_nullable: "YES",
             ordinal_position: 2,
             column_comment: "order status"
+          },
+          {
+            table_schema: "biz_test",
+            table_name: "orders",
+            column_name: "payload",
+            column_type: "longtext",
+            data_type: "longtext",
+            is_nullable: "YES",
+            ordinal_position: 3,
+            column_comment: "large payload"
           }
         ], []];
       }
@@ -125,5 +135,7 @@ test("ob_get_table_context returns policy-filtered metadata and masked sample ro
   assert.equal(context.queryTemplates, undefined);
   assert.equal(context.sample.rows.length, 2);
   assert.equal(context.sample.truncated, true);
+  assert.equal(context.sample.fields.some((field) => field.name === "payload"), false);
   assert.deepEqual(context.sample.rows.map((row) => row.status), ["***MASKED***", "***MASKED***"]);
+  assert(context.warnings.some((warning) => /skipped large or binary columns: payload/i.test(warning)));
 });

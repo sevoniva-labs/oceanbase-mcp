@@ -2026,7 +2026,8 @@ export async function sampleRows(
   table: string,
   columns: string[],
   limit: number,
-  timeoutMs: number
+  timeoutMs: number,
+  maxOutputBytes = Number.POSITIVE_INFINITY
 ): Promise<QueryOutput> {
   if (columns.length === 0) {
     return { rowCount: 0, rows: [], truncated: false, fields: [] };
@@ -2037,7 +2038,7 @@ export async function sampleRows(
     mode === "oracle"
       ? `SELECT ${oracleTimeoutHint(timeoutMs)} * FROM (SELECT ${columnList} FROM ${tableName}) WHERE ROWNUM <= ${limit + 1}`
       : `SELECT ${columnList} FROM ${tableName} LIMIT ${limit + 1}`;
-  return runQuery(pool, sql, [], limit, timeoutMs);
+  return runQuery(pool, sql, [], limit, timeoutMs, maxOutputBytes);
 }
 
 export async function profileColumns(

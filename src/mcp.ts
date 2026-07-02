@@ -2104,7 +2104,11 @@ export function createObMcpServer(
 
       let sample: QueryOutput | undefined;
       if (includeSample) {
-        const sampleColumns = columnNames(columns).slice(0, 50);
+        const sampleColumns = safeSampleColumnNames(columns).slice(0, 50);
+        const skippedLargeColumns = columnNames(columns).filter((column) => !sampleColumns.includes(column));
+        if (skippedLargeColumns.length > 0) {
+          warnings.push(`Sample rows skipped large or binary columns: ${skippedLargeColumns.slice(0, 10).join(", ")}${skippedLargeColumns.length > 10 ? ", ..." : ""}.`);
+        }
         if (sampleColumns.length === 0) {
           warnings.push("Sample rows were skipped because no visible columns are available.");
         } else {
@@ -2116,7 +2120,8 @@ export function createObMcpServer(
               table,
               sampleColumns,
               Math.min(sampleLimit ?? 3, selected.config.maxRows, 20),
-              selected.config.queryTimeoutMs
+              selected.config.queryTimeoutMs,
+              selected.config.maxResultBytes
             )
           );
           assertOutputAllowed(output, selected.config.policy);
@@ -4144,7 +4149,7 @@ export function createObMcpServer(
         ),
         selected.config.policy
       );
-      const columns = columnNames(metadata).slice(0, 50);
+      const columns = safeSampleColumnNames(metadata).slice(0, 50);
       const sampleLimit = Math.min(limit ?? Math.min(selected.config.maxRows, 5), selected.config.maxRows, 100);
       const output = await withQuerySlot(selected, () =>
         sampleRows(
@@ -4154,7 +4159,8 @@ export function createObMcpServer(
           table,
           columns,
           sampleLimit,
-          selected.config.queryTimeoutMs
+          selected.config.queryTimeoutMs,
+          selected.config.maxResultBytes
         )
       );
       assertOutputAllowed(output, selected.config.policy);
@@ -11563,6 +11569,33 @@ function columnNames(rows: unknown[]): string[] {
     }
   }
   return [...new Set(names)];
+}
+
+function safeSampleColumnNames(rows: unknown[]): string[] {
+  const names: string[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      continue;
+    }
+    const record = row as Record<string, unknown>;
+    const name = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    if (!name) {
+      continue;
+    }
+    const type = [
+      stringRecordValue(record, "column_type", "COLUMN_TYPE"),
+      stringRecordValue(record, "data_type", "DATA_TYPE")
+    ].filter(Boolean).join(" ");
+    if (isLargeSampleColumnType(type)) {
+      continue;
+    }
+    names.push(name);
+  }
+  return [...new Set(names)];
+}
+
+function isLargeSampleColumnType(type: string): boolean {
+  return /\b(blob|clob|json|xml|raw|long|binary|varbinary|geometry|geography|image|lob)\b|text\b/i.test(type);
 }
 
 function maskOutput(output: QueryOutput, config: ObConfig, schema?: string, table?: string): QueryOutput {
