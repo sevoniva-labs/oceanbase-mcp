@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { assertToolManifest, TOOL_CAPABILITIES } from "../dist/capabilities.js";
 import { loadConfig } from "../dist/config.js";
 import { createObMcpServer } from "../dist/mcp.js";
 
@@ -16,6 +17,10 @@ test("ob_list_capabilities returns visible tools and read-only limits", async ()
   assert(result.tools.some((tool) => tool.name === "ob_query" && tool.since === "v0.3.0"));
   assert(result.tools.some((tool) => tool.name === "ob_check_opencode_setup" && tool.since === "v1.0.0"));
   assert(result.tools.some((tool) => tool.name === "ob_get_usage_guide" && tool.since === "v1.0.0"));
+  assert(result.tools.every((tool) => tool.readOnly === true));
+  assert(result.tools.every((tool) => typeof tool.operationType === "string"));
+  assert(result.tools.every((tool) => typeof tool.budget?.maxBytes === "string"));
+  assert(result.tools.every((tool) => typeof tool.budget?.timeoutMs === "string"));
   assert.deepEqual(result.tools.map(toolSortKey), [...result.tools].sort(compareTools).map(toolSortKey));
 });
 
@@ -53,6 +58,36 @@ test("ob_check_opencode_setup returns local OpenCode checks", async () => {
   assert.equal(result.defaultProfile, "default");
   assert(result.checks.some((check) => check.id === "local.opencode_config"));
   assert(result.files.config.endsWith("opencode.jsonc"));
+});
+
+test("tool manifests declare read-only safety and execution budgets", () => {
+  assert.equal(TOOL_CAPABILITIES.length > 80, true);
+
+  for (const tool of TOOL_CAPABILITIES) {
+    const manifest = assertToolManifest(tool.name);
+    assert.equal(manifest.name, tool.name);
+    assert.equal(manifest.readOnly, true);
+    assert.match(manifest.since, /^v\d+\.\d+\.\d+$/);
+    assert(["metadata", "read_data", "analysis", "local_export"].includes(manifest.operationType));
+    assert(["none", "metadata", "query_rows", "sampled_rows", "local_artifact"].includes(manifest.dataTouch));
+    assert.equal(typeof manifest.requiresSqlGuard, "boolean");
+    assert.equal(typeof manifest.requiresProfilePolicy, "boolean");
+    assert.equal(manifest.requiresAuditLog, true);
+    assert.equal(typeof manifest.budget.maxBytes, "string");
+    assert.equal(typeof manifest.budget.maxDbCalls, "string");
+    assert.equal(typeof manifest.budget.timeoutMs, "string");
+    assert.equal(typeof manifest.smoke.mysql, "boolean");
+    assert.equal(typeof manifest.smoke.oracle, "boolean");
+  }
+});
+
+test("registered MCP tools all have a manifest entry", () => {
+  const config = loadConfig({ OB_ALLOWED_SCHEMAS: "biz_test" });
+  const server = createObMcpServer(runtime(config));
+  const registeredTools = Object.keys(server._registeredTools).sort();
+  const manifestTools = TOOL_CAPABILITIES.map((tool) => tool.name).sort();
+
+  assert.deepEqual(registeredTools, manifestTools);
 });
 
 function runtime(config) {

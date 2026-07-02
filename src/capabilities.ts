@@ -2,15 +2,42 @@ import type { CompatibilityMode } from "./config.js";
 
 export const SERVER_VERSION = "1.2.0";
 
+export type ToolOperationType = "metadata" | "read_data" | "analysis" | "local_export";
+export type ToolDataTouch = "none" | "metadata" | "query_rows" | "sampled_rows" | "local_artifact";
+
+export interface ToolBudgetManifest {
+  maxRows: string | null;
+  maxBytes: string;
+  maxTables: string | null;
+  maxColumns: string | null;
+  maxDbCalls: string;
+  timeoutMs: string;
+}
+
+export interface ToolSmokeManifest {
+  mysql: boolean;
+  oracle: boolean;
+}
+
 export interface ToolCapability {
   name: string;
   since: string;
   group: string;
   mode: "all" | CompatibilityMode;
   description: string;
+  operationType: ToolOperationType;
+  readOnly: true;
+  dataTouch: ToolDataTouch;
+  requiresSqlGuard: boolean;
+  requiresProfilePolicy: boolean;
+  requiresAuditLog: true;
+  budget: ToolBudgetManifest;
+  smoke: ToolSmokeManifest;
 }
 
-export const TOOL_CAPABILITIES: ToolCapability[] = [
+type ToolCapabilitySeed = Pick<ToolCapability, "name" | "since" | "group" | "mode" | "description">;
+
+const TOOL_CAPABILITY_SEEDS: ToolCapabilitySeed[] = [
   { name: "ob_list_profiles", since: "v0.3.0", group: "configuration", mode: "all", description: "List configured profiles with secrets redacted." },
   { name: "ob_config_diagnostics", since: "v0.3.0", group: "configuration", mode: "all", description: "Report deployment and policy checks." },
   { name: "ob_verify_permissions", since: "v0.4.0", group: "configuration", mode: "all", description: "Check current database grants for write or administrative privileges." },
@@ -97,6 +124,137 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_list_objects", since: "v0.5.0", group: "oracle_metadata", mode: "oracle", description: "List policy-filtered Oracle views, sequences, synonyms, procedures, functions, and packages." },
   { name: "ob_get_object_metadata", since: "v0.5.0", group: "oracle_metadata", mode: "oracle", description: "Return bounded metadata and source preview for one Oracle object." }
 ];
+
+export const TOOL_CAPABILITIES: ToolCapability[] = TOOL_CAPABILITY_SEEDS.map(buildToolCapability);
+const TOOL_CAPABILITY_BY_NAME = new Map(TOOL_CAPABILITIES.map((tool) => [tool.name, tool]));
+
+export function getToolCapability(name: string): ToolCapability | undefined {
+  return TOOL_CAPABILITY_BY_NAME.get(name);
+}
+
+export function assertToolManifest(name: string): ToolCapability {
+  const manifest = getToolCapability(name);
+  if (!manifest) {
+    throw new Error(`Tool "${name}" is missing a tool manifest entry.`);
+  }
+  if (manifest.readOnly !== true) {
+    throw new Error(`Tool "${name}" is not declared read-only.`);
+  }
+  if (!["metadata", "read_data", "analysis", "local_export"].includes(manifest.operationType)) {
+    throw new Error(`Tool "${name}" has an invalid operation type.`);
+  }
+  if (!manifest.requiresAuditLog) {
+    throw new Error(`Tool "${name}" must require audit logging.`);
+  }
+  if (!manifest.budget.maxBytes || !manifest.budget.timeoutMs || !manifest.budget.maxDbCalls) {
+    throw new Error(`Tool "${name}" is missing execution budget metadata.`);
+  }
+  return manifest;
+}
+
+function buildToolCapability(seed: ToolCapabilitySeed): ToolCapability {
+  const operationType = operationTypeForGroup(seed.group);
+  return {
+    ...seed,
+    operationType,
+    readOnly: true,
+    dataTouch: dataTouchFor(seed.name, seed.group, operationType),
+    requiresSqlGuard: requiresSqlGuard(seed.name, seed.group, operationType),
+    requiresProfilePolicy: requiresProfilePolicy(seed.name, seed.group),
+    requiresAuditLog: true,
+    budget: budgetFor(seed.name, seed.group, operationType),
+    smoke: smokeForMode(seed.mode)
+  };
+}
+
+function operationTypeForGroup(group: string): ToolOperationType {
+  switch (group) {
+    case "query":
+      return "read_data";
+    case "documentation":
+      return "local_export";
+    case "configuration":
+    case "connection":
+    case "metadata":
+    case "oracle_metadata":
+      return "metadata";
+    default:
+      return "analysis";
+  }
+}
+
+function dataTouchFor(name: string, group: string, operationType: ToolOperationType): ToolDataTouch {
+  if (name === "ob_check_opencode_setup" || name === "ob_list_capabilities" || name === "ob_get_usage_guide") {
+    return "none";
+  }
+  if (operationType === "local_export") {
+    return "local_artifact";
+  }
+  if (group === "query") {
+    return name === "ob_summarize_result" || name === "ob_compare_query_results" || name === "ob_export_result_preview"
+      ? "none"
+      : "query_rows";
+  }
+  if (group === "data_understanding") {
+    return "sampled_rows";
+  }
+  return "metadata";
+}
+
+function requiresSqlGuard(name: string, group: string, operationType: ToolOperationType): boolean {
+  if (name === "ob_policy_explain" || name === "ob_query_preview" || name === "ob_query" || name === "ob_query_page") {
+    return true;
+  }
+  if (group === "sql" || group === "performance") {
+    return true;
+  }
+  return operationType === "read_data";
+}
+
+function requiresProfilePolicy(name: string, group: string): boolean {
+  if (name === "ob_check_opencode_setup") {
+    return false;
+  }
+  return group !== "assistant";
+}
+
+function budgetFor(name: string, group: string, operationType: ToolOperationType): ToolBudgetManifest {
+  if (group === "diagram" || name === "ob_plan_er_export") {
+    return {
+      maxRows: null,
+      maxBytes: "profile.maxResultBytes",
+      maxTables: "profile.erMaxTables",
+      maxColumns: "profile.erMaxColumnsPerTable",
+      maxDbCalls: "bounded by ER batch/window planning",
+      timeoutMs: "profile.erTotalTimeoutMs"
+    };
+  }
+  if (group === "metadata_change" || operationType === "local_export") {
+    return {
+      maxRows: null,
+      maxBytes: "profile.maxResultBytes",
+      maxTables: "tool input limit",
+      maxColumns: "tool input limit",
+      maxDbCalls: "bounded by snapshot/report scope",
+      timeoutMs: "profile.queryTimeoutMs"
+    };
+  }
+  return {
+    maxRows: operationType === "read_data" || group === "data_understanding" ? "profile.maxRows" : null,
+    maxBytes: "profile.maxResultBytes",
+    maxTables: "tool input limit",
+    maxColumns: "tool input limit",
+    maxDbCalls: "bounded by tool implementation",
+    timeoutMs: "profile.queryTimeoutMs"
+  };
+}
+
+function smokeForMode(mode: ToolCapability["mode"]): ToolSmokeManifest {
+  return {
+    mysql: mode === "all" || mode === "mysql",
+    oracle: mode === "all" || mode === "oracle"
+  };
+}
 
 function compareToolCapabilities(left: ToolCapability, right: ToolCapability): number {
   const versionOrder = compareCapabilityVersions(left.since, right.since);

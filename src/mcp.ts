@@ -5,7 +5,14 @@ import { extname, relative, resolve } from "node:path";
 import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
-import { buildUsageGuide, listCapabilities, SERVER_VERSION, TOOL_CAPABILITIES } from "./capabilities.js";
+import {
+  assertToolManifest,
+  buildUsageGuide,
+  getToolCapability,
+  listCapabilities,
+  SERVER_VERSION,
+  TOOL_CAPABILITIES
+} from "./capabilities.js";
 import type { AuthPrincipal, GatewayConfig, HttpConfig, ObConfig } from "./config.js";
 import { publicConfig } from "./config.js";
 import {
@@ -195,6 +202,7 @@ export function createObMcpServer(
     },
     handler: (args: any) => Promise<ReturnType<typeof toResult>>
   ) => {
+    assertToolManifest(name);
     if (!isToolAllowed(name, context.principal)) {
       return;
     }
@@ -11746,6 +11754,8 @@ function safeTool<Args>(
       logAudit("tool_call", {
         ok: true,
         tool: name,
+        toolGroup: getToolCapability(name)?.group,
+        operationType: getToolCapability(name)?.operationType,
         transport: context.transport ?? "stdio",
         requestId: context.requestId,
         clientId: context.clientId,
@@ -11757,6 +11767,8 @@ function safeTool<Args>(
       logSlowOperation("slow_tool_call", {
         ok: true,
         tool: name,
+        toolGroup: getToolCapability(name)?.group,
+        operationType: getToolCapability(name)?.operationType,
         transport: context.transport ?? "stdio",
         requestId: context.requestId,
         clientId: context.clientId,
@@ -11775,6 +11787,8 @@ function safeTool<Args>(
       logAudit("tool_call", {
         ok: false,
         tool: name,
+        toolGroup: getToolCapability(name)?.group,
+        operationType: getToolCapability(name)?.operationType,
         transport: context.transport ?? "stdio",
         requestId: context.requestId,
         clientId: context.clientId,
@@ -11787,6 +11801,8 @@ function safeTool<Args>(
       logSlowOperation("slow_tool_call", {
         ok: false,
         tool: name,
+        toolGroup: getToolCapability(name)?.group,
+        operationType: getToolCapability(name)?.operationType,
         transport: context.transport ?? "stdio",
         requestId: context.requestId,
         clientId: context.clientId,
