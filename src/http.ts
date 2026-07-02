@@ -13,11 +13,13 @@ import { rateLimit } from "express-rate-limit";
 
 import { loadGatewayConfig, loadHttpConfig, type AuthPrincipal, type AuthTokenPolicy } from "./config.js";
 import { diagnoseGateway } from "./diagnostics.js";
-import { logAudit, logError } from "./errors.js";
+import { installProcessLogHandlers, logAudit, logError, logSlowOperation } from "./errors.js";
 import { isIpAllowed } from "./ip-policy.js";
 import { metrics } from "./metrics.js";
 import { createObMcpServer } from "./mcp.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
+
+installProcessLogHandlers("ob-mcp-http");
 
 const gatewayConfig = loadGatewayConfig();
 const httpConfig = loadHttpConfig(gatewayConfig.profiles[gatewayConfig.defaultProfile]);
@@ -34,8 +36,19 @@ app.use(
 
 app.use((req, res, next) => {
   attachRequestContext(req, res);
+  const started = Date.now();
   const finish = metrics.startHttpRequest();
-  res.on("finish", finish);
+  res.on("finish", () => {
+    finish();
+    logSlowOperation("slow_http_request", {
+      method: req.method,
+      path: req.path,
+      statusCode: res.statusCode,
+      requestId: getRequestContext(req).requestId,
+      clientId: getRequestContext(req).clientId,
+      durationMs: Date.now() - started
+    });
+  });
   next();
 });
 
@@ -61,7 +74,18 @@ app.use(
     windowMs: httpConfig.rateLimitWindowMs,
     limit: httpConfig.rateLimitMax,
     standardHeaders: true,
-    legacyHeaders: false
+    legacyHeaders: false,
+    handler: (req, res) => {
+      logAudit("http_rate_limited", {
+        path: req.path,
+        remoteAddress: req.socket.remoteAddress,
+        requestId: getRequestContext(req).requestId,
+        clientId: getRequestContext(req).clientId,
+        rateLimitWindowMs: httpConfig.rateLimitWindowMs,
+        rateLimitMax: httpConfig.rateLimitMax
+      });
+      res.status(429).json({ error: "Too many requests" });
+    }
   }),
   authenticate,
   express.json({ limit: httpConfig.bodyLimit }),
@@ -94,7 +118,10 @@ app.post(httpConfig.path, async (req, res) => {
     await transport.handleRequest(req, res, req.body);
   } catch (error) {
     metrics.recordHttpError();
-    logError("http_mcp", error);
+    logError("http_mcp", error, {
+      requestId: requestContext.requestId,
+      clientId: requestContext.clientId
+    });
     if (!res.headersSent) {
       res.status(500).json({
         jsonrpc: "2.0",
@@ -258,7 +285,7 @@ function sanitizeHeaderValue(value: string | undefined): string | undefined {
 
 function jsonBodyErrorHandler(
   error: Error & { status?: number },
-  _req: Request,
+  req: Request,
   res: Response,
   next: NextFunction
 ): void {
@@ -268,6 +295,12 @@ function jsonBodyErrorHandler(
   }
 
   const status = error.status === 413 ? 413 : 400;
+  logAudit("json_body_error", {
+    path: req.path,
+    statusCode: status,
+    requestId: getRequestContext(req).requestId,
+    clientId: getRequestContext(req).clientId
+  });
   res.status(status).json({
     jsonrpc: "2.0",
     error: {

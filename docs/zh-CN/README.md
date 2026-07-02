@@ -33,6 +33,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v1.0.0 | 完成本地开发助手能力：初始化/诊断、统一搜索、SQL 辅助、查询会话、数据理解、ER HTML、文档生成、项目 SQL 扫描和内网交付。 |
 | v1.1.0 | 增加元数据快照、快照对比、SQL 使用索引、影响分析、变更报告和关系路径解释，用于迭代前后评审。 |
 | v1.1.1 | 修复大 schema ER 生成稳定性，增加批量元数据加载、ER HTML 浏览器优化和本地分片导出规划。 |
+| v1.1.2 | 修复本地 OpenCode 连续查询稳定性，放宽本地 HTTP 默认限流，增加故障日志，并兼容 Oracle 常见命名占位符。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -234,8 +235,8 @@ ob-mcp metadata report --before snapshots/before.json --after snapshots/after.js
 Release 附带源码归档，适合放入内网后通过内部 npm 制品库编译运行：
 
 ```bash
-tar -xzf ob-mcp-1.1.1-source.tar.gz
-cd ob-mcp-1.1.1
+tar -xzf ob-mcp-1.1.2-source.tar.gz
+cd ob-mcp-1.1.2
 npm ci
 npm run build
 npm run start
@@ -247,12 +248,12 @@ npm run start
 
 | 资产 | 用途 |
 | --- | --- |
-| `ob-mcp-1.1.1.tgz` | npm 包。 |
-| `ob-mcp-1.1.1-source.tar.gz` | 源码归档，用于内网编译。 |
+| `ob-mcp-1.1.2.tgz` | npm 包。 |
+| `ob-mcp-1.1.2-source.tar.gz` | 源码归档，用于内网编译。 |
 | `sbom.cdx.json` | CycloneDX SBOM。 |
-| `oceanbase-mcp-1.1.1-amd64.tar.gz` | amd64 离线镜像。 |
-| `oceanbase-mcp-1.1.1-arm64.tar.gz` | arm64 离线镜像。 |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.1` | GHCR 镜像 tag。 |
+| `oceanbase-mcp-1.1.2-amd64.tar.gz` | amd64 离线镜像。 |
+| `oceanbase-mcp-1.1.2-arm64.tar.gz` | arm64 离线镜像。 |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.2` | GHCR 镜像 tag。 |
 
 ## 资源
 

@@ -37,7 +37,7 @@ import {
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
 import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "./er.js";
-import { logAudit, logError, serializeError } from "./errors.js";
+import { logAudit, logError, logSlowOperation, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { captureMetadataSnapshot } from "./metadata-capture.js";
 import { analyzeChangeSqlImpact, analyzeMetadataImpact } from "./metadata-impact.js";
@@ -11228,6 +11228,7 @@ function safeTool<Args>(
     try {
       assertToolAllowed(name, context.principal);
       const result = await handler(args);
+      const durationMs = Date.now() - started;
       logAudit("tool_call", {
         ok: true,
         tool: name,
@@ -11235,11 +11236,22 @@ function safeTool<Args>(
         requestId: context.requestId,
         clientId: context.clientId,
         principal: context.principal?.name,
-        durationMs: Date.now() - started,
+        durationMs,
+        ...auditArgs(args)
+      });
+      logSlowOperation("slow_tool_call", {
+        ok: true,
+        tool: name,
+        transport: context.transport ?? "stdio",
+        requestId: context.requestId,
+        clientId: context.clientId,
+        principal: context.principal?.name,
+        durationMs,
         ...auditArgs(args)
       });
       return result;
     } catch (error) {
+      const durationMs = Date.now() - started;
       metrics.recordToolBlocked();
       metrics.recordToolError();
       logAudit("tool_call", {
@@ -11249,7 +11261,18 @@ function safeTool<Args>(
         requestId: context.requestId,
         clientId: context.clientId,
         principal: context.principal?.name,
-        durationMs: Date.now() - started,
+        durationMs,
+        blockedReason: (error as Error).message,
+        ...auditArgs(args)
+      });
+      logSlowOperation("slow_tool_call", {
+        ok: false,
+        tool: name,
+        transport: context.transport ?? "stdio",
+        requestId: context.requestId,
+        clientId: context.clientId,
+        principal: context.principal?.name,
+        durationMs,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
       });

@@ -225,9 +225,25 @@ test("loadHttpConfig applies HTTP hardening defaults", () => {
   const httpConfig = loadHttpConfig(loadConfig({}), {});
   assert.equal(httpConfig.bodyLimit, "256kb");
   assert.equal(httpConfig.rateLimitWindowMs, 60_000);
-  assert.equal(httpConfig.rateLimitMax, 60);
+  assert.equal(httpConfig.rateLimitMax, 600);
   assert.deepEqual(httpConfig.allowedIps, []);
   assert.equal(httpConfig.trustProxy, false);
+});
+
+test("loadHttpConfig keeps conservative rate limits for production and remote binds", () => {
+  const productionConfig = loadConfig({
+    NODE_ENV: "production",
+    OB_USER: "readonly_user@tenant#cluster",
+    OB_PASSWORD: "secret",
+    OB_ALLOWED_SCHEMAS: "app"
+  });
+  assert.equal(loadHttpConfig(productionConfig, { OB_MCP_AUTH_TOKEN: STRONG_TOKEN }).rateLimitMax, 60);
+  assert.equal(loadHttpConfig(loadConfig({}), {
+    OB_MCP_HOST: "0.0.0.0",
+    OB_MCP_AUTH_TOKEN: STRONG_TOKEN,
+    OB_MCP_ALLOWED_HOSTS: "mcp.example.com",
+    OB_MCP_ALLOWED_IPS: "10.0.0.0/8"
+  }).rateLimitMax, 60);
 });
 
 test("loadHttpConfig requires auth and allowed hosts for non-local binds", () => {

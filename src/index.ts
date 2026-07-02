@@ -6,11 +6,14 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { loadGatewayConfig } from "./config.js";
 import { runDoctorCommand } from "./doctor-runner.js";
 import { runExportErCommand } from "./er-export.js";
+import { installProcessLogHandlers, logAudit } from "./errors.js";
 import { runInitCommand } from "./init.js";
 import { runMetadataCommand } from "./metadata-cli.js";
 import { createObMcpServer } from "./mcp.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
 import { runScanSqlCommand } from "./sql-scan.js";
+
+installProcessLogHandlers("ob-mcp-stdio");
 
 const [command, ...args] = process.argv.slice(2);
 
@@ -41,8 +44,17 @@ async function startStdioServer() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  logAudit("stdio_start", {
+    pid: process.pid,
+    profileCount: Object.keys(gatewayConfig.profiles).length,
+    logFileEnabled: Boolean(process.env.OB_MCP_LOG_FILE?.trim())
+  });
 
   async function shutdown() {
+    logAudit("shutdown", {
+      transport: "stdio",
+      pid: process.pid
+    });
     await server.close();
     await closeGatewayRuntime(runtime);
     process.exit(0);

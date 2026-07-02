@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本，例如 v1.1.1"
+        description: "发布版本，例如 v1.1.2"
         required: true
         type: string
       prerelease:
@@ -41,7 +41,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必须是 vX.Y.Z，例如 v1.1.1" >&2
+            echo "版本必须是 vX.Y.Z，例如 v1.1.2" >&2
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -233,18 +233,18 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release improves large-schema ER stability for local OceanBase development. It adds bounded ER defaults, batched metadata loading, chunked local ER export planning, and a more usable ER HTML browser. The server remains strictly read-only.
+          This release improves local OpenCode query stability for OceanBase MCP. It raises the default local HTTP rate limit for tool-heavy workflows, adds crash and slow-call logs, and accepts common Oracle named bind placeholders when positional params are supplied. The server remains strictly read-only.
 
           ## 新增能力
 
-          - 大库 ER 默认收敛：默认使用真实 FK/约束关系，命名推断需显式开启。
-          - 批量元数据加载：ER 生成批量读取 columns、indexes、constraints 和关系，减少逐表查询放大。
-          - `ob_plan_er_export`：为大 schema 返回分片导出计划、chunk 命令、stats 和 warnings，不返回超大 inline HTML。
-          - CLI 分片导出：`ob-mcp export-er --out-dir` 写出 `index.html`、`overview.html`、`chunks/`、`tables/` 和 `metadata/`。
-          - ER HTML 浏览器：大图使用多列概览布局、关键字段优先、表筛选计数、schema 概览和选中表定位。
-          - ER HTML 可读性：warnings 区域限制高度并可滚动，避免大库警告把主图挤出首屏。
-          - 分片统计：目录导出区分实际渲染关系数和规划阶段关系上限。
-          - OpenCode 工作流：大库先规划，再分片；默认 `relationshipMode=foreign_key`，不直接请求全库 inline ER。
+          - 本地 HTTP 默认限流从每分钟 60 次调整为 600 次，适配 OpenCode 连续元数据查询、预览和分页调用。
+          - 生产环境或非本地绑定仍默认每分钟 60 次，保持共享部署的保守边界。
+          - `OB_MCP_LOG_FILE` 支持 JSONL 日志落盘，便于排查 stdio 场景下的 OpenCode 断连。
+          - 新增进程级崩溃日志、慢工具调用日志、慢 HTTP 请求日志、HTTP 限流日志和 JSON body 错误日志。
+          - Oracle 模式在传入 `params` 数组时兼容简单 `:name` 和 `:1` 占位符，执行前转换为驱动可识别的参数形式。
+          - 占位符转换会跳过字符串、标识符和注释，避免改写 SQL 文本内容。
+          - SQL 辅助文档补充 Oracle 参数化写法，仍建议生成 MCP 调用时优先使用 `?` 位置占位符。
+          - 只读策略、profile 权限、行数限制、输出大小限制、超时、审计日志和错误脱敏保持不变。
 
           ## Delivery Assets
 
@@ -270,17 +270,19 @@ jobs:
 
           ## 验证要求
 
-          - OceanBase MySQL 模式 smoke test 覆盖 ER plan、默认 FK 关系、HTML 降级和分片导出。
-          - OceanBase Oracle 模式 smoke test 覆盖 ER plan、默认 FK 关系、HTML 降级和分片导出。
-          - 本地 MySQL 220 表和 Oracle 220 张复杂测试表大 schema 验证通过。
+          - OceanBase MySQL 模式 smoke test 和连续查询压测通过。
+          - OceanBase Oracle 模式 smoke test、命名占位符查询预览和连续查询压测通过。
+          - 本地 HTTP 连续调用压测通过，未触发默认限流。
+          - JSONL 日志落盘和敏感字段脱敏单元测试通过。
           - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
 
           ## 生产注意事项
 
           - 建议数据库账号仍使用只读权限；MCP 会继续拦截写入、DDL、DCL、过程调用和序列 `NEXTVAL`。
-          - 大 schema 先使用 `ob_plan_er_export`，再用 CLI 分片导出。
-          - `relationshipMode=inferred` 只用于明确的小范围关系推断，必须查看 confidence 和 evidence。
-          - 大图单个 chunk 仍受 `OB_MAX_RESULT_BYTES` 控制；必要时调小 `--chunk-size`。
+          - 本地排查 OpenCode 断连时建议配置 `OB_MCP_LOG_FILE=/var/log/ob-mcp/ob-mcp.jsonl`。
+          - 本地 OpenCode 推荐使用 stdio；如使用 HTTP，本地默认限流为 600 次/分钟，可通过 `OB_MCP_RATE_LIMIT_MAX` 显式调整。
+          - 生产或非本地 HTTP 绑定必须配置鉴权、Host allowlist 和来源 IP allowlist。
+          - Oracle 模式生成新 SQL 时仍优先使用 `?` 位置占位符，避免重复命名参数带来的歧义。
           - OpenCode 使用前建议先加载随包提供的 Agent/Skill 配置。
           EOF
 

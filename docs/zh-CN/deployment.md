@@ -217,22 +217,22 @@ Release workflow 产物：
 
 1. 打开 GitHub Actions。
 2. 运行 `Release`。
-3. 输入版本号，例如 `v1.1.1`。
+3. 输入版本号，例如 `v1.1.2`。
 4. workflow 会创建 tag、发布镜像并上传 Release 附件。
 
 加载离线镜像：
 
 ```bash
-gunzip oceanbase-mcp-1.1.1-amd64.tar.gz
-docker load -i oceanbase-mcp-1.1.1-amd64.tar
-docker run --rm oceanbase-mcp:1.1.1-amd64
+gunzip oceanbase-mcp-1.1.2-amd64.tar.gz
+docker load -i oceanbase-mcp-1.1.2-amd64.tar
+docker run --rm oceanbase-mcp:1.1.2-amd64
 ```
 
 内网源码编译：
 
 ```bash
-tar -xzf ob-mcp-1.1.1-source.tar.gz
-cd ob-mcp-1.1.1
+tar -xzf ob-mcp-1.1.2-source.tar.gz
+cd ob-mcp-1.1.2
 npm ci
 npm run build
 npm run start

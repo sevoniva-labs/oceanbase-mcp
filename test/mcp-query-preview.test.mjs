@@ -58,6 +58,35 @@ test("ob_query_preview reports blocked SQL without running EXPLAIN", async () =>
   assert(preview.warnings.some((warning) => /skipped/i.test(warning)));
 });
 
+test("ob_query_preview accepts Oracle named bind placeholders with positional params", async () => {
+  const config = loadConfig({
+    OB_COMPATIBILITY: "oracle",
+    OB_ALLOWED_SCHEMAS: "APP",
+    OB_ENFORCE_READ_ONLY_TX: "false",
+    OB_MAX_ROWS: "20"
+  });
+  let explainCalls = 0;
+  const pool = {
+    async query({ sql, values }) {
+      assert.equal(sql, "EXPLAIN SELECT ID FROM APP.ORDERS WHERE ID = ?");
+      assert.deepEqual(values, [1001]);
+      explainCalls += 1;
+      return [[{ OPERATOR: "TABLE GET", NAME: "ORDERS", ROWS: 1 }], []];
+    }
+  };
+  const server = createObMcpServer(runtime(config, pool));
+  const result = await server.executeToolHandler(server._registeredTools.ob_query_preview, {
+    sql: "SELECT ID FROM APP.ORDERS WHERE ID = :id",
+    params: [1001]
+  }, {});
+  const preview = JSON.parse(result.content[0].text);
+
+  assert.equal(preview.allowed, true);
+  assert.equal(preview.explainRun, true);
+  assert.equal(preview.paramCount, 1);
+  assert.equal(explainCalls, 1);
+});
+
 function runtime(config, pool) {
   return {
     defaultProfile: "default",

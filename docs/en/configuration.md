@@ -114,6 +114,23 @@ Metadata cache:
 - Only metadata such as table lists, columns, constraints, and relationships is cached. `ob_query`, sample rows, and user SQL results are not cached.
 - Set `OB_METADATA_CACHE_ENABLED=false` when every metadata request must read the current database structure.
 
+## Logging
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OB_MCP_LOG_FILE` | unset | Optional JSONL log file for audit, error, slow-call, HTTP rate-limit, and process-crash events. |
+| `OB_MCP_LOG_STDERR` | `true` | Also write JSON logs to stderr. Keep enabled unless the launcher already captures the log file. |
+| `OB_MCP_SLOW_CALL_MS` | `3000` | Slow operation threshold in milliseconds. Set `0` to disable slow-call logs. |
+
+For local OpenCode troubleshooting, set:
+
+```bash
+OB_MCP_LOG_FILE=/var/log/ob-mcp/ob-mcp.jsonl
+OB_MCP_SLOW_CALL_MS=1000
+```
+
+Logs are JSON lines. Secret-looking keys and values are redacted before writing.
+
 ## HTTP Server
 
 | Variable | Default | Description |
@@ -133,7 +150,7 @@ Metadata cache:
 | `OB_MCP_CLIENT_ID_HEADER` | `x-ob-mcp-client-id` | Request header copied into audit logs as the client id. |
 | `OB_MCP_BODY_LIMIT` | `256kb` | Maximum JSON request body size. |
 | `OB_MCP_RATE_LIMIT_WINDOW_MS` | `60000` | HTTP rate-limit window. |
-| `OB_MCP_RATE_LIMIT_MAX` | `60` | Requests per rate-limit window. |
+| `OB_MCP_RATE_LIMIT_MAX` | local: `600`; production/non-local: `60` | Requests per rate-limit window. Raise deliberately for local OpenCode workflows that issue many tool calls. |
 
 `OB_MCP_ALLOWED_IPS` accepts exact IPs and CIDR ranges:
 

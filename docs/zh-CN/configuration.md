@@ -114,6 +114,23 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 - 缓存只用于表清单、字段、约束和关系等元数据读取，不缓存 `ob_query`、样例数据或用户 SQL 结果。
 - 如需要每次都读取最新结构，可设置 `OB_METADATA_CACHE_ENABLED=false`。
 
+## 日志
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OB_MCP_LOG_FILE` | 未设置 | 可选 JSONL 日志文件，记录审计、错误、慢调用、HTTP 限流和进程崩溃事件。 |
+| `OB_MCP_LOG_STDERR` | `true` | 是否同时把 JSON 日志写到 stderr。启动器已收集日志文件时可关闭。 |
+| `OB_MCP_SLOW_CALL_MS` | `3000` | 慢操作阈值，单位毫秒。设置为 `0` 可关闭慢调用日志。 |
+
+本地 OpenCode 排查问题时建议开启：
+
+```bash
+OB_MCP_LOG_FILE=/var/log/ob-mcp/ob-mcp.jsonl
+OB_MCP_SLOW_CALL_MS=1000
+```
+
+日志为 JSON lines。写入前会对疑似密码、token、密钥等字段和值做脱敏。
+
 ## HTTP 服务
 
 | 变量 | 默认值 | 说明 |
@@ -133,7 +150,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MCP_CLIENT_ID_HEADER` | `x-ob-mcp-client-id` | 写入审计日志的客户端标识请求头。 |
 | `OB_MCP_BODY_LIMIT` | `256kb` | JSON 请求体大小上限。 |
 | `OB_MCP_RATE_LIMIT_WINDOW_MS` | `60000` | HTTP 限流窗口。 |
-| `OB_MCP_RATE_LIMIT_MAX` | `60` | 每个限流窗口内的请求上限。 |
+| `OB_MCP_RATE_LIMIT_MAX` | 本地：`600`；生产/非本地：`60` | 每个限流窗口内的请求上限。OpenCode 本地连续调用较多时可按需调高。 |
 
 `OB_MCP_ALLOWED_IPS` 支持精确 IP 和 CIDR：
 

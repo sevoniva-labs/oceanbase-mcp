@@ -98,7 +98,10 @@ DDL、ER、Oracle 对象元数据、SQL 模板和性能报告都走同一套 pro
 
 ## 可观测性
 
-- JSON 审计和错误日志输出到 stdout/stderr。
+- JSON 审计和错误日志默认输出到 stderr，也可通过 `OB_MCP_LOG_FILE` 写入 JSONL 文件。
+- 进程级 `uncaughtException`、`unhandledRejection` 和 warning 会在退出前写入日志。
+- 工具调用或 HTTP 请求超过 `OB_MCP_SLOW_CALL_MS` 会记录慢调用日志。
+- HTTP 限流和 JSON body 错误会记录 request id 和 client id。
 - `GET /healthz` 返回最小 readiness 信息，默认不暴露 profile 名称。
 - `GET /metrics` 暴露 Prometheus 文本指标，可要求 Bearer token。
 - `ob_config_diagnostics` 向 MCP client 暴露同样的加固检查。

@@ -283,6 +283,7 @@ export function loadHttpConfig(obConfig: ObConfig, env: NodeJS.ProcessEnv = proc
   if ((metricsAuthRequired || healthAuthRequired) && !hasAuthToken) {
     throw new Error("Endpoint auth was requested, but no HTTP bearer token policy is configured.");
   }
+  const defaultRateLimitMax = obConfig.productionMode || nonLocalBind ? 60 : 600;
 
   return {
     host,
@@ -296,7 +297,7 @@ export function loadHttpConfig(obConfig: ObConfig, env: NodeJS.ProcessEnv = proc
     trustProxyDescription: describeTrustProxy(trustProxy),
     bodyLimit: env.OB_MCP_BODY_LIMIT?.trim() || "256kb",
     rateLimitWindowMs: parseInteger(env.OB_MCP_RATE_LIMIT_WINDOW_MS, 60_000, "OB_MCP_RATE_LIMIT_WINDOW_MS"),
-    rateLimitMax: parseInteger(env.OB_MCP_RATE_LIMIT_MAX, 60, "OB_MCP_RATE_LIMIT_MAX"),
+    rateLimitMax: parseInteger(env.OB_MCP_RATE_LIMIT_MAX, defaultRateLimitMax, "OB_MCP_RATE_LIMIT_MAX"),
     metricsAuthRequired,
     healthAuthRequired,
     clientIdHeader

@@ -28,6 +28,8 @@ Do not guess table names, column names, or relationships. Candidates must includ
 
 Use `ob_build_select` when the table, columns, and filters are known. Use `ob_prepare_query` when the user describes a business question and the assistant still needs to locate the tables.
 
+Parameterized SQL uses positional `?` placeholders. In Oracle compatibility mode, simple `:name` bind placeholders are also accepted when `params` is supplied as a positional array; prefer `?` in generated MCP calls to avoid ambiguity.
+
 ## Query Sessions
 
 Query sessions are in-memory context only:
