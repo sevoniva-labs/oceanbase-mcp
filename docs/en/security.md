@@ -24,6 +24,7 @@ Use both layers:
 | Sensitive column denial | Enabled by default. |
 | Field-level value masking | `OB_MASKED_COLUMNS` supports exact column and wildcard rules. |
 | Developer assistant tools | DDL, ER, SQL template, and performance-report tools only read metadata or run read-only `EXPLAIN`. |
+| Metadata change analysis | Snapshot, diff, impact, and report tools read metadata or local files only and do not emit executable DDL. |
 | Business glossary | Used only for search hints and filtered by access policy before return. |
 | Read-only transaction | Enabled by default. |
 | Row and response-size caps | Enabled by default and cannot be raised by clients. |
@@ -73,6 +74,7 @@ Only enable proxy trust when the MCP server cannot be reached directly by untrus
 - Schema changes.
 - Stored procedure calls.
 - Directly executable DDL or index-change recommendations.
+- Directly executable `ALTER`, `CREATE`, `DROP`, `GRANT`, or index DDL in metadata change reports.
 - File import/export functions.
 - `SHOW` and `DESCRIBE` through `ob_query`; use metadata tools instead.
 - Disabling MCP read-only mode.

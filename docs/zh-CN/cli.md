@@ -117,12 +117,76 @@ node dist/index.js export-er --schema biz_test --business-term 订单 --format d
 
 导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 HTML 文件，不修改数据库。
 
+## 元数据变更
+
+采集纯元数据快照：
+
+```bash
+ob-mcp metadata snapshot --schema biz_test --out snapshots/before.json
+```
+
+对比两份快照：
+
+```bash
+ob-mcp metadata diff \
+  --before snapshots/before.json \
+  --after snapshots/after.json \
+  --format markdown \
+  --out snapshots/diff.md
+```
+
+结合 SQL 使用索引生成评审报告：
+
+```bash
+ob-mcp metadata report \
+  --before snapshots/before.json \
+  --after snapshots/after.json \
+  --sql-index snapshots/sql-index.json \
+  --format markdown \
+  --out snapshots/report.md
+```
+
+快照参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--profile <name>` | 使用指定 profile。 |
+| `--schema <schema>` | 限定采集 schema。 |
+| `--table-pattern <pattern>` | 按表名模式限定范围。 |
+| `--object-types <list>` | 限定 Oracle 对象类型。 |
+| `--max-tables <n>` | 最大表数量。 |
+| `--max-columns-per-table <n>` | 单表最大字段数量。 |
+| `--max-objects <n>` | 最大 Oracle 对象数量。 |
+| `--max-relationships <n>` | 最大关系证据数量。 |
+| `--no-relationships` | 跳过关系发现。 |
+| `--no-oracle-objects` | 跳过 Oracle 对象元数据。 |
+| `--format json` | 快照输出格式。 |
+| `--out <file>` | 输出文件。 |
+| `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
+
+diff 和 report 参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--before <file>` | 变更前快照文件。 |
+| `--after <file>` | 变更后快照文件。 |
+| `--format json\|markdown` | diff 输出格式。 |
+| `--format markdown\|html` | report 输出格式。 |
+| `--sql-index <file>` | `scan-sql --index-out` 生成的 SQL 使用索引。 |
+| `--risk-only` | 仅 diff：只保留有风险的变化。 |
+| `--summary-only` | 输出更短的 diff 或报告。 |
+| `--title <title>` | 报告标题。 |
+| `--out <file>` | 输出文件。 |
+| `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
+
+元数据命令只读取元数据和本地文件，不执行数据库变更，也不输出可直接执行的 DDL。
+
 ## 扫描项目 SQL
 
 扫描本地项目中的 SQL 片段，默认只输出报告，不修改文件：
 
 ```bash
-ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+ob-mcp scan-sql --path src --path mapper --ignore generated --index-out snapshots/sql-index.json --format json
 ```
 
 源码仓库内也可以运行：
@@ -145,5 +209,7 @@ node dist/index.js scan-sql --path src --extensions sql,xml,ts,js,java --format 
 | `--max-bytes <n>` | 单文件最大读取字节数。默认 `524288`。 |
 | `--format json\|text` | 输出格式。默认 `json`。 |
 | `--fail-on-risk` | 发现风险片段时返回非 0 退出码，适合本地检查或 CI。 |
+| `--index-out <file>` | 写出静态 SQL 使用索引 JSON，用于元数据影响分析。 |
+| `--index-overwrite` | 覆盖已有 SQL 使用索引文件。默认不覆盖。 |
 
 `scan-sql` 不连接数据库，不执行 SQL，不写业务文件。它用于快速定位项目里的 SQL 片段；最终执行前仍应走 MCP 只读策略、元数据校验和查询预览。

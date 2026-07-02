@@ -118,6 +118,18 @@ The agent uses this query workflow:
 
 Do not let the agent guess table names, column names, or relationships. When context is insufficient, provide a business term, schema, or table name first.
 
+For iteration metadata review, use this workflow:
+
+1. Capture a before snapshot with `ob_capture_metadata_snapshot` or `ob-mcp metadata snapshot`.
+2. Build a project SQL usage index with `ob-mcp scan-sql --index-out`.
+3. Capture an after snapshot.
+4. Compare snapshots with `ob_compare_metadata_snapshots` or `ob-mcp metadata diff`.
+5. Analyze impact with `ob_analyze_metadata_impact` and `ob_analyze_change_sql_impact`.
+6. Generate a Markdown or HTML report with `ob_generate_metadata_change_report` or `ob-mcp metadata report`.
+7. Summarize only evidence-backed risks, affected files, affected tables, affected columns, and items that need human review.
+
+The agent must not invent relationships or SQL usages. Metadata-change conclusions must come from snapshot diff, SQL index, relationship metadata, or business glossary evidence.
+
 ## Oracle Mode
 
 For Oracle compatibility:

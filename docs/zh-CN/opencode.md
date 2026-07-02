@@ -118,6 +118,18 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8
 
 不要让 agent 猜表名、字段名或关系。信息不足时，应先补充业务词、schema 或表名。
 
+迭代元数据评审使用这个流程：
+
+1. 用 `ob_capture_metadata_snapshot` 或 `ob-mcp metadata snapshot` 采集变更前快照。
+2. 用 `ob-mcp scan-sql --index-out` 扫描项目 SQL 使用索引。
+3. 采集变更后快照。
+4. 用 `ob_compare_metadata_snapshots` 或 `ob-mcp metadata diff` 对比快照。
+5. 用 `ob_analyze_metadata_impact` 和 `ob_analyze_change_sql_impact` 分析影响。
+6. 用 `ob_generate_metadata_change_report` 或 `ob-mcp metadata report` 生成 Markdown 或 HTML 报告。
+7. 只汇总有证据的风险、受影响文件、受影响表、受影响字段和需要人工确认的事项。
+
+agent 不得臆造关系或 SQL 使用位置。元数据变更结论必须来自快照 diff、SQL 使用索引、关系元数据或业务字典证据。
+
 ## Oracle 模式
 
 Oracle 兼容模式：

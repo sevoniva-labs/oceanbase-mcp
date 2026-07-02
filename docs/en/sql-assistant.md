@@ -49,3 +49,11 @@ The `ob-mcp scan-sql` CLI scans `.sql`, `.xml`, `.ts`, `.js`, and `.java` files.
 - `ob_generate_mapper_context`
 
 These tools do not execute target SQL or modify business files.
+
+Since v1.1.0, `scan-sql` can also write a SQL usage index:
+
+```bash
+ob-mcp scan-sql --path src --path mapper --index-out snapshots/sql-index.json --format text
+```
+
+Use `ob_find_sql_usages` to search that index by table, column, or business term. Use `ob_analyze_change_sql_impact` when a metadata diff needs to be checked against project SQL references. Both tools use static evidence and do not execute project SQL.

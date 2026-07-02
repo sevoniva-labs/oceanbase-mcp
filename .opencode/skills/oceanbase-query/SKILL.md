@@ -1,6 +1,6 @@
 ---
 name: oceanbase-query
-description: Guide OpenCode to use OceanBase MCP for metadata-first OceanBase querying, SQL assistance, ER diagrams, and result documentation.
+description: Guide OpenCode to use OceanBase MCP for metadata-first OceanBase querying, SQL assistance, ER diagrams, metadata change review, and result documentation.
 license: MIT
 compatibility: opencode
 metadata:
@@ -10,7 +10,7 @@ metadata:
 
 ## Purpose
 
-Use this skill when a user asks to inspect OceanBase schemas, understand tables, write read-only SQL, query data, explain results, analyze a query plan, generate ER diagrams, or produce data documentation.
+Use this skill when a user asks to inspect OceanBase schemas, understand tables, write read-only SQL, query data, explain results, analyze a query plan, generate ER diagrams, review metadata changes, or produce data documentation.
 
 ## Workflow
 
@@ -49,6 +49,20 @@ Never invent table names, fields, joins, or relationships. If metadata is insuff
 - Use `ob_generate_table_doc`, `ob_generate_schema_doc`, `ob_generate_data_dictionary`, `ob_generate_query_doc`, and `ob_generate_onboarding_doc` for documentation.
 - Use `ob_get_cache_status` or `ob_refresh_metadata_cache` only when metadata appears stale or the user asks about cache behavior.
 
+## Metadata Change Review
+
+Use this workflow when the user asks what changed in an iteration or what a metadata change affects:
+
+1. Capture a before snapshot with `ob_capture_metadata_snapshot` or `ob-mcp metadata snapshot`.
+2. Build a SQL usage index with `ob-mcp scan-sql --index-out`.
+3. Capture an after snapshot.
+4. Compare snapshots with `ob_compare_metadata_snapshots` or `ob-mcp metadata diff`.
+5. Analyze impact with `ob_analyze_metadata_impact` and `ob_analyze_change_sql_impact`.
+6. Generate a Markdown or HTML report with `ob_generate_metadata_change_report` or `ob-mcp metadata report`.
+7. Summarize affected files, tables, columns, relationship paths, risks, evidence, and review items.
+
+Do not invent relationships, SQL usages, or impact conclusions. Use only snapshot diff, SQL index, relationship metadata, or business glossary evidence.
+
 ## Safety Rules
 
 - Keep all work read-only.
@@ -56,6 +70,7 @@ Never invent table names, fields, joins, or relationships. If metadata is insuff
 - Do not use `SELECT *`.
 - Do not bypass profile, schema, table, tool, row, timeout, or output-size limits.
 - Do not output executable index creation or schema change statements.
+- Do not emit executable `ALTER`, `CREATE`, `DROP`, `GRANT`, or index DDL in metadata change reports.
 - Report truncation, masking, unstable ordering, and policy rejections plainly.
 
 ## Compatibility

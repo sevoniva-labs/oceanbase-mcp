@@ -49,3 +49,11 @@ CLI `ob-mcp scan-sql` 用于扫描项目中的 `.sql`、`.xml`、`.ts`、`.js`�
 - `ob_generate_mapper_context`
 
 这些工具不会执行目标 SQL，也不会修改业务文件。
+
+从 v1.1.0 起，`scan-sql` 还可以写出 SQL 使用索引：
+
+```bash
+ob-mcp scan-sql --path src --path mapper --index-out snapshots/sql-index.json --format text
+```
+
+使用 `ob_find_sql_usages` 可以按表、字段或业务词查询这个索引。元数据 diff 需要和项目 SQL 引用一起分析时，使用 `ob_analyze_change_sql_impact`。这两个工具都基于静态证据，不执行项目 SQL。

@@ -27,9 +27,16 @@ flowchart TB
 | `src/policy.ts` | schema/table/column 策略。 |
 | `src/db.ts` | OceanBase 查询和元数据访问。 |
 | `src/er.ts` | ER 图结构和 Mermaid 输出。 |
+| `src/metadata-capture.ts` | 纯元数据快照采集。 |
+| `src/metadata-change.ts` | 快照对比和 diff 渲染。 |
+| `src/metadata-impact.ts` | 元数据 diff 和 SQL 使用影响分析。 |
+| `src/metadata-report.ts` | 元数据变更报告汇总。 |
+| `src/metadata-cli.ts` | 本地元数据快照、diff 和报告命令。 |
 | `src/plan-analysis.ts` | 执行计划风险识别。 |
 | `src/query-generation.ts` | 只读 SQL 模板生成。 |
 | `src/performance-report.ts` | 性能建议报告汇总。 |
+| `src/sql-scan.ts` | 静态项目 SQL 扫描和 SQL 使用索引生成。 |
+| `src/sql-usage.ts` | SQL 使用查询辅助。 |
 | `src/config.ts` | 环境变量和 profile 加载。 |
 | `src/diagnostics.ts` | 配置和部署诊断。 |
 | `src/ip-policy.ts` | 来源 IP/CIDR allowlist。 |
@@ -80,6 +87,14 @@ MySQL 模式使用 `information_schema`。
 Oracle 模式优先使用当前 schema 的 `USER_*` 视图；跨 schema 元数据才回退到 `ALL_*` 视图。这样本地 Oracle tenant 响应更稳定，同时保留显式 schema 访问能力。
 
 DDL、ER、Oracle 对象元数据、SQL 模板和性能报告都走同一套 profile、访问策略、并发、超时、输出大小和审计链路。SQL 模板只生成文本；性能报告只执行只读 `EXPLAIN`。
+
+## 元数据变更策略
+
+元数据快照只读取 catalog 元数据，不读取样例行或业务数据值。快照采集覆盖表、字段、索引、约束、分区、关系、统计信息、注释和 Oracle 对象元数据，并带有明确的表和对象数量限制。
+
+快照对比使用稳定 fingerprint，未变化对象可跳过深度比较。diff、影响分析和报告工具只输出证据、风险等级和评审建议，不输出可执行 DDL。
+
+项目 SQL 影响分析使用 `ob-mcp scan-sql --index-out` 生成的静态 SQL 使用索引。扫描器只读取本地文件，不连接 OceanBase。动态 SQL 会标记为不确定，不会当成确定引用。
 
 ## 可观测性
 

@@ -267,10 +267,10 @@ function renderOpenCodeConfig(input: {
 function renderAgent(): string {
   return `---
 name: oceanbase-developer
-description: Uses OceanBase MCP for metadata-first OceanBase development, read-only SQL, paged querying, ER diagrams, and data documentation.
+description: Uses OceanBase MCP for metadata-first OceanBase development, read-only SQL, paged querying, ER diagrams, metadata change review, and data documentation.
 ---
 
-Use this agent for OceanBase development tasks that need database metadata, read-only SQL, query previews, paged result lookup, ER diagrams, or data documentation.
+Use this agent for OceanBase development tasks that need database metadata, read-only SQL, query previews, paged result lookup, ER diagrams, metadata change review, or data documentation.
 
 Rules:
 
@@ -281,16 +281,17 @@ Rules:
 5. Preview or lint SQL before execution.
 6. Use query sessions and paged queries for data inspection.
 7. Use ob_generate_er_html, data dictionary, and documentation tools for structure questions.
-8. Report masking, truncation, unstable ordering, and assumptions clearly.
+8. For metadata change review, capture before/after snapshots, scan SQL usage with --index-out, compare snapshots, analyze impact, and generate a report.
+9. Report masking, truncation, unstable ordering, evidence, and assumptions clearly.
 
-Never run or suggest write SQL, DDL, DCL, procedure calls, sequence NEXTVAL, locks, file functions, sleep functions, or multi-statement SQL.
+Never run or suggest write SQL, DDL, DCL, procedure calls, sequence NEXTVAL, locks, file functions, sleep functions, multi-statement SQL, or executable schema-change statements.
 `;
 }
 
 function renderSkill(): string {
   return `---
 name: oceanbase-query
-description: Guide OpenCode to use OceanBase MCP for metadata-first OceanBase querying, SQL assistance, ER diagrams, and result documentation.
+description: Guide OpenCode to use OceanBase MCP for metadata-first OceanBase querying, SQL assistance, ER diagrams, metadata change review, and result documentation.
 license: MIT
 compatibility: opencode
 metadata:
@@ -313,10 +314,12 @@ metadata:
 - Use ob_prepare_query, ob_build_select, ob_lint_sql, and ob_query_preview for SQL assistance.
 - Use ob_start_query_session, ob_query_page, ob_query_next_page, and ob_query_prev_page for data lookup.
 - Use ER HTML, entity diagrams, relationship explanation, data dictionary, table/schema/query docs, and onboarding docs for structure questions.
+- Use ob_capture_metadata_snapshot, ob_compare_metadata_snapshots, ob_find_sql_usages, ob_analyze_metadata_impact, ob_analyze_change_sql_impact, and ob_generate_metadata_change_report for iteration metadata review.
 - Use ob_get_cache_status or ob_refresh_metadata_cache only when metadata appears stale.
 - Use Oracle-compatible syntax when the profile is Oracle mode.
 
-Do not invent tables, fields, joins, or relationships. If metadata is insufficient, ask for a business term, schema, or table name.
+Do not invent tables, fields, joins, relationships, SQL usages, or impact conclusions. If metadata is insufficient, ask for a business term, schema, or table name.
+Do not output executable ALTER, CREATE, DROP, GRANT, or index DDL.
 `;
 }
 

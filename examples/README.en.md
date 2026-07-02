@@ -14,6 +14,8 @@
 | [env.production.example](env.production.example) | Production HTTP environment example. |
 | [systemd.env.example](systemd.env.example) | Example `/etc/ob-mcp/ob-mcp.env`. |
 | [business-glossary.example.json](business-glossary.example.json) | Optional business-term mapping for search hints. |
+| [metadata-change-workflow.en.md](metadata-change-workflow.en.md) | Metadata snapshot, diff, SQL usage index, and report workflow. |
+| [metadata-change-workflow.zh-CN.md](metadata-change-workflow.zh-CN.md) | Chinese metadata change workflow. |
 
 Copy an example, change hosts, users, passwords, schema policy, and IP allowlist, then run `npm run config:doctor`.
 
@@ -61,7 +63,33 @@ In OpenCode, ask the assistant to inspect relationship evidence first, then call
 ## SQL Scan
 
 ```bash
-ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+ob-mcp scan-sql --path src --path mapper --ignore generated --index-out snapshots/sql-index.json --format json
 ```
 
-The scan reports findings only and does not modify code. For table and column validation, pass a reported SQL snippet to `ob_validate_sql_snippet`.
+The scan reports findings only and does not modify code. The optional SQL usage index can be used by metadata impact analysis. For table and column validation, pass a reported SQL snippet to `ob_validate_sql_snippet`.
+
+## Metadata Change Workflow
+
+MySQL mode:
+
+```bash
+ob-mcp metadata snapshot --schema biz_test --out snapshots/mysql-before.json
+ob-mcp scan-sql --path src --path mapper --index-out snapshots/sql-index.json --format text
+ob-mcp metadata snapshot --schema biz_test --out snapshots/mysql-after.json
+ob-mcp metadata diff --before snapshots/mysql-before.json --after snapshots/mysql-after.json --format markdown --out snapshots/mysql-diff.md
+ob-mcp metadata report --before snapshots/mysql-before.json --after snapshots/mysql-after.json --sql-index snapshots/sql-index.json --format markdown --out snapshots/mysql-report.md
+```
+
+Oracle mode:
+
+```bash
+OB_COMPATIBILITY=oracle \
+ob-mcp metadata snapshot --schema OB_USER --include-oracle-objects --out snapshots/oracle-before.json
+
+OB_COMPATIBILITY=oracle \
+ob-mcp metadata snapshot --schema OB_USER --include-oracle-objects --out snapshots/oracle-after.json
+
+ob-mcp metadata report --before snapshots/oracle-before.json --after snapshots/oracle-after.json --format html --out snapshots/oracle-report.html
+```
+
+See [metadata-change-workflow.en.md](metadata-change-workflow.en.md) for the full sequence.

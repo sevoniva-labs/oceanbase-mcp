@@ -13,6 +13,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 - 支持表 DDL/结构、索引、约束、分区、统计信息、关系发现和 ER 图生成。
 - 支持只读 SQL 模板生成、执行计划分析和性能建议报告。
 - 提供 OpenCode agent 和 skill，引导模型按元数据优先、只读预览、分页查询的流程使用 MCP。
+- 支持元数据快照、迭代前后对比、项目 SQL 使用索引和变更影响报告。
 - Oracle 模式支持查看 view、sequence、synonym、procedure、function、package 等对象元数据。
 - 支持本地 stdio 模式，也支持共享部署的 HTTP 模式。
 - HTTP 模式支持 Bearer token 策略、Host allowlist、来源 IP allowlist、端点鉴权、body 限制和限流。
@@ -30,6 +31,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v0.5.0 | 补齐开发元数据：表 DDL、统计信息、Oracle 对象、关系发现、ER 图、执行计划分析和性能建议。 |
 | v0.5.1 | 改善 OpenCode 查询流程：表上下文、查询预览、分页查询、结果结构、错误提示、字段画像和业务字典。 |
 | v1.0.0 | 完成本地开发助手能力：初始化/诊断、统一搜索、SQL 辅助、查询会话、数据理解、ER HTML、文档生成、项目 SQL 扫描和内网交付。 |
+| v1.1.0 | 增加元数据快照、快照对比、SQL 使用索引、影响分析、变更报告和关系路径解释，用于迭代前后评审。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -88,6 +90,7 @@ opencode run "Use the oceanbase MCP server to run SELECT 1 AS ok and return only
 - [SQL 辅助](sql-assistant.md)
 - [ER 图](er.md)
 - [数据字典与文档生成](data-dictionary.md)
+- [元数据变更分析](metadata-change.md)
 - [部署指南](deployment.md)
 - [架构说明](architecture.md)
 - [安全基线](security.md)
@@ -167,7 +170,7 @@ npm run start:http
 | v1.0.0 | `ob_detect_time_columns` | 基于元数据识别创建、更新和业务时间字段。 |
 | v1.0.0 | `ob_explain_error` | 结合策略和可见元数据解释 SQL 错误，不执行 SQL。 |
 | v1.0.0 | `ob_explain_project_query` | 解释项目 SQL 的表、字段、过滤、分页和风险，不执行查询。 |
-| v1.0.0 | `ob_explain_relationship` | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度。 |
+| v1.0.0 | `ob_explain_relationship` | 解释两张表之间可见关系的字段依据、约束依据、命名依据和置信度；v1.1.0 起返回有限深度关系路径。 |
 | v1.0.0 | `ob_export_result_preview` | 生成 Markdown/CSV 结果预览字符串，不落盘。 |
 | v1.0.0 | `ob_find_columns` | 按字段名、注释、类型、表名模式或业务词查找字段。 |
 | v1.0.0 | `ob_find_recent_rows` | 基于明确或识别出的时间字段分页查看最近数据。 |
@@ -203,14 +206,34 @@ npm run start:http
 | v1.0.0 | `ob_start_query_session` | 创建内存查询上下文，记录表、字段、SQL、分页和警告。 |
 | v1.0.0 | `ob_summarize_result` | 汇总已返回结果，不额外读取数据库。 |
 | v1.0.0 | `ob_validate_sql_snippet` | 校验贴入 SQL 的只读策略、方言、分页、风险和可见表字段。 |
+| v1.1.0 | `ob_analyze_change_sql_impact` | 基于元数据 diff 和 SQL 使用索引分析项目 SQL 影响。 |
+| v1.1.0 | `ob_analyze_metadata_impact` | 基于快照 diff、SQL 使用索引、关系和业务字典汇总影响面。 |
+| v1.1.0 | `ob_capture_metadata_snapshot` | 采集受限的纯元数据快照，不读取业务数据。 |
+| v1.1.0 | `ob_compare_metadata_snapshots` | 对比两份元数据快照，返回基于证据的结构变化。 |
+| v1.1.0 | `ob_find_sql_usages` | 从静态 SQL 使用索引中查找表、字段或业务词引用。 |
+| v1.1.0 | `ob_generate_metadata_change_report` | 基于 diff 和影响分析生成 Markdown 或简版 HTML 变更报告。 |
+
+## 元数据变更流程
+
+迭代开始和结束各采集一次元数据快照，再结合项目 SQL 使用索引生成影响报告：
+
+```bash
+ob-mcp metadata snapshot --schema biz_test --out snapshots/before.json
+ob-mcp scan-sql --path src --path mapper --index-out snapshots/sql-index.json --format text
+ob-mcp metadata snapshot --schema biz_test --out snapshots/after.json
+ob-mcp metadata diff --before snapshots/before.json --after snapshots/after.json --format markdown --out snapshots/diff.md
+ob-mcp metadata report --before snapshots/before.json --after snapshots/after.json --sql-index snapshots/sql-index.json --format markdown --out snapshots/report.md
+```
+
+这些命令只读取元数据或本地项目文件，不执行数据库变更。报告只输出风险、证据和评审建议，不输出可直接执行的 DDL。
 
 ## 内网编译
 
 Release 附带源码归档，适合放入内网后通过内部 npm 制品库编译运行：
 
 ```bash
-tar -xzf ob-mcp-1.0.0-source.tar.gz
-cd ob-mcp-1.0.0
+tar -xzf ob-mcp-1.1.0-source.tar.gz
+cd ob-mcp-1.1.0
 npm ci
 npm run build
 npm run start
@@ -222,12 +245,12 @@ npm run start
 
 | 资产 | 用途 |
 | --- | --- |
-| `ob-mcp-1.0.0.tgz` | npm 包。 |
-| `ob-mcp-1.0.0-source.tar.gz` | 源码归档，用于内网编译。 |
+| `ob-mcp-1.1.0.tgz` | npm 包。 |
+| `ob-mcp-1.1.0-source.tar.gz` | 源码归档，用于内网编译。 |
 | `sbom.cdx.json` | CycloneDX SBOM。 |
-| `oceanbase-mcp-1.0.0-amd64.tar.gz` | amd64 离线镜像。 |
-| `oceanbase-mcp-1.0.0-arm64.tar.gz` | arm64 离线镜像。 |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.0.0` | GHCR 镜像 tag。 |
+| `oceanbase-mcp-1.1.0-amd64.tar.gz` | amd64 离线镜像。 |
+| `oceanbase-mcp-1.1.0-arm64.tar.gz` | arm64 离线镜像。 |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.0` | GHCR 镜像 tag。 |
 
 ## 资源
 

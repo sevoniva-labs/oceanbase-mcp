@@ -14,6 +14,8 @@
 | [env.production.example](env.production.example) | 生产 HTTP 环境变量示例。 |
 | [systemd.env.example](systemd.env.example) | `/etc/ob-mcp/ob-mcp.env` 示例。 |
 | [business-glossary.example.json](business-glossary.example.json) | 可选业务词映射，用于搜索提示。 |
+| [metadata-change-workflow.zh-CN.md](metadata-change-workflow.zh-CN.md) | 元数据快照、diff、SQL 使用索引和报告流程。 |
+| [metadata-change-workflow.en.md](metadata-change-workflow.en.md) | 英文元数据变更流程。 |
 
 复制示例后，修改地址、用户、密码、schema 策略和来源 IP allowlist，再运行 `npm run config:doctor`。
 
@@ -61,7 +63,33 @@ OpenCode 中也可以要求 assistant 先查关系证据，再调用 `ob_generat
 ## SQL 扫描
 
 ```bash
-ob-mcp scan-sql --path src --path mapper --ignore generated --format json
+ob-mcp scan-sql --path src --path mapper --ignore generated --index-out snapshots/sql-index.json --format json
 ```
 
-扫描只输出报告，不修改代码。需要进一步校验表字段时，把报告中的 SQL 交给 `ob_validate_sql_snippet`。
+扫描只输出报告，不修改代码。可选 SQL 使用索引用于元数据影响分析。需要进一步校验表字段时，把报告中的 SQL 交给 `ob_validate_sql_snippet`。
+
+## 元数据变更流程
+
+MySQL 模式：
+
+```bash
+ob-mcp metadata snapshot --schema biz_test --out snapshots/mysql-before.json
+ob-mcp scan-sql --path src --path mapper --index-out snapshots/sql-index.json --format text
+ob-mcp metadata snapshot --schema biz_test --out snapshots/mysql-after.json
+ob-mcp metadata diff --before snapshots/mysql-before.json --after snapshots/mysql-after.json --format markdown --out snapshots/mysql-diff.md
+ob-mcp metadata report --before snapshots/mysql-before.json --after snapshots/mysql-after.json --sql-index snapshots/sql-index.json --format markdown --out snapshots/mysql-report.md
+```
+
+Oracle 模式：
+
+```bash
+OB_COMPATIBILITY=oracle \
+ob-mcp metadata snapshot --schema OB_USER --include-oracle-objects --out snapshots/oracle-before.json
+
+OB_COMPATIBILITY=oracle \
+ob-mcp metadata snapshot --schema OB_USER --include-oracle-objects --out snapshots/oracle-after.json
+
+ob-mcp metadata report --before snapshots/oracle-before.json --after snapshots/oracle-after.json --format html --out snapshots/oracle-report.html
+```
+
+完整流程见 [metadata-change-workflow.zh-CN.md](metadata-change-workflow.zh-CN.md)。

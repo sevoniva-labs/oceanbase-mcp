@@ -13,6 +13,7 @@ OceanBase MCP is a read-only MCP gateway for OceanBase. It is designed for OpenC
 - Inspects table DDL/structure, indexes, constraints, partitions, statistics, related tables, and ER diagrams.
 - Generates read-only SQL templates, query plan analysis, and performance advisory reports.
 - Provides an OpenCode agent and skill for metadata-first, read-only query workflows.
+- Captures metadata snapshots, compares iteration changes, indexes project SQL usage, and generates change impact reports.
 - Inspects Oracle view, sequence, synonym, procedure, function, and package metadata.
 - Provides stdio mode for local development and HTTP mode for shared deployments.
 - Protects HTTP mode with bearer token policies, Host allowlist, source IP allowlist, endpoint auth, body limits, and rate limiting.
@@ -30,6 +31,7 @@ This table lists release themes only. Per-tool versioning is in the Tools table 
 | v0.5.0 | Developer metadata: table DDL, statistics, Oracle objects, relationship discovery, ER diagrams, plan analysis, and performance advice. |
 | v0.5.1 | OpenCode query workflow: table context, query preview, paged queries, result structure, error hints, column profiling, and business glossary. |
 | v1.0.0 | Local developer assistant scope: init/doctor, unified search, SQL assistance, query sessions, data understanding, ER HTML, documentation, project SQL scanning, and internal delivery. |
+| v1.1.0 | Metadata snapshots, snapshot diff, SQL usage index, impact analysis, change reports, and relationship paths for iteration review. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -88,6 +90,7 @@ More examples:
 - [SQL assistance](sql-assistant.md)
 - [ER diagrams](er.md)
 - [Data dictionary and docs](data-dictionary.md)
+- [Metadata change analysis](metadata-change.md)
 - [Deployment](deployment.md)
 - [Architecture](architecture.md)
 - [Security baseline](security.md)
@@ -167,7 +170,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_detect_time_columns` | Detect likely create, update, and business time columns from metadata. |
 | v1.0.0 | `ob_explain_error` | Explain SQL errors with policy context and visible metadata hints without executing SQL. |
 | v1.0.0 | `ob_explain_project_query` | Explain project SQL tables, fields, filters, pagination, and risk without executing it. |
-| v1.0.0 | `ob_explain_relationship` | Explain visible relationship evidence and confidence between two tables without inventing missing links. |
+| v1.0.0 | `ob_explain_relationship` | Explain visible relationship evidence and confidence between two tables; returns bounded relationship paths since v1.1.0. |
 | v1.0.0 | `ob_export_result_preview` | Generate Markdown/CSV result preview text without writing files. |
 | v1.0.0 | `ob_find_columns` | Find visible columns by name, comment, type, table pattern, or business term. |
 | v1.0.0 | `ob_find_recent_rows` | Read recent rows using an explicit or detected time column with safe pagination. |
@@ -203,14 +206,34 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_start_query_session` | Start an in-memory query context for tables, columns, SQL, paging, and warnings. |
 | v1.0.0 | `ob_summarize_result` | Summarize already returned rows without reading the database. |
 | v1.0.0 | `ob_validate_sql_snippet` | Validate pasted SQL snippets for read-only policy, dialect, pagination, risk, and visible table or column metadata. |
+| v1.1.0 | `ob_analyze_change_sql_impact` | Analyze project SQL impact from metadata diff and SQL usage index evidence. |
+| v1.1.0 | `ob_analyze_metadata_impact` | Summarize metadata diff impact with SQL index, relationship, and glossary evidence. |
+| v1.1.0 | `ob_capture_metadata_snapshot` | Capture bounded metadata-only snapshots without reading business data. |
+| v1.1.0 | `ob_compare_metadata_snapshots` | Compare metadata snapshots and return evidence-based structural changes. |
+| v1.1.0 | `ob_find_sql_usages` | Find table, column, or business-term references from a static SQL usage index. |
+| v1.1.0 | `ob_generate_metadata_change_report` | Generate Markdown or simple HTML change reports from diff and impact evidence. |
+
+## Metadata Change Workflow
+
+Capture metadata before and after an iteration, then combine the diff with a project SQL usage index:
+
+```bash
+ob-mcp metadata snapshot --schema biz_test --out snapshots/before.json
+ob-mcp scan-sql --path src --path mapper --index-out snapshots/sql-index.json --format text
+ob-mcp metadata snapshot --schema biz_test --out snapshots/after.json
+ob-mcp metadata diff --before snapshots/before.json --after snapshots/after.json --format markdown --out snapshots/diff.md
+ob-mcp metadata report --before snapshots/before.json --after snapshots/after.json --sql-index snapshots/sql-index.json --format markdown --out snapshots/report.md
+```
+
+These commands only read metadata or local project files. Reports contain risks, evidence, and review guidance; they do not emit executable DDL.
 
 ## Internal Builds
 
 Release assets include a source archive for internal builds with an internal npm registry:
 
 ```bash
-tar -xzf ob-mcp-1.0.0-source.tar.gz
-cd ob-mcp-1.0.0
+tar -xzf ob-mcp-1.1.0-source.tar.gz
+cd ob-mcp-1.1.0
 npm ci
 npm run build
 npm run start
@@ -222,12 +245,12 @@ The source archive excludes `node_modules` and `dist`. The internal npm registry
 
 | Asset | Purpose |
 | --- | --- |
-| `ob-mcp-1.0.0.tgz` | npm package. |
-| `ob-mcp-1.0.0-source.tar.gz` | Source archive for internal builds. |
+| `ob-mcp-1.1.0.tgz` | npm package. |
+| `ob-mcp-1.1.0-source.tar.gz` | Source archive for internal builds. |
 | `sbom.cdx.json` | CycloneDX SBOM. |
-| `oceanbase-mcp-1.0.0-amd64.tar.gz` | amd64 offline image. |
-| `oceanbase-mcp-1.0.0-arm64.tar.gz` | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.0.0` | GHCR image tag. |
+| `oceanbase-mcp-1.1.0-amd64.tar.gz` | amd64 offline image. |
+| `oceanbase-mcp-1.1.0-arm64.tar.gz` | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.0` | GHCR image tag. |
 
 ## Resources
 
