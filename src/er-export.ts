@@ -23,6 +23,8 @@ export interface ExportErOptions {
   format?: ExportErFormat;
   title?: string;
   output?: string;
+  outputDir?: string;
+  chunkSize?: number;
   overwrite?: boolean;
   dryRun?: boolean;
 }
@@ -38,13 +40,14 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
   let server: ToolExecutorServer | undefined;
   try {
     const options = parseExportErArgs(args);
-    const outputPath = resolveErOutputPath(options, cwd);
+    const outputPath = options.outputDir ? undefined : resolveErOutputPath(options, cwd);
     if (options.dryRun) {
       console.log(JSON.stringify({
         ok: true,
         file: outputPath,
-        tool: "ob_generate_er_html",
-        args: erToolArgs(options),
+        directory: options.outputDir ? resolve(cwd, options.outputDir) : undefined,
+        tool: options.outputDir ? "ob_plan_er_export" : "ob_generate_er_html",
+        args: options.outputDir ? erPlanArgs(options) : erToolArgs(options),
         write: false
       }, null, 2));
       return 0;
@@ -52,13 +55,16 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
 
     runtime = createGatewayRuntime(loadGatewayConfig());
     server = createObMcpServer(runtime) as unknown as ToolExecutorServer;
+    if (options.outputDir) {
+      return await runExportErDirectory(server, options, cwd);
+    }
     const tool = server._registeredTools.ob_generate_er_html;
     if (!tool) {
       throw new Error("ob_generate_er_html is not registered.");
     }
     const result = await server.executeToolHandler(tool, erToolArgs(options), {});
     const payload = parseHtmlPayload(result);
-    writeErArtifact(outputPath, payload.html, { overwrite: options.overwrite });
+    writeErArtifact(outputPath!, payload.html, { overwrite: options.overwrite });
     console.log(JSON.stringify({
       ok: true,
       file: outputPath,
@@ -157,6 +163,12 @@ export function parseExportErArgs(args: string[]): ExportErOptions {
       case "--out":
         options.output = value;
         break;
+      case "--out-dir":
+        options.outputDir = value;
+        break;
+      case "--chunk-size":
+        options.chunkSize = parsePositiveInt(value, name, 100);
+        break;
       default:
         throw new Error(`Unknown export-er argument: ${name}`);
     }
@@ -203,6 +215,67 @@ function erToolArgs(options: ExportErOptions): Record<string, unknown> {
   };
 }
 
+function erPlanArgs(options: ExportErOptions): Record<string, unknown> {
+  return {
+    ...erToolArgs(options),
+    outputDir: options.outputDir,
+    chunkSize: options.chunkSize
+  };
+}
+
+async function runExportErDirectory(
+  server: ToolExecutorServer,
+  options: ExportErOptions,
+  cwd: string
+): Promise<number> {
+  const planTool = server._registeredTools.ob_plan_er_export;
+  const htmlTool = server._registeredTools.ob_generate_er_html;
+  if (!planTool) {
+    throw new Error("ob_plan_er_export is not registered.");
+  }
+  if (!htmlTool) {
+    throw new Error("ob_generate_er_html is not registered.");
+  }
+  const planResult = await server.executeToolHandler(planTool, erPlanArgs(options), {});
+  const plan = parsePlanPayload(planResult);
+  const files = plan.chunks.map((chunk) => resolve(cwd, chunk.file));
+  if (!options.overwrite) {
+    const existing = files.find((file) => existsSync(file));
+    if (existing) {
+      throw new Error(`${existing} already exists. Re-run with --overwrite to replace it.`);
+    }
+  }
+
+  const written: Array<{ file: string; tableCount: number; relationshipCount?: number }> = [];
+  for (const chunk of plan.chunks) {
+    const file = resolve(cwd, chunk.file);
+    const result = await server.executeToolHandler(htmlTool, {
+      ...erToolArgs(options),
+      table: undefined,
+      businessTerm: undefined,
+      tables: chunk.tables,
+      maxTables: chunk.tableCount
+    }, {});
+    const payload = parseHtmlPayload(result);
+    writeErArtifact(file, payload.html, { overwrite: options.overwrite });
+    written.push({
+      file,
+      tableCount: payload.tableCount ?? chunk.tableCount,
+      relationshipCount: payload.relationshipCount
+    });
+  }
+
+  console.log(JSON.stringify({
+    ok: true,
+    directory: resolve(cwd, options.outputDir!),
+    format: plan.format,
+    chunkCount: plan.chunks.length,
+    tableCount: plan.tableCount,
+    files: written
+  }, null, 2));
+  return 0;
+}
+
 function parseHtmlPayload(result: { content?: Array<{ text?: string }> }): {
   html: string;
   format?: string;
@@ -222,6 +295,41 @@ function parseHtmlPayload(result: { content?: Array<{ text?: string }> }): {
     format: payload.format,
     tableCount: payload.tableCount,
     relationshipCount: payload.relationshipCount
+  };
+}
+
+function parsePlanPayload(result: { content?: Array<{ text?: string }> }): {
+  format?: string;
+  tableCount?: number;
+  chunks: Array<{ index: number; tableCount: number; tables: string[]; file: string }>;
+} {
+  const text = result.content?.[0]?.text;
+  if (!text) {
+    throw new Error("ob_plan_er_export returned an empty response.");
+  }
+  const payload = JSON.parse(text) as {
+    format?: string;
+    tableCount?: number;
+    chunks?: unknown;
+  };
+  if (!Array.isArray(payload.chunks)) {
+    throw new Error("ob_plan_er_export did not return export chunks.");
+  }
+  return {
+    format: payload.format,
+    tableCount: payload.tableCount,
+    chunks: payload.chunks.map((chunk) => {
+      const record = chunk as { index?: unknown; tableCount?: unknown; tables?: unknown; file?: unknown };
+      if (!Array.isArray(record.tables) || typeof record.file !== "string") {
+        throw new Error("ob_plan_er_export returned an invalid chunk.");
+      }
+      return {
+        index: typeof record.index === "number" ? record.index : 0,
+        tableCount: typeof record.tableCount === "number" ? record.tableCount : record.tables.length,
+        tables: record.tables.filter((table): table is string => typeof table === "string" && table.trim().length > 0),
+        file: record.file
+      };
+    })
   };
 }
 

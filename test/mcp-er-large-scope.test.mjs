@@ -34,11 +34,46 @@ test("ob_generate_er_diagram loads large schema metadata in bounded batches", as
   assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 1);
 });
 
+test("ob_plan_er_export returns chunked local export commands", async () => {
+  const queryLog = [];
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "big_model",
+    OB_ER_MAX_TABLES: "250",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "4",
+    OB_MAX_RESULT_BYTES: "4000000"
+  });
+  const server = createObMcpServer({
+    defaultProfile: "default",
+    configs: { default: config },
+    pools: { default: { query: largeSchemaQuery(queryLog) } },
+    queryLimiters: { default: { active: 0, limit: 5 } }
+  });
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_plan_er_export, {
+    schema: "big_model",
+    maxTables: 55,
+    relationshipMode: "none",
+    chunkSize: 20,
+    outputDir: "er-output"
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.tableCount, 55);
+  assert.equal(payload.chunkCount, 3);
+  assert.equal(payload.chunks[0].tableCount, 20);
+  assert.equal(payload.chunks[2].tableCount, 15);
+  assert.match(payload.singleFileCommand, /ob-mcp export-er/);
+  assert.match(payload.chunks[0].command, /--tables/);
+  assert.equal(payload.chunks[0].file, "er-output/er-part-001.html");
+  assert(payload.warnings.some((warning) => /chunk commands/.test(warning)));
+});
+
 function largeSchemaQuery(queryLog) {
   return async ({ sql, values = [] }) => {
     queryLog.push({ sql, values });
     if (/FROM information_schema\.tables/i.test(sql)) {
-      return [Array.from({ length: 200 }, (_, index) => ({
+      const limit = Number(values.at(-1) ?? 200);
+      return [Array.from({ length: Math.min(limit, 200) }, (_, index) => ({
         table_schema: "big_model",
         table_name: `t_${String(index + 1).padStart(3, "0")}`,
         table_type: "BASE TABLE",

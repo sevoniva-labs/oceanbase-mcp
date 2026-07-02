@@ -19,6 +19,8 @@ test("parseExportErArgs parses ER export options", () => {
     "--format", "interactive",
     "--title", "Order ER",
     "--out", "er/order.html",
+    "--out-dir", "er/chunks",
+    "--chunk-size", "20",
     "--no-include-inferred",
     "--overwrite",
     "--dry-run"
@@ -34,6 +36,8 @@ test("parseExportErArgs parses ER export options", () => {
     format: "html-interactive",
     title: "Order ER",
     output: "er/order.html",
+    outputDir: "er/chunks",
+    chunkSize: 20,
     includeInferred: false,
     relationshipMode: "foreign_key",
     overwrite: true,

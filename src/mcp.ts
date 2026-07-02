@@ -3755,6 +3755,77 @@ export function createObMcpServer(
   );
 
   registerTool(
+    "ob_plan_er_export",
+    {
+      title: "Plan ER Export",
+      description: "Plan local ER HTML export commands for large OceanBase schemas without returning large inline HTML.",
+      inputSchema: {
+        ...profileInput,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        tables: z.array(z.string().min(1)).max(50).optional(),
+        businessTerm: z.string().min(1).optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxRelationships: z.number().int().positive().max(1000).optional(),
+        minConfidence: z.number().min(0).max(1).optional(),
+        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
+        includeInferred: z.boolean().optional().default(false),
+        format: erHtmlFormatSchema.optional().default("html-interactive"),
+        chunkSize: z.number().int().positive().max(100).optional(),
+        outputDir: z.string().min(1).max(240).optional()
+      }
+    },
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, format = "html-interactive", chunkSize, outputDir }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
+      const scopedTables = result.response.scope.map((item) => ({ schema: item.schema, table: item.table }));
+      const effectiveChunkSize = Math.max(1, Math.min(chunkSize ?? Math.min(25, selected.config.erMaxTables), selected.config.erMaxTables, 100));
+      const chunks = chunkItems(scopedTables, effectiveChunkSize).map((chunk, index) => {
+        const file = outputDir
+          ? `${outputDir.replace(/\/+$/g, "")}/er-part-${String(index + 1).padStart(3, "0")}.html`
+          : `er-part-${String(index + 1).padStart(3, "0")}.html`;
+        const tableNames = chunk.map((item) => tableLabelForCommand(item.schema, item.table));
+        return {
+          index: index + 1,
+          tableCount: chunk.length,
+          tables: tableNames,
+          file,
+          command: buildErExportCommand(result.response, format, {
+            tables: tableNames,
+            output: file,
+            maxTables: chunk.length
+          })
+        };
+      });
+      return toLimitedResult(
+        {
+          mode: result.response.mode,
+          schema: result.response.schema,
+          rootTable: result.response.rootTable,
+          businessTerm: result.response.businessTerm,
+          format,
+          tableCount: result.response.tableCount,
+          relationshipCount: result.response.relationshipCount,
+          chunkSize: effectiveChunkSize,
+          chunkCount: chunks.length,
+          inlineHtmlLimitBytes: selected.config.erInlineHtmlMaxBytes,
+          singleFileCommand: buildErExportCommand(result.response, format),
+          chunks,
+          stats: result.response.stats,
+          warnings: uniqueStrings([
+            ...result.response.warnings,
+            ...(chunks.length > 1
+              ? ["Use chunk commands for large schemas to avoid inline MCP response limits and browser rendering pressure."]
+              : ["The scope fits in one planned export chunk."])
+          ])
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_generate_entity_diagram",
     {
       title: "Generate Entity Diagram",
@@ -6079,23 +6150,40 @@ function fitErDiagramResponseForLimit(response: ErDiagramToolResponse, config: O
   };
 }
 
-function buildErExportCommand(response: ErDiagramToolResponse, format: string): string {
+function buildErExportCommand(
+  response: ErDiagramToolResponse,
+  format: string,
+  options: { tables?: string[]; output?: string; maxTables?: number } = {}
+): string {
   const args = ["ob-mcp", "export-er"];
   if (response.schema) {
     args.push("--schema", shellArg(response.schema));
   }
-  if (response.rootTable) {
+  if (options.tables && options.tables.length > 0) {
+    args.push("--tables", shellArg(options.tables.join(",")));
+  } else if (response.rootTable) {
     args.push("--table", shellArg(response.rootTable));
-  }
-  if (response.businessTerm) {
+  } else if (response.businessTerm) {
     args.push("--business-term", shellArg(response.businessTerm));
   }
   args.push("--relationship-mode", response.relationshipMode);
-  args.push("--max-tables", String(response.maxTables));
+  args.push("--max-tables", String(options.maxTables ?? response.maxTables));
   args.push("--max-relationships", String(response.maxRelationships));
   args.push("--format", format.replace(/^html-/, ""));
-  args.push("--out", shellArg("er-output.html"));
+  args.push("--out", shellArg(options.output ?? "er-output.html"));
   return args.join(" ");
+}
+
+function tableLabelForCommand(schema: string | undefined, table: string): string {
+  return schema ? `${schema}.${table}` : table;
+}
+
+function chunkItems<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
 }
 
 function shellArg(value: string): string {

@@ -10,6 +10,7 @@ ER 图能力基于可见元数据和关系证据生成，不会凭空补关系�
 | --- | --- |
 | `ob_generate_er_diagram` | 生成 Mermaid 和 JSON ER 元数据，支持 schema、table、业务词、深度和表数量限制。 |
 | `ob_generate_er_html` | 生成自包含 HTML ER 图，支持 static、interactive、compact、detailed。 |
+| `ob_plan_er_export` | 为大 schema 规划本地 ER HTML 分片导出命令，避免 MCP inline 返回过大。 |
 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
 | `ob_explain_relationship` | 解释两张表之间的字段依据、约束依据、命名依据和置信度。 |
 | `ob_generate_er_document` | 生成 Markdown、PlantUML 和 DOT 格式的模型说明。 |
@@ -33,6 +34,12 @@ ER 图能力基于可见元数据和关系证据生成，不会凭空补关系�
 
 ```bash
 ob-mcp export-er --schema biz_test --table orders --format interactive --out docs/orders-er.html
+```
+
+大 schema 分片导出：
+
+```bash
+ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
 ```
 
 默认不会覆盖已有文件。需要覆盖时显式传入 `--overwrite`。

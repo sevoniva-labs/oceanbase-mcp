@@ -90,12 +90,18 @@ npm run build
 node dist/index.js export-er --schema biz_test --business-term orders --format detailed --out tmp/order-er.html
 ```
 
+For larger schemas, export chunked files to a directory:
+
+```bash
+ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
+```
+
 Supported formats:
 
 | Format | Description |
 | --- | --- |
 | `static` | Single-file static HTML with the diagram, relationship table, Mermaid, and JSON. |
-| `interactive` | Single-file interactive HTML with search and zoom. |
+| `interactive` | Single-file interactive HTML with table search, zoom, drag, auto-fit, table details, and relationship highlighting. |
 | `compact` | Compact diagram with tables and main relationships for larger local models. |
 | `detailed` | Detailed diagram with columns, primary keys, indexes, and column comments. |
 
@@ -113,6 +119,8 @@ Common options:
 | `--no-include-inferred` | Keep only high-confidence relationships such as real foreign keys. |
 | `--format <format>` | `static`, `interactive`, `compact`, or `detailed`. |
 | `--out <file>` | Output file. A safe default name is used when omitted. |
+| `--out-dir <dir>` | Write chunked ER files into a directory for larger schemas. |
+| `--chunk-size <n>` | Table count per chunk, up to 100. |
 | `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
 
 Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only the local HTML file and never modifies the database.

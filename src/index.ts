@@ -84,6 +84,8 @@ Export ER options:
   --business-term <term>
   --format static|interactive|compact|detailed
   --out <file>
+  --out-dir <dir>
+  --chunk-size <n>
   --overwrite
 
 Scan SQL options:

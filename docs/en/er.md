@@ -10,6 +10,7 @@ ER diagrams are generated from visible metadata and relationship evidence. The s
 | --- | --- |
 | `ob_generate_er_diagram` | Generates Mermaid and JSON ER metadata with schema, table, business-term, depth, and table-count limits. |
 | `ob_generate_er_html` | Generates self-contained HTML ER diagrams in static, interactive, compact, or detailed form. |
+| `ob_plan_er_export` | Plans chunked local ER HTML export commands for large schemas to avoid oversized inline MCP responses. |
 | `ob_generate_entity_diagram` | Generates a local entity diagram from a business term or table, with Mermaid, JSON, HTML, and relationship evidence. |
 | `ob_explain_relationship` | Explains field, constraint, naming evidence, and confidence between two tables. |
 | `ob_generate_er_document` | Generates Markdown, PlantUML, and DOT model documentation. |
@@ -33,6 +34,12 @@ The interactive HTML format is intended for daily development work. The left pan
 
 ```bash
 ob-mcp export-er --schema biz_test --table orders --format interactive --out docs/orders-er.html
+```
+
+Chunked export for larger schemas:
+
+```bash
+ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
 ```
 
 Existing files are not overwritten by default. Pass `--overwrite` explicitly when needed.
