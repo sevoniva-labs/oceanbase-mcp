@@ -109,6 +109,7 @@ const SENSITIVE_SAMPLE_PATTERN =
   /(password|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|credential|session|cookie|email|phone|mobile|id[_-]?card|ssn)/i;
 const QUERY_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 const MAX_QUERY_SESSIONS = 100;
+const SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT = 25;
 const QUERY_TERM_STOPWORDS = new Set([
   "show",
   "list",
@@ -3704,6 +3705,31 @@ export function createObMcpServer(
     async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, format = "html-static", title }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
+      if (shouldSkipSchemaInlineErHtmlRender(result.response, { table, tables, businessTerm })) {
+        return toLimitedResult(
+          {
+            mode: result.response.mode,
+            schema: result.response.schema,
+            rootTable: result.response.rootTable,
+            businessTerm: result.response.businessTerm,
+            tableCount: result.response.tableCount,
+            relationshipCount: result.response.relationshipCount,
+            contentType: "text/html",
+            format,
+            inline: false,
+            htmlOmitted: true,
+            renderSkipped: true,
+            inlineLimitBytes: selected.config.erInlineHtmlMaxBytes,
+            exportCommand: buildErExportCommand(result.response, format),
+            stats: result.response.stats,
+            warnings: uniqueStrings([
+              ...result.response.warnings,
+              `Schema-level ER HTML rendering was skipped because tableCount=${result.response.tableCount} exceeds ${SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT}. Use ob_plan_er_export and CLI chunked export for large diagrams.`
+            ])
+          },
+          selected.config
+        );
+      }
       const html = renderErHtml(result.diagram, {
         title: title ?? defaultErHtmlTitle(result.response),
         warnings: result.response.warnings,
@@ -5943,13 +5969,22 @@ async function buildErDiagramResult(
       if (batchRefs.length === 0) {
         continue;
       }
-      const batch = await withQuerySlot(selected, () =>
-        loadErMetadataBatch(selected.pool, selected.config.compatibility, batchRefs, {
-          relationshipMode,
-          maxRelationships: Math.max(1, maxRelationships - relationships.length),
-          timeoutMs: erTimeoutMs
-        })
-      );
+      const batch = relationshipMode === "foreign_key"
+        ? await withQuerySlot(selected, () =>
+            listErForeignKeyRelationshipsBatch(
+              selected.pool,
+              selected.config.compatibility,
+              batchRefs,
+              erTimeoutMs
+            )
+          )
+        : await withQuerySlot(selected, () =>
+            loadErMetadataBatch(selected.pool, selected.config.compatibility, batchRefs, {
+              relationshipMode,
+              maxRelationships: Math.max(1, maxRelationships - relationships.length),
+              timeoutMs: erTimeoutMs
+            })
+          );
       queryCount += batch.queryCount;
       warnings.push(...batch.warnings);
       for (const relation of batch.relationships) {
@@ -6111,6 +6146,14 @@ function defaultErHtmlTitle(response: ErDiagramToolResponse): string {
     return `OceanBase ER Diagram - ${response.rootTable}`;
   }
   return response.schema ? `OceanBase ER Diagram - ${response.schema}` : "OceanBase ER Diagram";
+}
+
+function shouldSkipSchemaInlineErHtmlRender(
+  response: ErDiagramToolResponse,
+  input: Pick<BuildErDiagramInput, "table" | "tables" | "businessTerm">
+): boolean {
+  const explicitScope = Boolean(input.table || input.businessTerm || (input.tables && input.tables.length > 0));
+  return !explicitScope && response.tableCount > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT;
 }
 
 function fitErDiagramResponseForLimit(response: ErDiagramToolResponse, config: ObConfig): ErDiagramToolResponse | (Omit<ErDiagramToolResponse, "mermaid" | "diagram"> & {

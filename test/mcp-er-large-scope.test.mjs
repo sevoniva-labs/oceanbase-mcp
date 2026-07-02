@@ -34,6 +34,68 @@ test("ob_generate_er_diagram loads large schema metadata in bounded batches", as
   assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 1);
 });
 
+test("ob_generate_er_diagram avoids duplicate metadata reads for foreign-key relationships", async () => {
+  const queryLog = [];
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "big_model",
+    OB_ER_MAX_TABLES: "250",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "4",
+    OB_MAX_RESULT_BYTES: "4000000"
+  });
+  const server = createObMcpServer({
+    defaultProfile: "default",
+    configs: { default: config },
+    pools: { default: { query: largeSchemaQuery(queryLog) } },
+    queryLimiters: { default: { active: 0, limit: 5 } }
+  });
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_er_diagram, {
+    schema: "big_model",
+    maxTables: 80,
+    relationshipMode: "foreign_key"
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.tableCount, 80);
+  assert.equal(payload.stats.queryCount, 5);
+  assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name, column_type/i.test(entry.sql)).length, 1);
+  assert.equal(queryLog.filter((entry) => /FROM information_schema\.statistics/i.test(entry.sql)).length, 1);
+  assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 1);
+  assert.equal(queryLog.filter((entry) => /FROM information_schema\.key_column_usage kcu/i.test(entry.sql)).length, 1);
+});
+
+test("ob_generate_er_html skips schema-level inline rendering for large scopes", async () => {
+  const queryLog = [];
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "big_model",
+    OB_ER_MAX_TABLES: "250",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "4",
+    OB_MAX_RESULT_BYTES: "4000000"
+  });
+  const server = createObMcpServer({
+    defaultProfile: "default",
+    configs: { default: config },
+    pools: { default: { query: largeSchemaQuery(queryLog) } },
+    queryLimiters: { default: { active: 0, limit: 5 } }
+  });
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_er_html, {
+    schema: "big_model",
+    maxTables: 30,
+    relationshipMode: "none",
+    format: "html-interactive"
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.tableCount, 30);
+  assert.equal(payload.inline, false);
+  assert.equal(payload.htmlOmitted, true);
+  assert.equal(payload.renderSkipped, true);
+  assert.equal("html" in payload, false);
+  assert.match(payload.exportCommand, /ob-mcp export-er/);
+  assert(payload.warnings.some((warning) => /Schema-level ER HTML rendering was skipped/.test(warning)));
+});
+
 test("ob_plan_er_export returns chunked local export commands", async () => {
   const queryLog = [];
   const config = loadConfig({
