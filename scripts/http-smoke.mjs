@@ -125,9 +125,10 @@ try {
     arguments: { schema: smokeSchema, limit: 20 }
   });
   const objectListResult = parseToolJson(objects);
+  const oracleObjects = Array.isArray(objectListResult.objects) ? objectListResult.objects : [];
   let objectMetadataResult = null;
-  if (isOracle && objectListResult.objects.length > 0) {
-    const firstObject = objectListResult.objects[0];
+  if (isOracle && oracleObjects.length > 0) {
+    const firstObject = oracleObjects[0];
     objectMetadataResult = parseToolJson(await client.callTool({
       name: "ob_get_object_metadata",
       arguments: {
@@ -319,7 +320,7 @@ try {
       ["low", "medium", "high"].includes(performanceReportResult.report?.riskLevel) &&
       performanceReportResult.tables.length > 0,
     catalogRows: catalogRows.length,
-    objectListOk: isOracle ? objectListResult.objects.length > 0 : objectListResult.warnings?.length > 0,
+    objectListOk: isOracle ? oracleObjects.length > 0 : objectListResult.warnings?.length > 0,
     objectMetadataOk: !isOracle || objectMetadataResult?.schema === smokeSchema,
     tableSchemaRows: tableSchemaRows.length,
     tableDdlOk: typeof tableDdlResult.ddl === "string" && tableDdlResult.ddl.includes(smokeTable),
