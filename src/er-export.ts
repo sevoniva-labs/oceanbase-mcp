@@ -46,9 +46,11 @@ interface ParsedErPlan {
   format?: string;
   tableCount?: number;
   relationshipCount?: number;
+  crossClusterRelationshipCount?: number;
   chunkSize?: number;
   warnings: string[];
   chunks: Array<{ index: number; tableCount: number; tables: string[]; file: string }>;
+  relationships: ErDirectoryRelationship[];
 }
 
 interface ErDirectoryChunk {
@@ -74,12 +76,45 @@ interface ErDirectorySummary {
   tableCount?: number;
   relationshipCount?: number;
   plannedRelationshipCount?: number;
+  renderedRelationshipCount?: number;
+  crossClusterRelationshipCount?: number;
   chunkCount: number;
   chunkSize?: number;
   chunks: ErDirectoryChunk[];
   tablePages: ErDirectoryTablePage[];
   warnings: string[];
   generatedAt: string;
+}
+
+interface ErDirectoryRelationshipEndpoint {
+  schema?: string;
+  table: string;
+  label: string;
+  columns: string[];
+  cluster?: number;
+}
+
+interface ErDirectoryRelationship {
+  index: number;
+  relationType: string;
+  direction?: string;
+  confidence?: number;
+  sourceRule?: string;
+  source: ErDirectoryRelationshipEndpoint;
+  target: ErDirectoryRelationshipEndpoint;
+  constraintName?: string;
+  evidence: unknown[];
+  crossCluster: boolean;
+}
+
+interface ErDirectoryTableRelationship {
+  direction: string;
+  peer: string;
+  peerFile?: string;
+  columns: string;
+  relationType: string;
+  confidence?: number;
+  crossCluster: boolean;
 }
 
 interface ErExportGraphPayload {
@@ -382,17 +417,17 @@ async function runExportErDirectory(
       graph
     });
   }
-  const visibleRelationshipCount = sumVisibleRelationships(written);
+  const renderedRelationshipCount = sumVisibleRelationships(written);
   const warnings = [...plan.warnings];
   if (plan.chunks.length > 1) {
-    warnings.push("Chunk files show relationships where both tables are present in the same chunk. Use a smaller manual scope when cross-chunk relationships must be inspected.");
+    warnings.push("Cluster files render relationships where both endpoints are present in the same cluster. Cross-cluster relationship details are preserved in metadata/relationships.json and table pages.");
   }
   if (
-    typeof visibleRelationshipCount === "number" &&
+    typeof renderedRelationshipCount === "number" &&
     typeof plan.relationshipCount === "number" &&
-    visibleRelationshipCount !== plan.relationshipCount
+    renderedRelationshipCount !== plan.relationshipCount
   ) {
-    warnings.push(`Rendered chunk relationships (${visibleRelationshipCount}) differ from the planning estimate or limit (${plan.relationshipCount}). Use chunk stats for rendered ER files.`);
+    warnings.push(`Rendered cluster relationships (${renderedRelationshipCount}) differ from the planned relationship index (${plan.relationshipCount}). Use metadata/relationships.json for full relationship coverage.`);
   }
   const summary: ErDirectorySummary = {
     mode: plan.mode,
@@ -401,8 +436,10 @@ async function runExportErDirectory(
     businessTerm: plan.businessTerm,
     format: plan.format,
     tableCount: plan.tableCount,
-    relationshipCount: visibleRelationshipCount ?? plan.relationshipCount,
+    relationshipCount: plan.relationshipCount ?? plan.relationships.length ?? renderedRelationshipCount,
     plannedRelationshipCount: plan.relationshipCount,
+    renderedRelationshipCount,
+    crossClusterRelationshipCount: plan.crossClusterRelationshipCount ?? plan.relationships.filter((relationship) => relationship.crossCluster).length,
     chunkCount: plan.chunks.length,
     chunkSize: plan.chunkSize,
     chunks: written.map((chunk) => ({
@@ -422,28 +459,19 @@ async function runExportErDirectory(
     file: toPosixPath(relative(outputRoot, chunk.file))
   }));
   writeErArtifact(resolve(outputRoot, "index.html"), renderErExportIndexHtml(summary), { overwrite: options.overwrite });
-  writeErArtifact(resolve(outputRoot, "overview.html"), renderErExportOverviewHtml(summary), { overwrite: options.overwrite });
+  writeErArtifact(resolve(outputRoot, "overview.html"), renderErExportOverviewHtml(summary, plan.relationships), { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/graph.json"), `${JSON.stringify(buildErExportGraphMetadata(summary, relativeGraphChunks), null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/diagnostics.json"), `${JSON.stringify(buildErExportDiagnosticsMetadata(summary, relativeGraphChunks), null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/er-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, { overwrite: options.overwrite });
-  writeErArtifact(resolve(outputRoot, "metadata/relationships.json"), `${JSON.stringify({
-    relationshipCount: summary.relationshipCount,
-    visibleRelationshipCount: summary.relationshipCount,
-    plannedRelationshipCount: summary.plannedRelationshipCount,
-    chunks: summary.chunks.map((chunk) => ({
-      index: chunk.index,
-      file: chunk.file,
-      tableCount: chunk.tableCount,
-      relationshipCount: chunk.relationshipCount
-    })),
-    note: "relationshipCount is the sum of relationships rendered inside chunk HTML files. Relationship details are embedded in each chunk HTML artifact."
-  }, null, 2)}\n`, { overwrite: options.overwrite });
+  writeErArtifact(resolve(outputRoot, "metadata/relationships.json"), `${JSON.stringify(buildErExportRelationshipsMetadata(summary, plan.relationships), null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/warnings.json"), `${JSON.stringify(summary.warnings, null, 2)}\n`, { overwrite: options.overwrite });
+  const tablePagesByLabel = new Map(tablePages.map((page) => [page.table, page]));
   for (const page of tablePages) {
     writeErArtifact(page.absoluteFile, renderErExportTableHtml({
       table: page.table,
       chunkFile: toPosixPath(relative(dirname(page.absoluteFile), page.chunkFile)),
-      indexFile: toPosixPath(relative(dirname(page.absoluteFile), resolve(outputRoot, "index.html")))
+      indexFile: toPosixPath(relative(dirname(page.absoluteFile), resolve(outputRoot, "index.html"))),
+      relationships: tableRelationshipsForPage(plan.relationships, page, tablePagesByLabel)
     }), { overwrite: options.overwrite });
   }
 
@@ -509,9 +537,11 @@ function parsePlanPayload(result: { content?: Array<{ text?: string }> }): Parse
     format?: string;
     tableCount?: number;
     relationshipCount?: number;
+    crossClusterRelationshipCount?: number;
     chunkSize?: number;
     warnings?: unknown;
     chunks?: unknown;
+    relationships?: unknown;
   };
   if (!Array.isArray(payload.chunks)) {
     throw new Error("ob_plan_er_export did not return export chunks.");
@@ -524,6 +554,7 @@ function parsePlanPayload(result: { content?: Array<{ text?: string }> }): Parse
     format: payload.format,
     tableCount: payload.tableCount,
     relationshipCount: payload.relationshipCount,
+    crossClusterRelationshipCount: payload.crossClusterRelationshipCount,
     chunkSize: payload.chunkSize,
     warnings: Array.isArray(payload.warnings) ? payload.warnings.filter((item): item is string => typeof item === "string") : [],
     chunks: payload.chunks.map((chunk) => {
@@ -537,7 +568,50 @@ function parsePlanPayload(result: { content?: Array<{ text?: string }> }): Parse
         tables: record.tables.filter((table): table is string => typeof table === "string" && table.trim().length > 0),
         file: record.file
       };
-    })
+    }),
+    relationships: parsePlanRelationships(payload.relationships)
+  };
+}
+
+function parsePlanRelationships(value: unknown): ErDirectoryRelationship[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item, index) => {
+    const record = objectRecord(item);
+    const source = parseRelationshipEndpoint(record.source);
+    const target = parseRelationshipEndpoint(record.target);
+    if (!source || !target) {
+      return [];
+    }
+    return [{
+      index: numberValue(record.index) ?? index + 1,
+      relationType: stringValue(record.relationType) ?? "relationship",
+      direction: stringValue(record.direction),
+      confidence: numberValue(record.confidence),
+      sourceRule: stringValue(record.sourceRule),
+      source,
+      target,
+      constraintName: stringValue(record.constraintName),
+      evidence: Array.isArray(record.evidence) ? record.evidence : [],
+      crossCluster: Boolean(record.crossCluster)
+    }];
+  });
+}
+
+function parseRelationshipEndpoint(value: unknown): ErDirectoryRelationshipEndpoint | undefined {
+  const record = objectRecord(value);
+  const table = stringValue(record.table);
+  if (!table) {
+    return undefined;
+  }
+  const schema = stringValue(record.schema);
+  return {
+    schema,
+    table,
+    label: stringValue(record.label) ?? (schema ? `${schema}.${table}` : table),
+    columns: Array.isArray(record.columns) ? record.columns.filter((column): column is string => typeof column === "string") : [],
+    cluster: numberValue(record.cluster)
   };
 }
 
@@ -572,6 +646,44 @@ function sumVisibleRelationships(chunks: ErDirectoryChunk[]): number | undefined
   return chunks.reduce((sum, chunk) => sum + (chunk.relationshipCount ?? 0), 0);
 }
 
+function tableRelationshipsForPage(
+  relationships: ErDirectoryRelationship[],
+  page: { table: string; absoluteFile: string },
+  tablePagesByLabel: Map<string, { table: string; absoluteFile: string }>
+): ErDirectoryTableRelationship[] {
+  return relationships
+    .flatMap((relationship) => {
+      const isSource = relationship.source.label === page.table;
+      const isTarget = relationship.target.label === page.table;
+      if (!isSource && !isTarget) {
+        return [];
+      }
+      const peer = isSource ? relationship.target : relationship.source;
+      const localColumns = isSource ? relationship.source.columns : relationship.target.columns;
+      const peerColumns = isSource ? relationship.target.columns : relationship.source.columns;
+      const peerPage = tablePagesByLabel.get(peer.label);
+      return [{
+        direction: isSource ? "outbound" : "inbound",
+        peer: peer.label,
+        peerFile: peerPage ? toPosixPath(relative(dirname(page.absoluteFile), peerPage.absoluteFile)) : undefined,
+        columns: relationshipColumnMapping(localColumns, peerColumns),
+        relationType: relationship.relationType,
+        confidence: relationship.confidence,
+        crossCluster: relationship.crossCluster
+      }];
+    })
+    .slice(0, 200);
+}
+
+function relationshipColumnMapping(left: string[], right: string[]): string {
+  const maxLength = Math.max(left.length, right.length);
+  const pairs = [];
+  for (let index = 0; index < maxLength; index += 1) {
+    pairs.push(`${left[index] ?? "?"} -> ${right[index] ?? "?"}`);
+  }
+  return pairs.join(", ");
+}
+
 export function renderErExportIndexHtml(summary: ErDirectorySummary): string {
   const chunkRows = summary.chunks.map((chunk) => `<tr>
     <td>${chunk.index}</td>
@@ -603,7 +715,7 @@ export function renderErExportIndexHtml(summary: ErDirectorySummary): string {
       </ul>
     </section>
     <section>
-      <h2>Chunks</h2>
+      <h2>Clusters</h2>
       <table><thead><tr><th>#</th><th>File</th><th>Tables</th><th>Relationships</th></tr></thead><tbody>${chunkRows}</tbody></table>
     </section>
     <section>
@@ -677,6 +789,25 @@ function buildErExportDiagnosticsMetadata(summary: ErDirectorySummary, chunks: E
   };
 }
 
+function buildErExportRelationshipsMetadata(summary: ErDirectorySummary, relationships: ErDirectoryRelationship[]): Record<string, unknown> {
+  return {
+    generatedAt: summary.generatedAt,
+    relationshipCount: relationships.length,
+    plannedRelationshipCount: summary.plannedRelationshipCount,
+    renderedRelationshipCount: summary.renderedRelationshipCount,
+    crossClusterRelationshipCount: relationships.filter((relationship) => relationship.crossCluster).length,
+    relationships,
+    clusters: summary.chunks.map((chunk) => ({
+      index: chunk.index,
+      file: chunk.file,
+      tableCount: chunk.tableCount,
+      renderedRelationshipCount: chunk.relationshipCount,
+      tables: chunk.tables
+    })),
+    note: "Relationships are metadata-only. Cluster HTML files may render only relationships whose endpoints are in the same cluster; this file keeps the full planned relationship index."
+  };
+}
+
 function erExportStatus(diagnostics: Array<Record<string, unknown>>): "OK" | "Partial" | "Needs Scope" {
   if (diagnostics.length === 0) {
     return "OK";
@@ -684,38 +815,63 @@ function erExportStatus(diagnostics: Array<Record<string, unknown>>): "OK" | "Pa
   return diagnostics.some((diagnostic) => diagnostic.level === "warning") ? "Needs Scope" : "Partial";
 }
 
-export function renderErExportOverviewHtml(summary: ErDirectorySummary): string {
-  const chunkList = summary.chunks.map((chunk) => `<li><a href="${escapeHtml(chunk.file)}">Chunk ${chunk.index}</a>: ${chunk.tableCount} table(s), ${chunk.relationshipCount ?? 0} relationship(s)</li>`).join("");
+export function renderErExportOverviewHtml(summary: ErDirectorySummary, relationships: ErDirectoryRelationship[] = []): string {
+  const chunkList = summary.chunks.map((chunk) => `<li><a href="${escapeHtml(chunk.file)}">Cluster ${chunk.index}</a>: ${chunk.tableCount} table(s), ${chunk.relationshipCount ?? 0} relationship(s)</li>`).join("");
+  const crossClusterRelationships = relationships.filter((relationship) => relationship.crossCluster).slice(0, 80);
+  const crossClusterRows = crossClusterRelationships.map((relationship) => `<tr>
+    <td>${escapeHtml(relationship.source.label)}</td>
+    <td>${escapeHtml(relationship.target.label)}</td>
+    <td>${escapeHtml(String(relationship.source.cluster ?? ""))} -> ${escapeHtml(String(relationship.target.cluster ?? ""))}</td>
+    <td>${escapeHtml(relationship.relationType)}</td>
+    <td>${relationship.confidence ?? ""}</td>
+  </tr>`).join("");
   return renderExportShell("OceanBase ER Overview", `
     <section class="hero">
       <h1>OceanBase ER Overview</h1>
-      <p>Open a chunk for the diagram, or use table pages to jump from a table name to its chunk.</p>
+      <p>Open a cluster for the diagram, or use table pages to jump from a table name to its cluster.</p>
     </section>
     ${renderSummaryStats(summary)}
     ${renderWarnings(summary.warnings)}
     <section>
-      <h2>Chunk Navigation</h2>
+      <h2>Cluster Navigation</h2>
       <ul>${chunkList}</ul>
     </section>
+    ${crossClusterRelationships.length > 0 ? `<section>
+      <h2>Cross-Cluster Relationships</h2>
+      <table><thead><tr><th>Source</th><th>Target</th><th>Clusters</th><th>Type</th><th>Confidence</th></tr></thead><tbody>${crossClusterRows}</tbody></table>
+    </section>` : ""}
     <section>
       <h2>Notes</h2>
       <p>The export is metadata-only. It does not read table data and does not execute database changes.</p>
     </section>`);
 }
 
-export function renderErExportTableHtml(input: { table: string; chunkFile: string; indexFile: string }): string {
+export function renderErExportTableHtml(input: { table: string; chunkFile: string; indexFile: string; relationships?: ErDirectoryTableRelationship[] }): string {
+  const relationships = input.relationships ?? [];
+  const relationshipRows = relationships.map((relationship) => `<tr>
+    <td>${escapeHtml(relationship.direction)}</td>
+    <td>${relationship.peerFile ? `<a href="${escapeHtml(relationship.peerFile)}">${escapeHtml(relationship.peer)}</a>` : escapeHtml(relationship.peer)}</td>
+    <td>${escapeHtml(relationship.columns)}</td>
+    <td>${escapeHtml(relationship.relationType)}</td>
+    <td>${relationship.confidence ?? ""}</td>
+    <td>${relationship.crossCluster ? "yes" : "no"}</td>
+  </tr>`).join("");
   return renderExportShell(`Table ${input.table}`, `
     <section class="hero">
       <h1>${escapeHtml(input.table)}</h1>
-      <p>This table is included in the linked ER chunk.</p>
+      <p>This table is included in the linked ER cluster.</p>
     </section>
     <section>
       <h2>Links</h2>
       <ul>
-        <li><a href="${escapeHtml(input.chunkFile)}">Open ER chunk</a></li>
+        <li><a href="${escapeHtml(input.chunkFile)}">Open ER cluster</a></li>
         <li><a href="${escapeHtml(input.indexFile)}">Back to index</a></li>
       </ul>
-    </section>`);
+    </section>
+    ${relationships.length > 0 ? `<section>
+      <h2>Direct Relationships</h2>
+      <table><thead><tr><th>Direction</th><th>Peer Table</th><th>Columns</th><th>Type</th><th>Confidence</th><th>Cross Cluster</th></tr></thead><tbody>${relationshipRows}</tbody></table>
+    </section>` : ""}`);
 }
 
 function renderSummaryStats(summary: ErDirectorySummary): string {
@@ -732,7 +888,7 @@ function renderSummaryStats(summary: ErDirectorySummary): string {
         ? String(summary.plannedRelationshipCount)
         : ""
     ],
-    ["Chunks", String(summary.chunkCount)],
+    ["Clusters", String(summary.chunkCount)],
     ["Generated", summary.generatedAt]
   ].filter(([, value]) => value);
   return `<section>
@@ -797,6 +953,18 @@ function escapeHtml(value: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function objectRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 function parsePositiveInt(value: string, name: string, max: number): number {

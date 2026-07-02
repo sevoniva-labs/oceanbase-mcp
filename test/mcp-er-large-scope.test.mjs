@@ -132,8 +132,9 @@ test("ob_plan_er_export returns chunked local export commands", async () => {
   assert.match(payload.singleFileCommand, /ob-mcp export-er/);
   assert.match(payload.singleFileCommand, /--max-columns-per-table 6/);
   assert.match(payload.chunks[0].command, /--tables/);
-  assert.equal(payload.chunks[0].file, "er-output/chunks/er-part-001.html");
-  assert(payload.warnings.some((warning) => /chunk commands/.test(warning)));
+  assert.equal(payload.chunks[0].file, "er-output/clusters/cluster-001.html");
+  assert.deepEqual(payload.relationships, []);
+  assert(payload.warnings.some((warning) => /cluster export commands/.test(warning)));
   assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name/i.test(entry.sql)).length, 0);
   assert.equal(queryLog.filter((entry) => /FROM information_schema\.statistics/i.test(entry.sql)).length, 0);
   assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 0);
@@ -171,6 +172,12 @@ test("ob_plan_er_export uses lightweight Oracle metadata planning", async () => 
   assert.equal(payload.estimatedColumnCount, 3600);
   assert.equal(payload.estimatedRelationshipCount, 30);
   assert.equal(payload.relationshipCount, 2);
+  assert.equal(payload.crossClusterRelationshipCount, 0);
+  assert.equal(payload.relationships.length, 2);
+  assert.equal(payload.relationships[0].source.label, "OB_USER.ORDER_ITEMS");
+  assert.equal(payload.relationships[0].target.label, "OB_USER.ORDERS");
+  assert.deepEqual(payload.relationships[0].source.columns, ["ORDER_ID"]);
+  assert.deepEqual(payload.relationships[0].target.columns, ["ID"]);
   assert.equal(payload.strategy, "connected-components");
   assert.equal(payload.chunkCount, 4);
   assert.match(payload.chunks[0].command, /--relationship-mode foreign_key/);

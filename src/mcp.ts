@@ -6429,8 +6429,8 @@ async function buildErExportPlanResult(
   const maxColumnsPerTable = input.maxColumnsPerTable ?? selected.config.erMaxColumnsPerTable;
   const plannedChunks = chunks.map((chunk, index) => {
     const file = outputDir
-      ? `${outputDir}/chunks/er-part-${String(index + 1).padStart(3, "0")}.html`
-      : `er-part-${String(index + 1).padStart(3, "0")}.html`;
+      ? `${outputDir}/clusters/cluster-${String(index + 1).padStart(3, "0")}.html`
+      : `cluster-${String(index + 1).padStart(3, "0")}.html`;
     const tableNames = chunk.map((item) => tableLabelForCommand(item.schema, item.table));
     return {
       index: index + 1,
@@ -6445,6 +6445,7 @@ async function buildErExportPlanResult(
       })
     };
   });
+  const plannedRelationships = planErExportRelationships(selected.config.compatibility, relationships, chunks);
 
   if (planStats.estimatedTableCount > chunkSize) {
     risks.push("Schema is larger than one ER chunk; use chunked export instead of inline ER.");
@@ -6479,11 +6480,13 @@ async function buildErExportPlanResult(
     format: input.format,
     tableCount: refs.length,
     relationshipCount: relationships.length,
+    crossClusterRelationshipCount: plannedRelationships.filter((relationship) => relationship.crossCluster).length,
     chunkSize,
     chunkCount: plannedChunks.length,
     inlineHtmlLimitBytes: selected.config.erInlineHtmlMaxBytes,
     singleFileCommand: buildErExportCommand(commandBase, input.format, { maxColumnsPerTable }),
     chunks: plannedChunks,
+    relationships: plannedRelationships,
     stats: {
       selectedTables: refs.length,
       loadedTables: refs.length,
@@ -6505,11 +6508,58 @@ async function buildErExportPlanResult(
     warnings: uniqueStrings([
       ...warnings,
       ...(plannedChunks.length > 1
-        ? ["Use chunk commands for large schemas to avoid inline MCP response limits and browser rendering pressure."]
-        : ["The scope fits in one planned export chunk."]),
+        ? ["Use cluster export commands for large schemas to avoid inline MCP response limits and browser rendering pressure."]
+        : ["The scope fits in one planned export cluster."]),
       ...(includeInferred ? ["Use relationshipMode=inferred only for small explicit scopes."] : [])
     ])
   };
+}
+
+function planErExportRelationships(
+  mode: ObConfig["compatibility"],
+  relationships: TableRelationship[],
+  chunks: TableRef[][]
+) {
+  const clusterByTable = new Map<string, number>();
+  chunks.forEach((chunk, index) => {
+    for (const ref of chunk) {
+      clusterByTable.set(tableRefKey(mode, ref.schema, ref.table), index + 1);
+    }
+  });
+  return relationships.map((relationship, index) => {
+    const sourceKey = tableRefKey(mode, relationship.sourceSchema, relationship.sourceTable);
+    const targetKey = tableRefKey(mode, relationship.targetSchema, relationship.targetTable);
+    const sourceCluster = clusterByTable.get(sourceKey);
+    const targetCluster = clusterByTable.get(targetKey);
+    return {
+      index: index + 1,
+      relationType: relationship.relationType,
+      direction: relationship.direction,
+      confidence: Number(relationship.confidence.toFixed(3)),
+      sourceRule: relationship.evidence[0]?.type ?? relationship.relationType,
+      source: {
+        schema: relationship.sourceSchema,
+        table: relationship.sourceTable,
+        label: tableLabelForCommand(relationship.sourceSchema, relationship.sourceTable),
+        columns: relationship.sourceColumns,
+        cluster: sourceCluster
+      },
+      target: {
+        schema: relationship.targetSchema,
+        table: relationship.targetTable,
+        label: tableLabelForCommand(relationship.targetSchema, relationship.targetTable),
+        columns: relationship.targetColumns,
+        cluster: targetCluster
+      },
+      constraintName: relationship.constraintName,
+      evidence: relationship.evidence.map((item) => ({
+        type: item.type,
+        detail: item.detail,
+        columns: item.columns
+      })).slice(0, 10),
+      crossCluster: Boolean(sourceCluster && targetCluster && sourceCluster !== targetCluster)
+    };
+  });
 }
 
 function suggestErExportStrategy(input: {

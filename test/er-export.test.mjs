@@ -113,11 +113,11 @@ test("ER export directory pages link chunks tables and metadata", () => {
     chunkCount: 1,
     chunkSize: 25,
     generatedAt: "2026-07-02T00:00:00.000Z",
-    warnings: ["Use chunk commands for large schemas."],
+    warnings: ["Use cluster export commands for large schemas."],
     chunks: [
       {
         index: 1,
-        file: "chunks/er-part-001.html",
+        file: "clusters/cluster-001.html",
         tableCount: 2,
         relationshipCount: 1,
         tables: ["biz_test.orders", "biz_test.users"]
@@ -127,7 +127,7 @@ test("ER export directory pages link chunks tables and metadata", () => {
       {
         table: "biz_test.orders",
         file: "tables/biz_test.orders.html",
-        chunkFile: "chunks/er-part-001.html"
+        chunkFile: "clusters/cluster-001.html"
       }
     ]
   };
@@ -136,21 +136,46 @@ test("ER export directory pages link chunks tables and metadata", () => {
   assert.match(index, /metadata\/graph\.json/);
   assert.match(index, /metadata\/diagnostics\.json/);
   assert.match(index, /metadata\/er-summary\.json/);
-  assert.match(index, /chunks\/er-part-001\.html/);
+  assert.match(index, /clusters\/cluster-001\.html/);
   assert.match(index, /tables\/biz_test\.orders\.html/);
   assert.match(index, /Planned relationships/);
   assert.match(index, /Warnings \(1\)/);
 
-  const overview = renderErExportOverviewHtml(summary);
+  const overview = renderErExportOverviewHtml(summary, [
+    {
+      index: 1,
+      relationType: "foreign_key",
+      confidence: 1,
+      sourceRule: "foreign_key",
+      source: { schema: "biz_test", table: "orders", label: "biz_test.orders", columns: ["user_id"], cluster: 1 },
+      target: { schema: "biz_test", table: "users", label: "biz_test.users", columns: ["id"], cluster: 2 },
+      evidence: [],
+      crossCluster: true
+    }
+  ]);
   assert.match(overview, /metadata-only/);
-  assert.match(overview, /Chunk 1/);
+  assert.match(overview, /Cluster 1/);
+  assert.match(overview, /Cross-Cluster Relationships/);
   assert.match(overview, /Warnings \(1\)/);
 
   const table = renderErExportTableHtml({
     table: "biz_test.orders",
-    chunkFile: "../chunks/er-part-001.html",
-    indexFile: "../index.html"
+    chunkFile: "../clusters/cluster-001.html",
+    indexFile: "../index.html",
+    relationships: [
+      {
+        direction: "outbound",
+        peer: "biz_test.users",
+        peerFile: "biz_test.users.html",
+        columns: "user_id -> id",
+        relationType: "foreign_key",
+        confidence: 1,
+        crossCluster: true
+      }
+    ]
   });
   assert.match(table, /biz_test\.orders/);
-  assert.match(table, /\.\.\/chunks\/er-part-001\.html/);
+  assert.match(table, /\.\.\/clusters\/cluster-001\.html/);
+  assert.match(table, /Direct Relationships/);
+  assert.match(table, /user_id -&gt; id/);
 });
