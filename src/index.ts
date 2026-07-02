@@ -82,9 +82,13 @@ Export ER options:
   --table <table>
   --tables <table_a,table_b>
   --business-term <term>
+  --depth <n>
+  --max-tables <n>
+  --max-relationships <n>
+  --relationship-mode none|foreign_key|inferred
   --format static|interactive|compact|detailed
   --out <file>
-  --out-dir <dir>
+  --out-dir <dir>        Write index.html, overview.html, chunks/, tables/, and metadata/
   --chunk-size <n>
   --overwrite
 

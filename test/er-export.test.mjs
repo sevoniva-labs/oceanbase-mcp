@@ -4,7 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { parseExportErArgs, resolveErOutputPath, writeErArtifact } from "../dist/er-export.js";
+import {
+  parseExportErArgs,
+  renderErExportIndexHtml,
+  renderErExportOverviewHtml,
+  renderErExportTableHtml,
+  resolveErOutputPath,
+  writeErArtifact
+} from "../dist/er-export.js";
 
 test("parseExportErArgs parses ER export options", () => {
   assert.deepEqual(parseExportErArgs([
@@ -75,4 +82,51 @@ test("writeErArtifact refuses to overwrite by default", () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("ER export directory pages link chunks tables and metadata", () => {
+  const summary = {
+    mode: "mysql",
+    schema: "biz_test",
+    format: "html-interactive",
+    tableCount: 2,
+    relationshipCount: 1,
+    chunkCount: 1,
+    chunkSize: 25,
+    generatedAt: "2026-07-02T00:00:00.000Z",
+    warnings: ["Use chunk commands for large schemas."],
+    chunks: [
+      {
+        index: 1,
+        file: "chunks/er-part-001.html",
+        tableCount: 2,
+        relationshipCount: 1,
+        tables: ["biz_test.orders", "biz_test.users"]
+      }
+    ],
+    tablePages: [
+      {
+        table: "biz_test.orders",
+        file: "tables/biz_test.orders.html",
+        chunkFile: "chunks/er-part-001.html"
+      }
+    ]
+  };
+
+  const index = renderErExportIndexHtml(summary);
+  assert.match(index, /metadata\/er-summary\.json/);
+  assert.match(index, /chunks\/er-part-001\.html/);
+  assert.match(index, /tables\/biz_test\.orders\.html/);
+
+  const overview = renderErExportOverviewHtml(summary);
+  assert.match(overview, /metadata-only/);
+  assert.match(overview, /Chunk 1/);
+
+  const table = renderErExportTableHtml({
+    table: "biz_test.orders",
+    chunkFile: "../chunks/er-part-001.html",
+    indexFile: "../index.html"
+  });
+  assert.match(table, /biz_test\.orders/);
+  assert.match(table, /\.\.\/chunks\/er-part-001\.html/);
 });

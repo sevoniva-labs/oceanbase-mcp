@@ -64,7 +64,7 @@ test("ob_plan_er_export returns chunked local export commands", async () => {
   assert.equal(payload.chunks[2].tableCount, 15);
   assert.match(payload.singleFileCommand, /ob-mcp export-er/);
   assert.match(payload.chunks[0].command, /--tables/);
-  assert.equal(payload.chunks[0].file, "er-output/er-part-001.html");
+  assert.equal(payload.chunks[0].file, "er-output/chunks/er-part-001.html");
   assert(payload.warnings.some((warning) => /chunk commands/.test(warning)));
 });
 

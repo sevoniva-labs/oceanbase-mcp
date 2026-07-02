@@ -3782,8 +3782,9 @@ export function createObMcpServer(
       const scopedTables = result.response.scope.map((item) => ({ schema: item.schema, table: item.table }));
       const effectiveChunkSize = Math.max(1, Math.min(chunkSize ?? Math.min(25, selected.config.erMaxTables), selected.config.erMaxTables, 100));
       const chunks = chunkItems(scopedTables, effectiveChunkSize).map((chunk, index) => {
+        const baseDir = outputDir?.replace(/\/+$/g, "");
         const file = outputDir
-          ? `${outputDir.replace(/\/+$/g, "")}/er-part-${String(index + 1).padStart(3, "0")}.html`
+          ? `${baseDir}/chunks/er-part-${String(index + 1).padStart(3, "0")}.html`
           : `er-part-${String(index + 1).padStart(3, "0")}.html`;
         const tableNames = chunk.map((item) => tableLabelForCommand(item.schema, item.table));
         return {
