@@ -152,7 +152,8 @@ jobs:
             echo "@sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }} is already published; skipping npmjs publish."
             exit 0
           fi
-          npm publish "${tarball}" --access public --provenance
+          tarball_path="$(realpath "${tarball}")"
+          npm publish "${tarball_path}" --access public --provenance
 
   image:
     name: 推送多架构镜像
