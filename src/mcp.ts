@@ -47,7 +47,7 @@ import {
 import { diagnoseGateway } from "./diagnostics.js";
 import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "./er.js";
 import type { ErGraph, ErGraphDiagnostic, ErGraphStatus } from "./er-graph.js";
-import { logAudit, logError, logSlowOperation, serializeError } from "./errors.js";
+import { logAudit, logError, logSlowOperation, recordCrashBreadcrumb, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { captureMetadataSnapshot } from "./metadata-capture.js";
 import { analyzeChangeSqlImpact, analyzeMetadataImpact } from "./metadata-impact.js";
@@ -11755,11 +11755,27 @@ function safeTool<Args>(
   return async (args: Args) => {
     const started = Date.now();
     const finish = metrics.startToolCall();
+    recordCrashBreadcrumb("tool_start", {
+      tool: name,
+      toolGroup: getToolCapability(name)?.group,
+      operationType: getToolCapability(name)?.operationType,
+      transport: context.transport ?? "stdio",
+      requestId: context.requestId,
+      clientId: context.clientId,
+      principal: context.principal?.name,
+      ...auditArgs(args)
+    });
     try {
       assertToolAllowed(name, context.principal);
       const result = await handler(args);
       const durationMs = Date.now() - started;
       const responseBytes = resultTextBytes(result);
+      recordCrashBreadcrumb("tool_finish", {
+        ok: true,
+        tool: name,
+        durationMs,
+        responseBytes
+      });
       logAudit("tool_call", {
         ok: true,
         tool: name,
@@ -11793,6 +11809,13 @@ function safeTool<Args>(
       const responseBytes = resultTextBytes(errorResult);
       metrics.recordToolBlocked();
       metrics.recordToolError();
+      recordCrashBreadcrumb("tool_finish", {
+        ok: false,
+        tool: name,
+        durationMs,
+        responseBytes,
+        error: (error as Error).message
+      });
       logAudit("tool_call", {
         ok: false,
         tool: name,

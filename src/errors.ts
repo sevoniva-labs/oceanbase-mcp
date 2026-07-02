@@ -10,12 +10,20 @@ export interface SerializedError {
   sqlMessage?: unknown;
 }
 
+export interface CrashBreadcrumb {
+  timestamp: string;
+  event: string;
+  data: Record<string, unknown>;
+}
+
 export interface SerializeErrorOptions {
   includeSqlMessage?: boolean;
 }
 
 const SECRET_KEY_PATTERN = /(authorization|password|passwd|pwd|token|secret|credential|cookie|api[_-]?key|private[_-]?key)/i;
 const DEFAULT_SLOW_CALL_MS = 3_000;
+const MAX_CRASH_BREADCRUMBS = 20;
+const crashBreadcrumbs: CrashBreadcrumb[] = [];
 let logFileWriteFailed = false;
 let processLogHandlersInstalled = false;
 
@@ -76,6 +84,25 @@ export function logSlowOperation(event: string, data: Record<string, unknown>): 
   });
 }
 
+export function recordCrashBreadcrumb(event: string, data: Record<string, unknown> = {}): void {
+  crashBreadcrumbs.push({
+    timestamp: new Date().toISOString(),
+    event,
+    data
+  });
+  while (crashBreadcrumbs.length > MAX_CRASH_BREADCRUMBS) {
+    crashBreadcrumbs.shift();
+  }
+}
+
+export function getCrashBreadcrumbs(): CrashBreadcrumb[] {
+  return crashBreadcrumbs.map((breadcrumb) => ({
+    timestamp: breadcrumb.timestamp,
+    event: breadcrumb.event,
+    data: { ...breadcrumb.data }
+  }));
+}
+
 export function installProcessLogHandlers(service = "ob-mcp"): void {
   if (processLogHandlersInstalled) {
     return;
@@ -86,7 +113,8 @@ export function installProcessLogHandlers(service = "ob-mcp"): void {
     logError("process_uncaught_exception", error, {
       service,
       fatal: true,
-      pid: process.pid
+      pid: process.pid,
+      breadcrumbs: getCrashBreadcrumbs()
     });
     process.exit(1);
   });
@@ -95,7 +123,8 @@ export function installProcessLogHandlers(service = "ob-mcp"): void {
     logError("process_unhandled_rejection", reason, {
       service,
       fatal: true,
-      pid: process.pid
+      pid: process.pid,
+      breadcrumbs: getCrashBreadcrumbs()
     });
     process.exit(1);
   });

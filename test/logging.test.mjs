@@ -56,8 +56,14 @@ test("process crash handler writes a redacted JSONL entry before exit", () => {
     const file = join(dir, "crash.jsonl");
     const moduleUrl = pathToFileURL(resolve("dist/errors.js")).href;
     const script = `
-      import { installProcessLogHandlers } from ${JSON.stringify(moduleUrl)};
+      import { installProcessLogHandlers, recordCrashBreadcrumb } from ${JSON.stringify(moduleUrl)};
       installProcessLogHandlers("logging-test");
+      recordCrashBreadcrumb("tool_start", {
+        tool: "ob_query",
+        phase: "execute",
+        password: "secret",
+        token: "secret"
+      });
       setImmediate(() => { throw new Error("boom password=secret token=secret"); });
     `;
     const result = spawnSync(process.execPath, ["--input-type=module", "--eval", script], {
@@ -78,6 +84,10 @@ test("process crash handler writes a redacted JSONL entry before exit", () => {
     assert.equal(lines[0].fatal, true);
     assert.match(lines[0].error.message, /password=\[redacted\]/);
     assert.match(lines[0].error.message, /token=\[redacted\]/);
+    assert.equal(lines[0].breadcrumbs[0].event, "tool_start");
+    assert.equal(lines[0].breadcrumbs[0].data.tool, "ob_query");
+    assert.equal(lines[0].breadcrumbs[0].data.password, "[redacted]");
+    assert.equal(lines[0].breadcrumbs[0].data.token, "[redacted]");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
