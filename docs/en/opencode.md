@@ -113,10 +113,12 @@ The agent uses this query workflow:
 4. Use `ob_lint_sql` or `ob_query_preview` before execution.
 5. Use query sessions and paged tools for data inspection.
 6. Use table profiles, column profiles, or value distribution tools when field distributions are needed.
-7. Use ER HTML, entity diagrams, data dictionaries, and documentation tools for structure work.
+7. For ER work, plan schema-wide exports with `ob_plan_er_export`; use inline ER only for small scopes and chunked CLI export for larger schemas.
 8. Summarize SQL, row count, page state, masking, truncation, and assumptions.
 
 Do not let the agent guess table names, column names, or relationships. When context is insufficient, provide a business term, schema, or table name first.
+
+For large schemas, do not ask the agent to generate a full inline ER diagram. Ask it to run `ob_plan_er_export`, review warnings and stats, then export chunks locally with `ob-mcp export-er --out-dir`.
 
 For iteration metadata review, use this workflow:
 

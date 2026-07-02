@@ -32,6 +32,7 @@ This table lists release themes only. Per-tool versioning is in the Tools table 
 | v0.5.1 | OpenCode query workflow: table context, query preview, paged queries, result structure, error hints, column profiling, and business glossary. |
 | v1.0.0 | Local developer assistant scope: init/doctor, unified search, SQL assistance, query sessions, data understanding, ER HTML, documentation, project SQL scanning, and internal delivery. |
 | v1.1.0 | Metadata snapshots, snapshot diff, SQL usage index, impact analysis, change reports, and relationship paths for iteration review. |
+| v1.1.1 | Large-schema ER stability, batched metadata loading, improved ER HTML browser, and chunked local export planning. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -212,6 +213,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | Generate Markdown or simple HTML change reports from diff and impact evidence. |
+| v1.1.1 | `ob_plan_er_export` | Plan chunked local ER HTML export commands for large schemas without returning large inline HTML. |
 
 ## Metadata Change Workflow
 
@@ -232,8 +234,8 @@ These commands only read metadata or local project files. Reports contain risks,
 Release assets include a source archive for internal builds with an internal npm registry:
 
 ```bash
-tar -xzf ob-mcp-1.1.0-source.tar.gz
-cd ob-mcp-1.1.0
+tar -xzf ob-mcp-1.1.1-source.tar.gz
+cd ob-mcp-1.1.1
 npm ci
 npm run build
 npm run start
@@ -245,12 +247,12 @@ The source archive excludes `node_modules` and `dist`. The internal npm registry
 
 | Asset | Purpose |
 | --- | --- |
-| `ob-mcp-1.1.0.tgz` | npm package. |
-| `ob-mcp-1.1.0-source.tar.gz` | Source archive for internal builds. |
+| `ob-mcp-1.1.1.tgz` | npm package. |
+| `ob-mcp-1.1.1-source.tar.gz` | Source archive for internal builds. |
 | `sbom.cdx.json` | CycloneDX SBOM. |
-| `oceanbase-mcp-1.1.0-amd64.tar.gz` | amd64 offline image. |
-| `oceanbase-mcp-1.1.0-arm64.tar.gz` | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.0` | GHCR image tag. |
+| `oceanbase-mcp-1.1.1-amd64.tar.gz` | amd64 offline image. |
+| `oceanbase-mcp-1.1.1-arm64.tar.gz` | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.1` | GHCR image tag. |
 
 ## Resources
 

@@ -54,6 +54,7 @@ Use this workflow for iteration-start and iteration-end metadata review:
 - Use `ob_summarize_result`, `ob_compare_query_results`, and `ob_export_result_preview` only on rows already returned by safe query tools.
 - Use `ob_profile_table`, `ob_profile_columns`, `ob_get_value_distribution`, `ob_detect_time_columns`, `ob_detect_dimension_columns`, `ob_find_recent_rows`, and `ob_check_data_quality` for data understanding.
 - Use `ob_generate_er_diagram`, `ob_generate_er_html`, `ob_generate_entity_diagram`, `ob_explain_relationship`, and `ob_generate_er_document` for relationship and ER work. Relationships must come from metadata evidence.
+- For schema-wide or large ER requests, use `ob_plan_er_export` first. Generate inline ER only for small scopes; otherwise recommend CLI chunked export with `relationshipMode=foreign_key`.
 - Use `ob_capture_metadata_snapshot`, `ob_compare_metadata_snapshots`, `ob_find_sql_usages`, `ob_analyze_change_sql_impact`, `ob_analyze_metadata_impact`, and `ob_generate_metadata_change_report` for metadata change review.
 - Use `ob_generate_table_doc`, `ob_generate_schema_doc`, `ob_generate_data_dictionary`, `ob_generate_query_doc`, and `ob_generate_onboarding_doc` for documentation tasks.
 - Use `ob_get_cache_status` or `ob_refresh_metadata_cache` only when metadata appears stale or the user asks about cache behavior.
@@ -68,6 +69,7 @@ Use this workflow for iteration-start and iteration-end metadata review:
 - Do not query sensitive columns unless the policy allows them and the user needs them for a read-only task.
 - Do not bypass schema/table/profile/tool permissions.
 - Do not increase row limits to satisfy broad requests. Narrow filters or use pagination.
+- Do not request full-schema inline ER for large schemas. Plan first, keep inferred relationships off by default, and split the export.
 - Do not output index creation SQL or other executable write statements. Use review wording instead.
 
 ## MySQL And Oracle Notes

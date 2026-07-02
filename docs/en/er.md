@@ -26,9 +26,9 @@ All outputs are controlled by permission, table-count, column-count, and respons
 | `html-compact` | Shows only tables and primary relationships for larger schemas. |
 | `html-detailed` | Shows columns, primary keys, foreign keys, indexes, and comments. |
 
-For larger diagrams, export a local file with the CLI and open it in a browser.
+For larger diagrams, use `ob_plan_er_export` first, then export a local directory with the CLI and open `index.html` in a browser.
 
-The interactive HTML format is intended for daily development work. The left panel lists tables, the center canvas shows the ER model, and the right panel shows columns, primary keys, indexes, and direct relationships for the selected table. The relationship table keeps the foreign-key or inference evidence visible. Selecting a table or diagram node focuses upstream and downstream relationships without treating low-confidence inference as a real foreign key.
+The interactive HTML format is intended for daily development work. The left panel lists tables, the center canvas shows the ER model, and the right panel starts with a schema overview. Selecting a table or diagram node focuses upstream and downstream relationships, scrolls the selected table into view, and shows columns, primary keys, indexes, and direct relationships. Large diagrams use a multi-column overview layout and show key fields first; relationship evidence remains visible in the relationship table.
 
 ## CLI Export
 
@@ -44,9 +44,21 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 
 Existing files are not overwritten by default. Pass `--overwrite` explicitly when needed.
 
+`--out-dir` writes:
+
+- `index.html`
+- `overview.html`
+- `chunks/*.html`
+- `tables/*.html`
+- `metadata/er-summary.json`
+- `metadata/relationships.json`
+- `metadata/warnings.json`
+
 ## Usage Notes
 
 - Start with a narrow schema, table, or business-term scope.
+- For schema-wide ER work, call `ob_plan_er_export` before generating HTML.
+- Use `relationshipMode=foreign_key` by default. Use `inferred` only for a small, explicit scope.
 - Review evidence from `ob_find_related_tables` and `ob_explain_relationship`.
 - Do not treat low-confidence inferred relationships as real foreign keys.
 - In Oracle mode, pay attention to object-name case and schema scope.

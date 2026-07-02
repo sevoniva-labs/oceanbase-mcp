@@ -26,9 +26,9 @@ ER 图能力基于可见元数据和关系证据生成，不会凭空补关系�
 | `html-compact` | 只显示表和主关系，适合表较多的 schema。 |
 | `html-detailed` | 显示字段、主键、外键、索引和字段注释。 |
 
-大图建议使用 CLI 导出到本地文件，再用浏览器查看。
+大图建议先使用 `ob_plan_er_export` 规划，再用 CLI 导出本地目录，并在浏览器打开 `index.html`。
 
-交互版 HTML 适合日常开发排查：左侧是表索引，中间是 ER 画布，右侧显示选中表的字段、主键、索引和直接关系；下方关系表保留外键或推断依据。点击表名或画布节点会聚焦上下游关系，不会把低置信度推断关系当作真实外键。
+交互版 HTML 适合日常开发排查：左侧是表索引，中间是 ER 画布，右侧默认显示 schema 概览；点击表名或画布节点会聚焦上下游关系、滚动定位到选中表，并显示字段、主键、索引和直接关系。大图使用多列概览布局，主图优先展示关键字段；下方关系表保留外键或推断依据。
 
 ## CLI 导出
 
@@ -44,9 +44,21 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 
 默认不会覆盖已有文件。需要覆盖时显式传入 `--overwrite`。
 
+`--out-dir` 会写出：
+
+- `index.html`
+- `overview.html`
+- `chunks/*.html`
+- `tables/*.html`
+- `metadata/er-summary.json`
+- `metadata/relationships.json`
+- `metadata/warnings.json`
+
 ## 使用建议
 
 - 先缩小 schema、table 或业务词范围。
+- schema 级 ER 先调用 `ob_plan_er_export`，再决定是否分片导出。
+- 默认使用 `relationshipMode=foreign_key`。只有明确的小范围分析才使用 `inferred`。
 - 优先查看 `ob_find_related_tables` 和 `ob_explain_relationship` 的证据。
 - 不要把低置信度推断关系当作真实外键。
 - Oracle 模式注意对象名大小写和 schema 范围。

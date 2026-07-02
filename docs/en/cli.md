@@ -90,7 +90,7 @@ npm run build
 node dist/index.js export-er --schema biz_test --business-term orders --format detailed --out tmp/order-er.html
 ```
 
-For larger schemas, export chunked files to a directory:
+For larger schemas, export a browsable directory:
 
 ```bash
 ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
@@ -115,15 +115,17 @@ Common options:
 | `--business-term <term>` | Match the ER scope from a business term. |
 | `--depth <1-3>` | Relationship discovery depth. |
 | `--max-tables <n>` | Maximum table count. |
+| `--max-relationships <n>` | Maximum relationship count. |
 | `--min-confidence <0-1>` | Minimum relationship confidence. |
+| `--relationship-mode <mode>` | `none`, `foreign_key`, or `inferred`. Defaults to `foreign_key`. |
 | `--no-include-inferred` | Keep only high-confidence relationships such as real foreign keys. |
 | `--format <format>` | `static`, `interactive`, `compact`, or `detailed`. |
 | `--out <file>` | Output file. A safe default name is used when omitted. |
-| `--out-dir <dir>` | Write chunked ER files into a directory for larger schemas. |
+| `--out-dir <dir>` | Write `index.html`, `overview.html`, `chunks/`, `tables/`, and `metadata/`. |
 | `--chunk-size <n>` | Table count per chunk, up to 100. |
 | `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
 
-Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only the local HTML file and never modifies the database. Chunked export bypasses the MCP inline HTML cap, but each chunk is still controlled by `OB_MAX_RESULT_BYTES`; for large schemas, reduce `--chunk-size` or raise `OB_MAX_RESULT_BYTES` deliberately.
+Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only local ER artifacts and never modifies the database. Chunked export bypasses the MCP inline HTML cap, but each chunk is still controlled by `OB_MAX_RESULT_BYTES`; for large schemas, reduce `--chunk-size` or raise `OB_MAX_RESULT_BYTES` deliberately.
 
 ## Metadata Change
 

@@ -86,6 +86,7 @@ Export ER options:
   --max-tables <n>
   --max-relationships <n>
   --relationship-mode none|foreign_key|inferred
+  --no-include-inferred
   --format static|interactive|compact|detailed
   --out <file>
   --out-dir <dir>        Write index.html, overview.html, chunks/, tables/, and metadata/

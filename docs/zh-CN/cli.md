@@ -90,7 +90,7 @@ npm run build
 node dist/index.js export-er --schema biz_test --business-term 订单 --format detailed --out tmp/order-er.html
 ```
 
-表很多时建议分片导出目录：
+表很多时建议导出可浏览目录：
 
 ```bash
 ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
@@ -115,15 +115,17 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 | `--business-term <term>` | 按业务词匹配表范围。 |
 | `--depth <1-3>` | 关系发现深度。 |
 | `--max-tables <n>` | 最大表数量。 |
+| `--max-relationships <n>` | 最大关系数量。 |
 | `--min-confidence <0-1>` | 最低关系置信度。 |
+| `--relationship-mode <mode>` | `none`、`foreign_key` 或 `inferred`。默认 `foreign_key`。 |
 | `--no-include-inferred` | 只保留真实外键等高可信关系。 |
 | `--format <format>` | `static`、`interactive`、`compact` 或 `detailed`。 |
 | `--out <file>` | 输出文件。未指定时使用安全默认文件名。 |
-| `--out-dir <dir>` | 按分片写入目录，适合较大 schema。 |
+| `--out-dir <dir>` | 写出 `index.html`、`overview.html`、`chunks/`、`tables/` 和 `metadata/`。 |
 | `--chunk-size <n>` | 每个分片的表数量，最大 100。 |
 | `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
 
-导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 HTML 文件，不修改数据库。分片导出会绕开 MCP inline HTML 上限，但单个分片仍受 `OB_MAX_RESULT_BYTES` 控制；大库可以调小 `--chunk-size` 或适当调高 `OB_MAX_RESULT_BYTES`。
+导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 ER 文件，不修改数据库。分片导出会绕开 MCP inline HTML 上限，但单个分片仍受 `OB_MAX_RESULT_BYTES` 控制；大库可以调小 `--chunk-size` 或适当调高 `OB_MAX_RESULT_BYTES`。
 
 ## 元数据变更
 

@@ -58,7 +58,13 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 
 Existing files are not overwritten by default. Add `--overwrite` only when replacing an existing artifact intentionally.
 
-In OpenCode, ask the assistant to inspect relationship evidence first, then call `ob_generate_er_html` for HTML output.
+For larger schemas:
+
+```bash
+ob-mcp export-er --schema biz_test --format interactive --relationship-mode foreign_key --out-dir docs/er --chunk-size 25
+```
+
+In OpenCode, ask the assistant to run `ob_plan_er_export` first. Generate inline ER only when the planned scope is small.
 
 ## SQL Scan
 

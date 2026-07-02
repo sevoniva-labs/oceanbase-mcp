@@ -46,6 +46,7 @@ Never invent table names, fields, joins, or relationships. If metadata is insuff
 ## Diagrams And Documentation
 
 - Use `ob_generate_er_diagram`, `ob_generate_er_html`, `ob_generate_entity_diagram`, `ob_explain_relationship`, and `ob_generate_er_document` for ER work. Keep only relationships with metadata evidence.
+- For schema-wide or large ER work, call `ob_plan_er_export` first. Use inline ER only for small scopes; use CLI chunked export for larger schemas.
 - Use `ob_generate_table_doc`, `ob_generate_schema_doc`, `ob_generate_data_dictionary`, `ob_generate_query_doc`, and `ob_generate_onboarding_doc` for documentation.
 - Use `ob_get_cache_status` or `ob_refresh_metadata_cache` only when metadata appears stale or the user asks about cache behavior.
 
@@ -69,6 +70,7 @@ Do not invent relationships, SQL usages, or impact conclusions. Use only snapsho
 - Do not run or propose write SQL, DDL, DCL, procedure calls, sequence `NEXTVAL`, lock commands, file functions, sleep functions, or multi-statement SQL.
 - Do not use `SELECT *`.
 - Do not bypass profile, schema, table, tool, row, timeout, or output-size limits.
+- Do not generate full-schema inline ER for large schemas. Plan first, keep `relationshipMode=foreign_key` by default, and split the export.
 - Do not output executable index creation or schema change statements.
 - Do not emit executable `ALTER`, `CREATE`, `DROP`, `GRANT`, or index DDL in metadata change reports.
 - Report truncation, masking, unstable ordering, and policy rejections plainly.

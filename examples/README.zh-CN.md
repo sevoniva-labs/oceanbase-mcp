@@ -58,7 +58,13 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 
 默认不会覆盖已有文件；需要覆盖时显式加 `--overwrite`。
 
-OpenCode 中也可以要求 assistant 先查关系证据，再调用 `ob_generate_er_html` 生成 HTML 内容。
+大 schema：
+
+```bash
+ob-mcp export-er --schema biz_test --format interactive --relationship-mode foreign_key --out-dir docs/er --chunk-size 25
+```
+
+OpenCode 中应先让 assistant 调用 `ob_plan_er_export`。只有规划结果较小时才生成 inline ER。
 
 ## SQL 扫描
 

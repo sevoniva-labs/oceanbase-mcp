@@ -41,6 +41,7 @@ This table lists release themes only. Per-tool versioning is in the `Tools / 工
 | v0.5.1 | 改善 OpenCode 查询流程：表上下文、查询预览、分页查询、结果结构、错误提示、字段画像和业务字典。 | OpenCode query workflow: table context, query preview, paged queries, result structure, error hints, column profiling, and business glossary. |
 | v1.0.0 | 完成本地开发助手能力：初始化/诊断、统一搜索、SQL 辅助、查询会话、数据理解、ER HTML、文档生成、项目 SQL 扫描和内网交付。 | Local developer assistant scope: init/doctor, unified search, SQL assistance, query sessions, data understanding, ER HTML, documentation, project SQL scanning, and internal delivery. |
 | v1.1.0 | 增加元数据快照、快照对比、SQL 使用索引、影响分析、变更报告和关系路径解释，用于迭代前后评审。 | Metadata snapshots, snapshot diff, SQL usage index, impact analysis, change reports, and relationship paths for iteration review. |
+| v1.1.1 | 修复大 schema ER 生成稳定性，增加批量元数据加载、ER HTML 浏览器优化和本地分片导出规划。 | Large-schema ER stability, batched metadata loading, improved ER HTML browser, and chunked local export planning. |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -183,6 +184,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | 对比两份元数据快照，返回基于证据的结构变化。 | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | 从静态 SQL 使用索引中查找表、字段或业务词引用。 | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | 基于 diff 和影响分析生成 Markdown 或简版 HTML 变更报告。 | Generate Markdown or simple HTML change reports from diff and impact evidence. |
+| v1.1.1 | `ob_plan_er_export` | 为大 schema 规划本地 ER HTML 分片导出命令，避免 MCP inline 返回过大。 | Plan chunked local ER HTML export commands for large schemas without returning large inline HTML. |
 
 ## Metadata Change Workflow / 元数据变更流程
 
@@ -209,8 +211,8 @@ Release 附带源码归档，适合放入内网后通过内部 npm 制品库编�
 Release assets include a source archive for internal builds with an internal npm registry:
 
 ```bash
-tar -xzf ob-mcp-1.1.0-source.tar.gz
-cd ob-mcp-1.1.0
+tar -xzf ob-mcp-1.1.1-source.tar.gz
+cd ob-mcp-1.1.1
 npm ci
 npm run build
 npm run start
@@ -224,12 +226,12 @@ The source archive excludes `node_modules` and `dist`. The internal npm registry
 
 | Asset | 中文 | English |
 | --- | --- | --- |
-| `ob-mcp-1.1.0.tgz` | npm 包。 | npm package. |
-| `ob-mcp-1.1.0-source.tar.gz` | 源码归档，用于内网编译。 | Source archive for internal builds. |
+| `ob-mcp-1.1.1.tgz` | npm 包。 | npm package. |
+| `ob-mcp-1.1.1-source.tar.gz` | 源码归档，用于内网编译。 | Source archive for internal builds. |
 | `sbom.cdx.json` | CycloneDX SBOM。 | CycloneDX SBOM. |
-| `oceanbase-mcp-1.1.0-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |
-| `oceanbase-mcp-1.1.0-arm64.tar.gz` | arm64 离线镜像。 | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.0` | GHCR 镜像 tag。 | GHCR image tag. |
+| `oceanbase-mcp-1.1.1-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |
+| `oceanbase-mcp-1.1.1-arm64.tar.gz` | arm64 离线镜像。 | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.1` | GHCR 镜像 tag。 | GHCR image tag. |
 
 ## Validation / 验证
 
