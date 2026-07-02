@@ -38,6 +38,7 @@ import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPl
 import { logAudit, logError, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { captureMetadataSnapshot } from "./metadata-capture.js";
+import { analyzeChangeSqlImpact, analyzeMetadataImpact } from "./metadata-impact.js";
 import { compareMetadataSnapshots } from "./metadata-change.js";
 import { metrics } from "./metrics.js";
 import { analyzeQueryPlan } from "./plan-analysis.js";
@@ -90,6 +91,7 @@ const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
 const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
 const dataDictionaryFormatSchema = z.enum(["json", "markdown", "html"]);
 const metadataSnapshotInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
+const metadataDiffInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
 const sqlUsageIndexInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
 const profileInput = {
   profile: z.string().optional()
@@ -3100,6 +3102,45 @@ export function createObMcpServer(
         businessTerm,
         maxResults
       });
+      return toLimitedResult(result, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_analyze_change_sql_impact",
+    {
+      title: "Analyze Change SQL Impact",
+      description: "Analyze which indexed project SQL snippets are impacted by a metadata snapshot diff.",
+      inputSchema: {
+        ...profileInput,
+        metadataDiff: metadataDiffInputSchema,
+        sqlIndex: sqlUsageIndexInputSchema,
+        maxResults: z.number().int().positive().max(1_000).optional()
+      }
+    },
+    async ({ profile, metadataDiff, sqlIndex, maxResults }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = analyzeChangeSqlImpact({ metadataDiff, sqlIndex, maxResults });
+      return toLimitedResult(result, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_analyze_metadata_impact",
+    {
+      title: "Analyze Metadata Impact",
+      description: "Summarize metadata diff impact using optional SQL usage index and business glossary evidence.",
+      inputSchema: {
+        ...profileInput,
+        metadataDiff: metadataDiffInputSchema,
+        sqlIndex: sqlUsageIndexInputSchema.optional(),
+        businessGlossary: z.record(z.string(), z.unknown()).optional(),
+        maxResults: z.number().int().positive().max(1_000).optional()
+      }
+    },
+    async ({ profile, metadataDiff, sqlIndex, businessGlossary, maxResults }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = analyzeMetadataImpact({ metadataDiff, sqlIndex, businessGlossary, maxResults });
       return toLimitedResult(result, selected.config);
     }
   );

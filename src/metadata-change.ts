@@ -328,6 +328,21 @@ export function parseMetadataSnapshotInput(value: MetadataSnapshot | string | Re
   return record as MetadataSnapshot;
 }
 
+export function parseMetadataComparisonInput(
+  value: MetadataSnapshotComparison | string | Record<string, unknown>,
+  name = "metadataDiff"
+): MetadataSnapshotComparison {
+  const parsed = typeof value === "string" ? JSON.parse(value) : value;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`${name} must be a metadata snapshot comparison object or JSON string.`);
+  }
+  const record = parsed as Partial<MetadataSnapshotComparison>;
+  if (!record.changes || typeof record.changes !== "object" || !record.summary) {
+    throw new Error(`${name} is not a valid metadata snapshot comparison.`);
+  }
+  return record as MetadataSnapshotComparison;
+}
+
 export function compareMetadataSnapshots(
   beforeInput: MetadataSnapshot | string | Record<string, unknown>,
   afterInput: MetadataSnapshot | string | Record<string, unknown>,

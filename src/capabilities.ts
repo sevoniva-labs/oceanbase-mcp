@@ -46,6 +46,8 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_get_table_summary", since: "v1.0.0", group: "metadata", mode: "all", description: "Summarize one table with inferred purpose, key fields, relationships, and query entry points." },
   { name: "ob_compare_tables", since: "v1.0.0", group: "metadata", mode: "all", description: "Compare two visible tables by columns, indexes, constraints, and partitions." },
   { name: "ob_compare_schemas", since: "v1.0.0", group: "metadata", mode: "all", description: "Compare two visible schemas by table list and bounded table metadata differences." },
+  { name: "ob_analyze_change_sql_impact", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Analyze indexed project SQL impact from metadata snapshot changes." },
+  { name: "ob_analyze_metadata_impact", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Summarize metadata diff impact using SQL index, relationship changes, and glossary hints." },
   { name: "ob_capture_metadata_snapshot", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Capture bounded metadata-only snapshots for offline diff and impact analysis." },
   { name: "ob_compare_metadata_snapshots", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Compare metadata snapshots and return evidence-based structural changes." },
   { name: "ob_get_table_schema", since: "v0.3.0", group: "metadata", mode: "all", description: "Return policy-filtered table schema." },
