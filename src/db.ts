@@ -290,10 +290,11 @@ export async function runQuery(
   sql: string,
   params: SqlParam[],
   maxRows: number,
-  timeoutMs: number
+  timeoutMs: number,
+  maxOutputBytes = Number.POSITIVE_INFINITY
 ): Promise<QueryOutput> {
   const [result, fields] = await pool.query({ sql, values: params, timeout: timeoutMs });
-  return rowsToOutput(result as QueryResult, fields as FieldPacket[] | undefined, maxRows);
+  return rowsToOutput(result as QueryResult, fields as FieldPacket[] | undefined, maxRows, maxOutputBytes);
 }
 
 export async function runReadOnlyQuery(
@@ -303,11 +304,12 @@ export async function runReadOnlyQuery(
   params: SqlParam[],
   maxRows: number,
   timeoutMs: number,
-  enforceReadOnlyTransaction: boolean
+  enforceReadOnlyTransaction: boolean,
+  maxOutputBytes = Number.POSITIVE_INFINITY
 ): Promise<QueryOutput> {
   const driverSql = normalizeSqlForDriver(mode, sql, params);
   if (!enforceReadOnlyTransaction) {
-    return runQuery(pool, driverSql, params, maxRows, timeoutMs);
+    return runQuery(pool, driverSql, params, maxRows, timeoutMs, maxOutputBytes);
   }
 
   const connection = await pool.getConnection();
@@ -320,7 +322,7 @@ export async function runReadOnlyQuery(
     const [result, fields] = await connection.query({ sql: driverSql, values: params, timeout: timeoutMs });
     await connection.query({ sql: "ROLLBACK", timeout: timeoutMs });
     transactionStarted = false;
-    return rowsToOutput(result as QueryResult, fields as FieldPacket[] | undefined, maxRows);
+    return rowsToOutput(result as QueryResult, fields as FieldPacket[] | undefined, maxRows, maxOutputBytes);
   } finally {
     if (transactionStarted) {
       try {

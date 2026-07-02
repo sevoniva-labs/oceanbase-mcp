@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertJsonByteLimit } from "../dist/format.js";
+import { assertJsonByteLimit, jsonByteLength, rowsToOutput } from "../dist/format.js";
 import { effectiveRowLimit, isToolAllowed, shouldMaskColumnValue } from "../dist/mcp.js";
 import { withQuerySlot } from "../dist/runtime.js";
 
@@ -16,6 +16,18 @@ test("effectiveRowLimit treats OB_MAX_ROWS as a hard cap", () => {
 test("assertJsonByteLimit blocks oversized tool output", () => {
   assert.doesNotThrow(() => assertJsonByteLimit({ rows: ["ok"] }, 1_000));
   assert.throws(() => assertJsonByteLimit({ rows: ["x".repeat(256)] }, 64), /OB_MAX_RESULT_BYTES/);
+});
+
+test("rowsToOutput applies output byte budget before returning rows", () => {
+  const output = rowsToOutput([
+    { id: 1, payload: "x".repeat(20_000) },
+    { id: 2, payload: "y".repeat(20_000) }
+  ], undefined, 10, 4_096);
+
+  assert.equal(output.rowCount, 2);
+  assert.equal(output.truncated, true);
+  assert(jsonByteLength(output) <= 4_096);
+  assert.match(output.rows.map((row) => row.payload).join("\n"), /\[truncated\]/);
 });
 
 test("withQuerySlot enforces per-profile concurrency", async () => {

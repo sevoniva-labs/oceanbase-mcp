@@ -488,7 +488,8 @@ export function createObMcpServer(
             sqlParams,
             effectiveRowLimit(maxRows, selected.config),
             selected.config.queryTimeoutMs,
-            selected.config.enforceReadOnlyTransaction
+            selected.config.enforceReadOnlyTransaction,
+            selected.config.maxResultBytes
           )
         );
         metrics.recordQueryDuration(Date.now() - started);
@@ -548,7 +549,8 @@ export function createObMcpServer(
           sqlParams,
           effectiveMaxRows,
           selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction
+          selected.config.enforceReadOnlyTransaction,
+          selected.config.maxResultBytes
         )
       );
       assertOutputAllowed(output, selected.config.policy);
@@ -613,7 +615,8 @@ export function createObMcpServer(
           sqlParams,
           fetchRows,
           selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction
+          selected.config.enforceReadOnlyTransaction,
+          selected.config.maxResultBytes
         )
       );
       assertOutputAllowed(output, selected.config.policy);
@@ -1454,7 +1457,8 @@ export function createObMcpServer(
           sqlParams,
           effectiveRowLimit(maxRows, selected.config),
           selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction
+          selected.config.enforceReadOnlyTransaction,
+          selected.config.maxResultBytes
         )
       );
       metrics.recordQueryDuration(Date.now() - started);
@@ -1490,7 +1494,8 @@ export function createObMcpServer(
           sqlParams,
           effectiveRowLimit(maxRows, selected.config),
           selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction
+          selected.config.enforceReadOnlyTransaction,
+          selected.config.maxResultBytes
         )
       );
       metrics.recordQueryDuration(Date.now() - started);
@@ -1534,7 +1539,8 @@ export function createObMcpServer(
           sqlParams,
           effectiveRowLimit(maxRows, selected.config),
           selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction
+          selected.config.enforceReadOnlyTransaction,
+          selected.config.maxResultBytes
         )
       );
       metrics.recordQueryDuration(Date.now() - started);
@@ -2603,7 +2609,8 @@ export function createObMcpServer(
           sqlParams,
           built.pagination.pageSize,
           selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction
+          selected.config.enforceReadOnlyTransaction,
+          selected.config.maxResultBytes
         )
       );
       assertOutputAllowed(output, selected.config.policy);
@@ -9223,7 +9230,8 @@ async function runQuerySessionPage(
       session.params,
       fetchRows,
       selected.config.queryTimeoutMs,
-      selected.config.enforceReadOnlyTransaction
+      selected.config.enforceReadOnlyTransaction,
+      selected.config.maxResultBytes
     )
   );
   assertOutputAllowed(output, selected.config.policy);
@@ -10214,7 +10222,8 @@ async function lintReadOnlySql(
         params,
         maxRows,
         selected.config.queryTimeoutMs,
-        selected.config.enforceReadOnlyTransaction
+        selected.config.enforceReadOnlyTransaction,
+        selected.config.maxResultBytes
       )
     );
     metrics.recordQueryDuration(Date.now() - started);

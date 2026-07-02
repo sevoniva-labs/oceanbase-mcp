@@ -12,21 +12,56 @@ export interface QueryOutput {
   }>;
 }
 
-export function rowsToOutput(result: QueryResult, fields: FieldPacket[] | undefined, maxRows: number): QueryOutput {
+export function rowsToOutput(
+  result: QueryResult,
+  fields: FieldPacket[] | undefined,
+  maxRows: number,
+  maxBytes = Number.POSITIVE_INFINITY
+): QueryOutput {
   const rows = Array.isArray(result) ? Array.from(result as unknown[]) : [result];
-  const slicedRows = rows.slice(0, maxRows);
+  const fieldMetadata = fields?.map((field) => ({
+    name: field.name,
+    table: field.table || undefined,
+    database: field.db || undefined,
+    columnType: field.columnType
+  }));
+  const byteLimit = Number.isFinite(maxBytes) && maxBytes > 0 ? maxBytes : undefined;
+  const maxValueBytes = byteLimit ? Math.max(256, Math.min(64 * 1024, Math.floor(byteLimit / 4))) : undefined;
+  const outputRows: unknown[] = [];
+  let truncated = rows.length > maxRows;
+  let rowBytes = 0;
+  const metadataBytes = byteLimit
+    ? Buffer.byteLength(JSON.stringify({ rowCount: rows.length, rows: [], truncated: true, fields: fieldMetadata }), "utf8")
+    : 0;
 
-  return {
+  for (const row of rows.slice(0, maxRows)) {
+    const valueTruncation = { value: false };
+    const normalized = normalizeForJson(row, maxValueBytes, valueTruncation);
+    if (valueTruncation.value) {
+      truncated = true;
+    }
+    const nextRowBytes = Buffer.byteLength(JSON.stringify(normalized), "utf8") + (outputRows.length > 0 ? 1 : 0);
+    if (byteLimit && metadataBytes + rowBytes + nextRowBytes > byteLimit) {
+      truncated = true;
+      break;
+    }
+    outputRows.push(normalized);
+    rowBytes += nextRowBytes;
+  }
+
+  const output: QueryOutput = {
     rowCount: rows.length,
-    rows: normalizeForJson(slicedRows) as unknown[],
-    truncated: rows.length > maxRows,
-    fields: fields?.map((field) => ({
-      name: field.name,
-      table: field.table || undefined,
-      database: field.db || undefined,
-      columnType: field.columnType
-    }))
+    rows: outputRows,
+    truncated,
+    fields: fieldMetadata
   };
+
+  while (byteLimit && output.rows.length > 0 && jsonByteLength(output) > byteLimit) {
+    output.rows.pop();
+    output.truncated = true;
+  }
+
+  return output;
 }
 
 export function jsonText(value: unknown): string {
@@ -44,9 +79,17 @@ export function assertJsonByteLimit(value: unknown, maxBytes: number): void {
   }
 }
 
-function normalizeForJson(value: unknown): unknown {
+function normalizeForJson(value: unknown, maxStringBytes?: number, valueTruncation?: { value: boolean }): unknown {
   if (value == null) {
     return value;
+  }
+
+  if (typeof value === "string") {
+    const output = truncateStringBytes(value, maxStringBytes);
+    if (output !== value && valueTruncation) {
+      valueTruncation.value = true;
+    }
+    return output;
   }
 
   if (typeof value === "bigint") {
@@ -58,20 +101,45 @@ function normalizeForJson(value: unknown): unknown {
   }
 
   if (Buffer.isBuffer(value)) {
-    return value.toString("base64");
+    const encoded = value.toString("base64");
+    const output = truncateStringBytes(encoded, maxStringBytes);
+    if (output !== encoded && valueTruncation) {
+      valueTruncation.value = true;
+    }
+    return output;
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => normalizeForJson(item));
+    return value.map((item) => normalizeForJson(item, maxStringBytes, valueTruncation));
   }
 
   if (typeof value === "object") {
     const output: Record<string, unknown> = {};
     for (const [key, nested] of Object.entries(value)) {
-      output[key] = normalizeForJson(nested);
+      output[key] = normalizeForJson(nested, maxStringBytes, valueTruncation);
     }
     return output;
   }
 
   return value;
+}
+
+function truncateStringBytes(value: string, maxBytes: number | undefined): string {
+  if (!maxBytes || maxBytes <= 0 || Buffer.byteLength(value, "utf8") <= maxBytes) {
+    return value;
+  }
+  const suffix = "...[truncated]";
+  const suffixBytes = Buffer.byteLength(suffix, "utf8");
+  const targetBytes = Math.max(0, maxBytes - suffixBytes);
+  let output = "";
+  let usedBytes = 0;
+  for (const char of value) {
+    const charBytes = Buffer.byteLength(char, "utf8");
+    if (usedBytes + charBytes > targetBytes) {
+      break;
+    }
+    output += char;
+    usedBytes += charBytes;
+  }
+  return `${output}${suffix}`;
 }
