@@ -19,7 +19,7 @@ v1.1.0 adds metadata change analysis for local OceanBase development. It helps O
 - Oracle 模式 smoke test 覆盖元数据快照、快照对比、Oracle 对象 diff、影响分析、SQL 使用索引和变更报告。
 - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run` 和 Docker build 通过。
 
-## 内网编译
+## 离线构建
 
 Release 包含源码归档：
 
@@ -31,7 +31,7 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要提供 `package-lock.json` 中锁定的依赖。
 
 ## 生产注意事项
 

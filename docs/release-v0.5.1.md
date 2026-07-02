@@ -12,11 +12,11 @@ v0.5.1 focuses on daily OceanBase query workflows in OpenCode. It adds metadata-
 - SQL 错误提示：覆盖表/字段不存在、schema 不允许、Oracle 大小写、分页语法、权限不足和策略拒绝等常见问题。
 - `ob_profile_columns`：返回字段空值比例、distinct、top values、min/max、时间范围和脱敏样例值。
 - 业务字典：支持把业务词映射到 schema/table/column，用于搜索和提示，不扩大数据库访问权限。
-- 内网交付：Release 附带源码归档，可在内网 npm 制品库环境中编译运行。
+- 离线交付：Release 附带源码归档，可在私有 npm 制品库环境中编译运行。
 
 ## Delivery Assets
 
-- `ob-mcp-0.5.1-source.tar.gz`：源码归档，用于内网编译。
+- `ob-mcp-0.5.1-source.tar.gz`：源码归档，用于离线构建。
 - `ob-mcp-0.5.1.tgz`：npm package。
 - `sbom.cdx.json`：CycloneDX SBOM。
 - `oceanbase-mcp-0.5.1-amd64.tar.gz`：amd64 离线镜像。
@@ -24,7 +24,7 @@ v0.5.1 focuses on daily OceanBase query workflows in OpenCode. It adds metadata-
 - `ghcr.io/sevoniva/oceanbase-mcp:v0.5.1`
 - `ghcr.io/sevoniva/oceanbase-mcp:0.5.1`
 
-## 内网源码编译
+## 离线源码构建
 
 ```bash
 tar -xzf ob-mcp-0.5.1-source.tar.gz
@@ -34,7 +34,7 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
 ## 验证结果
 

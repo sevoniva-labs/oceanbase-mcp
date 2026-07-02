@@ -27,7 +27,7 @@ v1.1.3 is a stability patch for large-schema ER planning and export. It reduces 
 - MySQL and Oracle million-row `ob_describe_table` validations passed without scanning table data.
 - Oracle `OB_MCP_MILLION_DESCRIBE` was verified with 1,048,576 rows after bounded batch data preparation.
 
-## Internal Build
+## Offline Source Build
 
 ```bash
 tar -xzf ob-mcp-1.1.3-source.tar.gz
@@ -37,7 +37,7 @@ npm run build
 npm run start
 ```
 
-The source archive does not include `node_modules` or `dist`. The internal npm repository must provide the dependencies locked in `package-lock.json`.
+The source archive does not include `node_modules` or `dist`. The private npm repository must provide the dependencies locked in `package-lock.json`.
 
 ## Assets
 
@@ -77,7 +77,7 @@ v1.1.3 是大 schema ER 规划和导出的稳定性补丁。重点是降低导�
 - MySQL 和 Oracle 百万行表 `ob_describe_table` 验证通过，未扫描目标表数据。
 - Oracle `OB_MCP_MILLION_DESCRIBE` 已用 1,048,576 行真实数据验证，数据准备采用受控分批写入。
 
-### 内网编译
+### 离线构建
 
 ```bash
 tar -xzf ob-mcp-1.1.3-source.tar.gz
@@ -87,7 +87,7 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
 ### 交付资产
 

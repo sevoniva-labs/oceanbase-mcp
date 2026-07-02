@@ -20,7 +20,7 @@ v1.1.1 is a stability release for large-schema ER generation. It keeps the read-
 - MySQL stdio smoke、Oracle stdio smoke、MySQL HTTP smoke、Oracle HTTP smoke 通过。
 - ER HTML 已用 5、50、220+ 表样本生成并截图检查，大图默认进入多列概览，warnings 不再遮挡主图。
 
-## 内网编译
+## 离线构建
 
 Release 包含源码归档：
 
@@ -32,7 +32,7 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要提供 `package-lock.json` 中锁定的依赖。
 
 ## 交付资产
 

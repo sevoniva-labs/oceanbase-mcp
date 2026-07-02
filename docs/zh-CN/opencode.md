@@ -11,14 +11,38 @@ OpenCode 有两种接入方式：
 
 ## 本地 Stdio
 
-先构建：
+使用已发布的 npm 包：
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "oceanbase": {
+      "type": "local",
+      "command": ["npx", "-y", "oceanbase-mcp@1.1.5"],
+      "enabled": true,
+      "environment": {
+        "OB_HOST": "127.0.0.1",
+        "OB_PORT": "2883",
+        "OB_USER": "ob_user@ob_mysql#obcluster",
+        "OB_PASSWORD": "ob_password",
+        "OB_COMPATIBILITY": "mysql",
+        "OB_ALLOWED_SCHEMAS": "biz_test",
+        "OB_ALLOW_SELECT_STAR": "false"
+      }
+    }
+  }
+}
+```
+
+如果从源码开发，先构建：
 
 ```bash
 npm install
 npm run build
 ```
 
-使用项目内置的 [opencode.jsonc](../../opencode.jsonc)：
+然后使用项目内置的 [opencode.jsonc](../../opencode.jsonc)：
 
 ```jsonc
 {

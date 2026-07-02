@@ -22,7 +22,7 @@ v1.1.4 is a performance patch for ER generation. It removes duplicate metadata r
 - MySQL million-row `ob_describe_table` validation passed.
 - Oracle million-row `ob_describe_table` validation passed.
 
-## Internal Build
+## Offline Source Build
 
 ```bash
 tar -xzf ob-mcp-1.1.4-source.tar.gz
@@ -32,7 +32,7 @@ npm run build
 npm run start
 ```
 
-The source archive does not include `node_modules` or `dist`. The internal npm repository must provide the dependencies locked in `package-lock.json`.
+The source archive does not include `node_modules` or `dist`. The private npm repository must provide the dependencies locked in `package-lock.json`.
 
 ## Assets
 
@@ -67,7 +67,7 @@ v1.1.4 是 ER 生成性能补丁。它减少默认外键关系路径的重复元
 - MySQL 百万行表 `ob_describe_table` 验证通过。
 - Oracle 百万行表 `ob_describe_table` 验证通过。
 
-### 内网编译
+### 离线构建
 
 ```bash
 tar -xzf ob-mcp-1.1.4-source.tar.gz
@@ -77,7 +77,7 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
 ### 交付资产
 

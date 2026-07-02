@@ -200,42 +200,61 @@ Windows 仅作为本地开发和 OpenCode 连接场景。生产承载建议使�
 仓库内置：
 
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml)：构建、测试、审计、SBOM、npm pack dry-run、Docker build。
-- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、打包源码、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
+- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、配置 `NPM_TOKEN` 后发布到 npmjs、打包源码、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
 
 Release workflow 产物：
 
 - `ghcr.io/sevoniva/oceanbase-mcp:vX.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:X.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:latest`
+- 配置 `NPM_TOKEN` 后发布 `oceanbase-mcp@X.Y.Z` 到 npmjs
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
-- `ob-mcp-X.Y.Z.tgz`
-- `ob-mcp-X.Y.Z-source.tar.gz`
+- `oceanbase-mcp-X.Y.Z.tgz`
+- `oceanbase-mcp-X.Y.Z-source.tar.gz`
 - `sbom.cdx.json`
+
+## npmjs 分发
+
+公开 npm 包名为 `oceanbase-mcp`。CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
+
+启用 npmjs 发布：
+
+1. 注册 npmjs 账号。
+2. 开启账号安全设置，并创建用于发布的 automation token。
+3. 将 token 添加到 GitHub 仓库 secret，名称为 `NPM_TOKEN`。
+4. 运行 Release workflow 或推送版本 tag。
+
+使用方可以从 npmjs 安装，也可以从同步 npmjs 的私有 registry 安装：
+
+```bash
+npm install -g oceanbase-mcp@1.1.5
+ob-mcp --help
+```
 
 手动发布：
 
 1. 打开 GitHub Actions。
 2. 运行 `Release`。
-3. 输入版本号，例如 `v1.1.4`。
-4. workflow 会创建 tag、发布镜像并上传 Release 附件。
+3. 输入版本号，例如 `v1.1.5`。
+4. workflow 会创建 tag；配置 `NPM_TOKEN` 后发布 npm 包；随后发布镜像并上传 Release 附件。
 
 加载离线镜像：
 
 ```bash
-gunzip oceanbase-mcp-1.1.4-amd64.tar.gz
-docker load -i oceanbase-mcp-1.1.4-amd64.tar
-docker run --rm oceanbase-mcp:1.1.4-amd64
+gunzip oceanbase-mcp-1.1.5-amd64.tar.gz
+docker load -i oceanbase-mcp-1.1.5-amd64.tar
+docker run --rm oceanbase-mcp:1.1.5-amd64
 ```
 
-内网源码编译：
+离线源码构建：
 
 ```bash
-tar -xzf ob-mcp-1.1.4-source.tar.gz
-cd ob-mcp-1.1.4
+tar -xzf oceanbase-mcp-1.1.5-source.tar.gz
+cd oceanbase-mcp-1.1.5
 npm ci
 npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。构建完成后如需精简生产目录，可执行 `npm prune --omit=dev`。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。构建完成后如需精简生产目录，可执行 `npm prune --omit=dev`。

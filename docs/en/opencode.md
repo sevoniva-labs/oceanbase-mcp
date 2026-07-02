@@ -11,14 +11,38 @@ Use local stdio for development. Use remote HTTP when a team shares one controll
 
 ## Local Stdio
 
-Build first:
+Use the published package:
+
+```jsonc
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "oceanbase": {
+      "type": "local",
+      "command": ["npx", "-y", "oceanbase-mcp@1.1.5"],
+      "enabled": true,
+      "environment": {
+        "OB_HOST": "127.0.0.1",
+        "OB_PORT": "2883",
+        "OB_USER": "ob_user@ob_mysql#obcluster",
+        "OB_PASSWORD": "ob_password",
+        "OB_COMPATIBILITY": "mysql",
+        "OB_ALLOWED_SCHEMAS": "biz_test",
+        "OB_ALLOW_SELECT_STAR": "false"
+      }
+    }
+  }
+}
+```
+
+For source checkout development, build first:
 
 ```bash
 npm install
 npm run build
 ```
 
-Use the project [opencode.jsonc](../../opencode.jsonc):
+Then use the project [opencode.jsonc](../../opencode.jsonc):
 
 ```jsonc
 {

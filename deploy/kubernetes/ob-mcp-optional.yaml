@@ -41,7 +41,7 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # 修改为实际 Ingress Controller 或内网客户端所在 namespace。
+    # 修改为实际 Ingress Controller 或私有网络客户端所在 namespace。
     - from:
         - namespaceSelector:
             matchLabels:

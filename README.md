@@ -39,18 +39,32 @@ This table lists release themes only. Per-tool versioning is in the `Tools / 工
 | v0.4.0 | 增加 HTTP 部署、安全加固、Host/IP allowlist、限流、健康检查、指标、审计日志和数据库权限核验。 | HTTP deployment, security hardening, Host/IP allowlists, rate limits, health checks, metrics, audit logs, and database permission checks. |
 | v0.5.0 | 补齐开发元数据：表 DDL、统计信息、Oracle 对象、关系发现、ER 图、执行计划分析和性能建议。 | Developer metadata: table DDL, statistics, Oracle objects, relationship discovery, ER diagrams, plan analysis, and performance advice. |
 | v0.5.1 | 改善 OpenCode 查询流程：表上下文、查询预览、分页查询、结果结构、错误提示、字段画像和业务字典。 | OpenCode query workflow: table context, query preview, paged queries, result structure, error hints, column profiling, and business glossary. |
-| v1.0.0 | 完成本地开发助手能力：初始化/诊断、统一搜索、SQL 辅助、查询会话、数据理解、ER HTML、文档生成、项目 SQL 扫描和内网交付。 | Local developer assistant scope: init/doctor, unified search, SQL assistance, query sessions, data understanding, ER HTML, documentation, project SQL scanning, and internal delivery. |
+| v1.0.0 | 完成本地开发助手能力：初始化/诊断、统一搜索、SQL 辅助、查询会话、数据理解、ER HTML、文档生成、项目 SQL 扫描和离线交付。 | Local developer assistant scope: init/doctor, unified search, SQL assistance, query sessions, data understanding, ER HTML, documentation, project SQL scanning, and offline delivery. |
 | v1.1.0 | 增加元数据快照、快照对比、SQL 使用索引、影响分析、变更报告和关系路径解释，用于迭代前后评审。 | Metadata snapshots, snapshot diff, SQL usage index, impact analysis, change reports, and relationship paths for iteration review. |
 | v1.1.1 | 修复大 schema ER 生成稳定性，增加批量元数据加载、ER HTML 浏览器优化和本地分片导出规划。 | Large-schema ER stability, batched metadata loading, improved ER HTML browser, and chunked local export planning. |
 | v1.1.2 | 修复本地 OpenCode 连续查询稳定性，放宽本地 HTTP 默认限流，增加故障日志，并兼容 Oracle 常见命名占位符。 | Local OpenCode query stability, higher local HTTP rate-limit default, crash/slow-call logging, and Oracle named bind compatibility. |
 | v1.1.3 | 优化大 schema ER 规划为轻量估算，增加分片策略参数，并完成 200+ 表本地验证。 | Lightweight large-schema ER planning, chunk strategy options, and 200+ table local validation. |
 | v1.1.4 | 减少 ER 默认关系发现的重复元数据读取，并对大范围 inline ER HTML 提前降级。 | Reduced duplicate ER metadata reads and early fallback for large inline ER HTML. |
+| v1.1.5 | 增加 npmjs 分发，包名为 `oceanbase-mcp`，CLI 命令继续保持 `ob-mcp`。 | npmjs distribution under `oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
 ## Quick Start / 快速开始
+
+Install from npmjs or a private npm registry:
+
+通过 npmjs 或私有 npm 制品库安装：
+
+```bash
+npm install -g oceanbase-mcp@1.1.5
+ob-mcp doctor
+```
+
+Build from source:
+
+从源码构建：
 
 ```bash
 git clone https://github.com/sevoniva/oceanbase-mcp.git
@@ -207,34 +221,43 @@ ob-mcp metadata report --before snapshots/before.json --after snapshots/after.js
 
 These commands only read metadata or local project files. Reports contain risks, evidence, and review guidance; they do not emit executable DDL.
 
-## Internal Build / 内网编译
+## Distribution / 分发
 
-Release 附带源码归档，适合放入内网后通过内部 npm 制品库编译运行：
+公开 npm 包名为 `oceanbase-mcp`，CLI 命令名保持 `ob-mcp`。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
 
-Release assets include a source archive for internal builds with an internal npm registry:
+The public npm package is `oceanbase-mcp`, and the CLI command remains `ob-mcp`. Private registries can mirror npmjs and install pinned versions from the private registry.
 
 ```bash
-tar -xzf ob-mcp-1.1.4-source.tar.gz
-cd ob-mcp-1.1.4
+npm install -g oceanbase-mcp@1.1.5
+ob-mcp --help
+```
+
+Release 仍附带源码归档，适合离线源码构建：
+
+Release assets still include a source archive for offline source builds:
+
+```bash
+tar -xzf oceanbase-mcp-1.1.5-source.tar.gz
+cd oceanbase-mcp-1.1.5
 npm ci
 npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
-The source archive excludes `node_modules` and `dist`. The internal npm registry must provide the dependencies locked by `package-lock.json`.
+The source archive excludes `node_modules` and `dist`. The private npm registry must provide the dependencies locked by `package-lock.json`.
 
 ## Release Assets / 发布资产
 
 | Asset | 中文 | English |
 | --- | --- | --- |
-| `ob-mcp-1.1.4.tgz` | npm 包。 | npm package. |
-| `ob-mcp-1.1.4-source.tar.gz` | 源码归档，用于内网编译。 | Source archive for internal builds. |
+| `oceanbase-mcp-1.1.5.tgz` | npm 包。 | npm package. |
+| `oceanbase-mcp-1.1.5-source.tar.gz` | 源码归档，用于离线构建。 | Source archive for offline source builds. |
 | `sbom.cdx.json` | CycloneDX SBOM。 | CycloneDX SBOM. |
-| `oceanbase-mcp-1.1.4-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |
-| `oceanbase-mcp-1.1.4-arm64.tar.gz` | arm64 离线镜像。 | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.4` | GHCR 镜像 tag。 | GHCR image tag. |
+| `oceanbase-mcp-1.1.5-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |
+| `oceanbase-mcp-1.1.5-arm64.tar.gz` | arm64 离线镜像。 | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.5` | GHCR 镜像 tag。 | GHCR image tag. |
 
 ## Validation / 验证
 

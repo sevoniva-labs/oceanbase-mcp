@@ -1,6 +1,6 @@
 ## OceanBase MCP v1.0.0
 
-v1.0.0 completes the local OceanBase Developer Assistant scope for OpenCode. It improves metadata discovery, read-only SQL assistance, paged query workflows, ER diagrams, data dictionaries, project SQL scanning, local setup checks, and internal delivery assets. The server remains strictly read-only.
+v1.0.0 completes the local OceanBase Developer Assistant scope for OpenCode. It improves metadata discovery, read-only SQL assistance, paged query workflows, ER diagrams, data dictionaries, project SQL scanning, local setup checks, and offline delivery assets. The server remains strictly read-only.
 
 ## 新增能力
 
@@ -15,7 +15,7 @@ v1.0.0 completes the local OceanBase Developer Assistant scope for OpenCode. It 
 
 ## Delivery Assets
 
-- `ob-mcp-1.0.0-source.tar.gz`：源码归档，用于内网编译。
+- `ob-mcp-1.0.0-source.tar.gz`：源码归档，用于离线构建。
 - `ob-mcp-1.0.0.tgz`：npm package。
 - `sbom.cdx.json`：CycloneDX SBOM。
 - `oceanbase-mcp-1.0.0-amd64.tar.gz`：amd64 离线镜像。
@@ -23,7 +23,7 @@ v1.0.0 completes the local OceanBase Developer Assistant scope for OpenCode. It 
 - `ghcr.io/sevoniva/oceanbase-mcp:v1.0.0`
 - `ghcr.io/sevoniva/oceanbase-mcp:1.0.0`
 
-## 内网源码编译
+## 离线源码构建
 
 ```bash
 tar -xzf ob-mcp-1.0.0-source.tar.gz
@@ -33,7 +33,7 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
 ## 验证结果
 

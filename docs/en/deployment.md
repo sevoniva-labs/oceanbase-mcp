@@ -200,42 +200,61 @@ Use Windows for local development and OpenCode connectivity. For production host
 The repository includes:
 
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml): build, test, audit, SBOM, npm pack dry-run, Docker build.
-- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, archive source, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
+- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, publish to npmjs when `NPM_TOKEN` is configured, archive source, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
 
 Release workflow outputs:
 
 - `ghcr.io/sevoniva/oceanbase-mcp:vX.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:X.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:latest`
+- `oceanbase-mcp@X.Y.Z` on npmjs when `NPM_TOKEN` is configured
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
-- `ob-mcp-X.Y.Z.tgz`
-- `ob-mcp-X.Y.Z-source.tar.gz`
+- `oceanbase-mcp-X.Y.Z.tgz`
+- `oceanbase-mcp-X.Y.Z-source.tar.gz`
 - `sbom.cdx.json`
+
+## npmjs Distribution
+
+Publish uses the public package name `oceanbase-mcp`. The CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`.
+
+To enable npmjs publishing:
+
+1. Create an npmjs account.
+2. Enable account security and create an automation token for publishing.
+3. Add the token to this GitHub repository as the secret `NPM_TOKEN`.
+4. Run the release workflow or push a version tag.
+
+Consumers can install from npmjs or a private registry that mirrors npmjs:
+
+```bash
+npm install -g oceanbase-mcp@1.1.5
+ob-mcp --help
+```
 
 Manual release:
 
 1. Open GitHub Actions.
 2. Run `Release`.
-3. Enter a version such as `v1.1.4`.
-4. The workflow creates the tag, publishes images, and attaches release assets.
+3. Enter a version such as `v1.1.5`.
+4. The workflow creates the tag, publishes the npm package when `NPM_TOKEN` is configured, publishes images, and attaches release assets.
 
 Load an offline image:
 
 ```bash
-gunzip oceanbase-mcp-1.1.4-amd64.tar.gz
-docker load -i oceanbase-mcp-1.1.4-amd64.tar
-docker run --rm oceanbase-mcp:1.1.4-amd64
+gunzip oceanbase-mcp-1.1.5-amd64.tar.gz
+docker load -i oceanbase-mcp-1.1.5-amd64.tar
+docker run --rm oceanbase-mcp:1.1.5-amd64
 ```
 
-Build from the source archive in an internal network:
+Build from the source archive in an offline environment:
 
 ```bash
-tar -xzf ob-mcp-1.1.4-source.tar.gz
-cd ob-mcp-1.1.4
+tar -xzf oceanbase-mcp-1.1.5-source.tar.gz
+cd oceanbase-mcp-1.1.5
 npm ci
 npm run build
 npm run start
 ```
 
-The source archive does not include `node_modules` or `dist`. The internal npm repository must provide the dependencies locked in `package-lock.json`. After the build, run `npm prune --omit=dev` if the production directory needs to be reduced.
+The source archive does not include `node_modules` or `dist`. The private npm registry must provide the dependencies locked in `package-lock.json`. After the build, run `npm prune --omit=dev` if the production directory needs to be reduced.

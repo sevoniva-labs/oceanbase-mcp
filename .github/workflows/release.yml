@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本，例如 v1.1.4"
+        description: "发布版本，例如 v1.1.5"
         required: true
         type: string
       prerelease:
@@ -19,6 +19,7 @@ on:
 permissions:
   contents: write
   packages: write
+  id-token: write
 
 env:
   IMAGE_NAME: ghcr.io/sevoniva/oceanbase-mcp
@@ -41,7 +42,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必须是 vX.Y.Z，例如 v1.1.4" >&2
+            echo "版本必须是 vX.Y.Z，例如 v1.1.5" >&2
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -100,7 +101,7 @@ jobs:
         run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
 
       - name: 打包源码
-        run: git archive --format=tar.gz --prefix=ob-mcp-${{ needs.metadata.outputs.version }}/ HEAD -o ob-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz
+        run: git archive --format=tar.gz --prefix=oceanbase-mcp-${{ needs.metadata.outputs.version }}/ HEAD -o oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz
 
       - name: 打包
         run: npm pack
@@ -112,8 +113,40 @@ jobs:
           path: |
             *.tgz
             sbom.cdx.json
-            ob-mcp-*-source.tar.gz
+            oceanbase-mcp-*-source.tar.gz
           if-no-files-found: error
+
+  publish-npm:
+    name: 发布 npmjs 包
+    needs:
+      - metadata
+      - package
+    if: always() && needs.metadata.result == 'success' && needs.package.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下载 npm 包
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: npm-package
+          path: dist-release
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: 发布到 npmjs
+        shell: bash
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
+            echo "NPM_TOKEN is not configured; npmjs publish was skipped."
+            exit 0
+          fi
+          tarball="$(ls dist-release/oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz)"
+          npm publish "${tarball}" --provenance
 
   image:
     name: 推送多架构镜像
@@ -204,9 +237,10 @@ jobs:
     needs:
       - metadata
       - package
+      - publish-npm
       - image
       - offline-images
-    if: always() && needs.metadata.result == 'success' && needs.package.result == 'success' && needs.image.result == 'success' && needs.offline-images.result == 'success'
+    if: always() && needs.metadata.result == 'success' && needs.package.result == 'success' && needs.publish-npm.result == 'success' && needs.image.result == 'success' && needs.offline-images.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: 下载 npm 包
@@ -233,50 +267,48 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release improves ER generation performance for OceanBase MCP. It removes duplicate metadata reads from the default foreign-key ER path and avoids large schema-level inline HTML rendering before returning export guidance. The server remains strictly read-only.
+          This release adds npmjs distribution for OceanBase MCP. The public package name is `oceanbase-mcp`; the CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`. The server remains strictly read-only.
 
           ## 新增与修复
 
-          - `ob_generate_er_diagram` 和 `ob_generate_er_html` 默认外键关系发现只读取外键元数据。
-          - 字段、索引和约束元数据只在 ER 实体阶段加载一次，避免重复读取。
-          - schema 级 `ob_generate_er_html` 范围过大时跳过 inline 渲染，直接返回分片导出建议。
-          - 显式 table 范围仍支持本地 CLI 分片渲染。
-          - README、ER 文档、部署文档和 release 文档已更新到当前版本。
+          - npm 包名改为 `oceanbase-mcp`，方便公开 npmjs 分发和私有制品库同步。
+          - CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
+          - Release workflow 增加 npmjs 发布步骤；配置 `NPM_TOKEN` 后会发布 `oceanbase-mcp`。
+          - Release 附件改为 `oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz` 和 `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`。
+          - README、部署文档、OpenCode 文档和 release 文档补充 npmjs 安装与私有制品库同步说明。
           - 只读策略、profile 权限、行数限制、输出大小限制、超时、审计日志和错误脱敏保持不变。
 
           ## Delivery Assets
 
-          - `ob-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`：源码归档，用于内网编译。
-          - `ob-mcp-${{ needs.metadata.outputs.version }}.tgz`：npm package。
+          - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`：源码归档，用于离线构建。
+          - `oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`：npm package。
           - `sbom.cdx.json`：CycloneDX SBOM。
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-amd64.tar.gz`：amd64 离线镜像。
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-arm64.tar.gz`：arm64 离线镜像。
+          - `npm install -g oceanbase-mcp@${{ needs.metadata.outputs.version }}`
           - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.tag }}`
           - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.version }}`
 
-          ## 内网源码编译
+          ## 离线源码构建
 
           ```bash
-          tar -xzf ob-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz
-          cd ob-mcp-${{ needs.metadata.outputs.version }}
+          tar -xzf oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz
+          cd oceanbase-mcp-${{ needs.metadata.outputs.version }}
           npm ci
           npm run build
           npm run start
           ```
 
-          源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+          源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
           ## 验证结果
 
-          - `npm test`：213 个测试通过。
+          - `npm test`：通过。
           - `npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
           - 本地 OceanBase MySQL stdio 和 HTTP smoke test 通过。
           - 本地 OceanBase Oracle stdio 和 HTTP smoke test 通过。
-          - MySQL 220 表 ER 验证通过：5 次元数据查询、1,980 个加载字段。
-          - Oracle 220 表 ER 验证通过：5 次元数据查询、2,254 个加载字段。
-          - ER 关系输出继续受配置上限约束，避免大范围结果失控。
-          - MySQL 和 Oracle schema 级 50 表 inline HTML 请求返回导出建议。
-          - MySQL 和 Oracle 百万行表 `ob_describe_table` 验证通过。
+          - `npm pack --dry-run` 产物名为 `oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`。
+          - npmjs 发布步骤需要仓库 secret `NPM_TOKEN`；未配置时会跳过并保持 Release 成功。
 
           ## 生产注意事项
 

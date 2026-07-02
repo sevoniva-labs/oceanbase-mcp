@@ -1,6 +1,6 @@
 {
-  "name": "ob-mcp",
-  "version": "1.1.4",
+  "name": "oceanbase-mcp",
+  "version": "1.1.5",
   "description": "Read-only MCP gateway and local developer assistant for OceanBase.",
   "homepage": "https://github.com/sevoniva/oceanbase-mcp#readme",
   "repository": {
@@ -9,6 +9,9 @@
   },
   "bugs": {
     "url": "https://github.com/sevoniva/oceanbase-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "keywords": [
     "oceanbase",
@@ -28,6 +31,7 @@
     "docs",
     "deploy",
     "examples",
+    ".opencode",
     "scripts",
     "README.md",
     ".env.example",
