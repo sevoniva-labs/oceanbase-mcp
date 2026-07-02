@@ -62,6 +62,7 @@ ob-mcp export-er --schema biz_test --format interactive --strategy connected-com
 
 - 先缩小 schema、table 或业务词范围。
 - schema 级 ER 先调用 `ob_plan_er_export`，再决定是否分片导出。
+- schema 级 `ob_generate_er_html` 范围过大时会跳过 inline 渲染，并返回导出建议。
 - 大 schema 优先使用 `ob-mcp export-er --out-dir`，先选分片策略，再考虑调大限制。
 - 默认使用 `relationshipMode=foreign_key`。只有明确的小范围分析才使用 `inferred`。
 - 优先查看 `ob_find_related_tables` 和 `ob_explain_relationship` 的证据。

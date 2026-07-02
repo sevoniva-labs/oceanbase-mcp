@@ -62,6 +62,7 @@ For chunked exports, `relationshipCount` in `metadata/relationships.json` is the
 
 - Start with a narrow schema, table, or business-term scope.
 - For schema-wide ER work, call `ob_plan_er_export` before generating HTML.
+- Schema-level `ob_generate_er_html` skips large inline rendering and returns export guidance when the selected scope is too broad.
 - For large schemas, prefer `ob-mcp export-er --out-dir` and pick a strategy before raising limits.
 - Use `relationshipMode=foreign_key` by default. Use `inferred` only for a small, explicit scope.
 - Review evidence from `ob_find_related_tables` and `ob_explain_relationship`.
