@@ -40,6 +40,7 @@ import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from 
 import { captureMetadataSnapshot } from "./metadata-capture.js";
 import { analyzeChangeSqlImpact, analyzeMetadataImpact } from "./metadata-impact.js";
 import { compareMetadataSnapshots } from "./metadata-change.js";
+import { generateMetadataChangeReport } from "./metadata-report.js";
 import { metrics } from "./metrics.js";
 import { analyzeQueryPlan } from "./plan-analysis.js";
 import { buildPerformanceReport } from "./performance-report.js";
@@ -92,7 +93,9 @@ const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
 const dataDictionaryFormatSchema = z.enum(["json", "markdown", "html"]);
 const metadataSnapshotInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
 const metadataDiffInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
+const metadataImpactInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
 const sqlUsageIndexInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
+const metadataChangeReportFormatSchema = z.enum(["markdown", "html"]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -3142,6 +3145,27 @@ export function createObMcpServer(
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const result = analyzeMetadataImpact({ metadataDiff, sqlIndex, businessGlossary, maxResults });
       return toLimitedResult(result, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_generate_metadata_change_report",
+    {
+      title: "Generate Metadata Change Report",
+      description: "Generate a Markdown or simple HTML metadata change report from diff and impact evidence.",
+      inputSchema: {
+        ...profileInput,
+        metadataDiff: metadataDiffInputSchema,
+        impact: metadataImpactInputSchema.optional(),
+        title: z.string().min(1).max(160).optional(),
+        format: metadataChangeReportFormatSchema.optional().default("markdown"),
+        summaryOnly: z.boolean().optional().default(false)
+      }
+    },
+    async ({ profile, metadataDiff, impact, title, format = "markdown", summaryOnly = false }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const report = generateMetadataChangeReport({ metadataDiff, impact, title, format, summaryOnly });
+      return toLimitedResult(report, selected.config);
     }
   );
 

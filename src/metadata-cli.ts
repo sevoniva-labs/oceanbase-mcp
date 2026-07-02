@@ -5,9 +5,11 @@ import { loadGatewayConfig } from "./config.js";
 import { assertJsonByteLimit, jsonText } from "./format.js";
 import { captureMetadataSnapshot, type CaptureMetadataSnapshotInput } from "./metadata-capture.js";
 import { compareMetadataSnapshots, renderMetadataComparisonMarkdown } from "./metadata-change.js";
+import { analyzeMetadataImpact } from "./metadata-impact.js";
+import { generateMetadataChangeReport, type MetadataChangeReportFormat } from "./metadata-report.js";
 import { closeGatewayRuntime, createGatewayRuntime, selectRuntimeProfile } from "./runtime.js";
 
-export type MetadataCommand = "snapshot" | "diff";
+export type MetadataCommand = "snapshot" | "diff" | "report";
 export type MetadataOutputFormat = "json" | "markdown";
 
 export interface MetadataSnapshotCliOptions extends CaptureMetadataSnapshotInput {
@@ -29,6 +31,18 @@ export interface MetadataDiffCliOptions {
   summaryOnly?: boolean;
 }
 
+export interface MetadataReportCliOptions {
+  command: "report";
+  before?: string;
+  after?: string;
+  sqlIndex?: string;
+  format?: MetadataChangeReportFormat;
+  output?: string;
+  overwrite?: boolean;
+  title?: string;
+  summaryOnly?: boolean;
+}
+
 export async function runMetadataCommand(args: string[], cwd = process.cwd()): Promise<number> {
   const [command, ...rest] = args;
   try {
@@ -37,6 +51,9 @@ export async function runMetadataCommand(args: string[], cwd = process.cwd()): P
     }
     if (command === "diff") {
       return await runMetadataDiffCommand(parseMetadataDiffArgs(rest), cwd);
+    }
+    if (command === "report") {
+      return await runMetadataReportCommand(parseMetadataReportArgs(rest), cwd);
     }
     if (!command || command === "--help" || command === "-h" || command === "help") {
       printMetadataHelp();
@@ -50,6 +67,61 @@ export async function runMetadataCommand(args: string[], cwd = process.cwd()): P
     }, null, 2));
     return 1;
   }
+}
+
+export function parseMetadataReportArgs(args: string[]): MetadataReportCliOptions {
+  const options: MetadataReportCliOptions = { command: "report" };
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--overwrite") {
+      options.overwrite = true;
+      continue;
+    }
+    if (arg === "--summary-only") {
+      options.summaryOnly = true;
+      continue;
+    }
+    const [name, inlineValue] = arg.includes("=") ? arg.split(/=(.*)/s, 2) : [arg, undefined];
+    if (!name.startsWith("--")) {
+      throw new Error(`Unknown metadata report argument: ${arg}`);
+    }
+    const value = inlineValue ?? args[index + 1];
+    if (inlineValue == null) {
+      index += 1;
+    }
+    if (!value || value.startsWith("--")) {
+      throw new Error(`Missing value for ${name}`);
+    }
+    switch (name) {
+      case "--before":
+        options.before = value;
+        break;
+      case "--after":
+        options.after = value;
+        break;
+      case "--sql-index":
+        options.sqlIndex = value;
+        break;
+      case "--format":
+        options.format = parseMetadataReportFormat(value);
+        break;
+      case "--out":
+        options.output = value;
+        break;
+      case "--title":
+        options.title = value;
+        break;
+      default:
+        throw new Error(`Unknown metadata report argument: ${name}`);
+    }
+  }
+  if (!options.before) {
+    throw new Error("metadata report requires --before.");
+  }
+  if (!options.after) {
+    throw new Error("metadata report requires --after.");
+  }
+  return options;
 }
 
 export function parseMetadataDiffArgs(args: string[]): MetadataDiffCliOptions {
@@ -262,6 +334,40 @@ async function runMetadataDiffCommand(options: MetadataDiffCliOptions, cwd: stri
   return 0;
 }
 
+async function runMetadataReportCommand(options: MetadataReportCliOptions, cwd: string): Promise<number> {
+  const beforePath = resolveMetadataInputPath(options.before!, cwd);
+  const afterPath = resolveMetadataInputPath(options.after!, cwd);
+  const before = readFileSync(beforePath, "utf8");
+  const after = readFileSync(afterPath, "utf8");
+  const diff = compareMetadataSnapshots(before, after);
+  const sqlIndex = options.sqlIndex ? readFileSync(resolveMetadataInputPath(options.sqlIndex, cwd), "utf8") : undefined;
+  const impact = analyzeMetadataImpact({ metadataDiff: diff, sqlIndex });
+  const format = options.format ?? "markdown";
+  const report = generateMetadataChangeReport({
+    metadataDiff: diff,
+    impact,
+    title: options.title,
+    format,
+    summaryOnly: options.summaryOnly
+  });
+  const content = report.markdown ?? report.html ?? "";
+  if (!options.output) {
+    console.log(content.trimEnd());
+    return 0;
+  }
+  const outputPath = resolveMetadataOutputPath(options.output, cwd);
+  writeMetadataFile(outputPath, `${content}\n`, { overwrite: options.overwrite });
+  console.log(JSON.stringify({
+    ok: true,
+    file: outputPath,
+    format,
+    totalChanges: report.summary.totalChanges,
+    breakingChanges: report.summary.breakingChanges,
+    impactedSql: report.summary.impactedSql ?? 0
+  }, null, 2));
+  return 0;
+}
+
 function writeMetadataFile(path: string, content: string, options: { overwrite?: boolean } = {}): void {
   if (!options.overwrite && existsSync(path)) {
     throw new Error(`${path} already exists. Re-run with --overwrite to replace it.`);
@@ -282,6 +388,13 @@ function parseSnapshotOutputFormat(value: string): "json" {
     return value;
   }
   throw new Error("metadata snapshot currently supports --format json.");
+}
+
+function parseMetadataReportFormat(value: string): MetadataChangeReportFormat {
+  if (value === "markdown" || value === "html") {
+    return value;
+  }
+  throw new Error("--format must be markdown or html.");
 }
 
 function parsePositiveInt(value: string, name: string, max: number): number {
@@ -314,6 +427,7 @@ function printMetadataHelp() {
 Usage:
   ob-mcp metadata snapshot [options]
   ob-mcp metadata diff --before <file> --after <file> [options]
+  ob-mcp metadata report --before <file> --after <file> [options]
 
 Snapshot options:
   --profile <name>
@@ -336,6 +450,16 @@ Diff options:
   --format json|markdown
   --out <file>
   --risk-only
+  --summary-only
+  --overwrite
+
+Report options:
+  --before <file>
+  --after <file>
+  --sql-index <file>
+  --format markdown|html
+  --title <title>
+  --out <file>
   --summary-only
   --overwrite
 `);

@@ -50,6 +50,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_analyze_metadata_impact", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Summarize metadata diff impact using SQL index, relationship changes, and glossary hints." },
   { name: "ob_capture_metadata_snapshot", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Capture bounded metadata-only snapshots for offline diff and impact analysis." },
   { name: "ob_compare_metadata_snapshots", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Compare metadata snapshots and return evidence-based structural changes." },
+  { name: "ob_generate_metadata_change_report", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Generate Markdown or simple HTML reports from metadata diff and impact evidence." },
   { name: "ob_get_table_schema", since: "v0.3.0", group: "metadata", mode: "all", description: "Return policy-filtered table schema." },
   { name: "ob_get_table_ddl", since: "v0.5.0", group: "metadata", mode: "all", description: "Return native or structured table DDL metadata." },
   { name: "ob_get_table_context", since: "v0.5.1", group: "metadata", mode: "all", description: "Return table context for SQL drafting and data inspection." },

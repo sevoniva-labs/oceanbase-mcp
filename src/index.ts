@@ -99,5 +99,7 @@ Scan SQL options:
 
 Metadata commands:
   snapshot                  Capture a metadata-only JSON snapshot
+  diff                      Compare two metadata snapshot files
+  report                    Generate a metadata change report
 `);
 }
