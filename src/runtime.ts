@@ -9,7 +9,7 @@ export interface GatewayRuntime {
   metadataCaches: Record<string, MetadataCacheStore>;
 }
 
-interface QueryLimiter {
+export interface QueryLimiter {
   active: number;
   limit: number;
 }
