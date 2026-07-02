@@ -6,8 +6,8 @@ v1.1.5 adds npmjs distribution for OceanBase MCP as a Node.js CLI/runtime packag
 
 - Renamed the npm package from `oceanbase-mcp` to `@sevoniva/oceanbase-mcp`.
 - Kept CLI command names unchanged for existing OpenCode and shell usage.
-- Supported global npm installation and `npx` startup from developer terminals.
-- Added an npmjs publish step to the Release workflow. Publishing runs when the repository secret `NPM_TOKEN` is configured.
+- Supported global npm installation and explicit `npx --package` startup from developer terminals.
+- Added an npmjs publish step to the Release workflow.
 - Renamed npm and source release assets to `sevoniva-oceanbase-mcp-${version}.tgz` and `oceanbase-mcp-${version}-source.tar.gz`.
 - Updated README, deployment, OpenCode, and release documentation for npmjs and private registry distribution.
 
@@ -17,18 +17,17 @@ To publish to npmjs:
 
 1. Create an npmjs account.
 2. Ensure the npm account can publish packages under the `@sevoniva` scope.
-3. Enable account security and create an automation token with publish access.
-4. Add the token to the GitHub repository secret `NPM_TOKEN`.
-5. Run the Release workflow or push a version tag.
+3. Enable account security and create a short-lived automation token with publish access.
+4. Publish from a clean checkout or configure the Release workflow.
 
-If `NPM_TOKEN` is not configured, the Release workflow skips npmjs publishing and still creates the GitHub Release assets.
+v1.1.6 and later document the Trusted Publishing setup for GitHub Actions.
 
 ## Install
 
 ```bash
 npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
-npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.5 ob-mcp --help
 ```
 
 Private registries can mirror npmjs and install the same pinned package version.
@@ -63,8 +62,8 @@ v1.1.5 增加 npmjs 分发，作为 Node.js CLI/runtime 包提供。公开 npm �
 
 - npm 包名从 `oceanbase-mcp` 改为 `@sevoniva/oceanbase-mcp`。
 - CLI 命令名保持不变，兼容现有 OpenCode 和命令行使用方式。
-- 支持全局 npm 安装，也支持在开发终端通过 `npx` 直接启动。
-- Release workflow 增加 npmjs 发布步骤。仓库配置 `NPM_TOKEN` 后会执行发布。
+- 支持全局 npm 安装，也支持在开发终端通过明确的 `npx --package` 命令启动。
+- Release workflow 增加 npmjs 发布步骤。
 - npm 包和源码归档资产改为 `sevoniva-oceanbase-mcp-${version}.tgz` 和 `oceanbase-mcp-${version}-source.tar.gz`。
 - README、部署文档、OpenCode 文档和 release 文档补充分发说明。
 
@@ -74,18 +73,17 @@ v1.1.5 增加 npmjs 分发，作为 Node.js CLI/runtime 包提供。公开 npm �
 
 1. 注册 npmjs 账号。
 2. 确认 npm 账号有 `@sevoniva` scope 下的包发布权限。
-3. 开启账号安全设置，并创建具备发布权限的 automation token。
-4. 将 token 添加到 GitHub 仓库 secret，名称为 `NPM_TOKEN`。
-5. 运行 Release workflow 或推送版本 tag。
+3. 开启账号安全设置，并创建具备发布权限的短期 automation token。
+4. 从干净的代码签出手动发布，或配置 Release workflow。
 
-如果未配置 `NPM_TOKEN`，Release workflow 会跳过 npmjs 发布，并继续创建 GitHub Release 资产。
+v1.1.6 及后续版本文档说明 GitHub Actions 的 Trusted Publishing 配置方式。
 
 ### 安装
 
 ```bash
 npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
-npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.5 ob-mcp --help
 ```
 
 私有制品库可以同步 npmjs，并安装相同的固定版本。

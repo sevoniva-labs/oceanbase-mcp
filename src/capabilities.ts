@@ -1,6 +1,6 @@
 import type { CompatibilityMode } from "./config.js";
 
-export const SERVER_VERSION = "1.1.5";
+export const SERVER_VERSION = "1.1.6";
 
 export interface ToolCapability {
   name: string;

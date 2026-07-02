@@ -200,14 +200,14 @@ Windows 仅作为本地开发和 OpenCode 连接场景。生产承载建议使�
 仓库内置：
 
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml)：构建、测试、审计、SBOM、npm pack dry-run、Docker build。
-- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、配置 `NPM_TOKEN` 后发布到 npmjs、打包源码、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
+- [.github/workflows/release.yml](../../.github/workflows/release.yml)：创建 tag、构建 npm 包、通过 Trusted Publishing 发布到 npmjs、打包源码、生成 SBOM、推送 GHCR 多架构镜像、构建离线镜像包、创建 GitHub Release。
 
 Release workflow 产物：
 
 - `ghcr.io/sevoniva/oceanbase-mcp:vX.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:X.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:latest`
-- 配置 `NPM_TOKEN` 后发布 `@sevoniva/oceanbase-mcp@X.Y.Z` 到 npmjs
+- 发布 `@sevoniva/oceanbase-mcp@X.Y.Z` 到 npmjs
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
 - `sevoniva-oceanbase-mcp-X.Y.Z.tgz`
@@ -218,44 +218,45 @@ Release workflow 产物：
 
 公开 npm 包名为 `@sevoniva/oceanbase-mcp`。这是 Node.js CLI/runtime 分发包。CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
 
-启用 npmjs 发布：
+通过 npm Trusted Publishing 启用 GitHub Actions 发布：
 
-1. 注册 npmjs 账号。
-2. 确认 npm 账号有 `@sevoniva` scope 下的包发布权限。
-3. 开启账号安全设置，并创建具备发布权限的 automation token。
-4. 将 token 添加到 GitHub 仓库 secret，名称为 `NPM_TOKEN`。
+1. 如果包还不存在，先手动发布一次。
+2. 打开 npmjs 上的包设置页面。
+3. 添加 GitHub Actions trusted publisher：
+   owner 填 `sevoniva`，repository 填 `oceanbase-mcp`，workflow 填 `release.yml`。
+4. 如果 workflow 没有使用 GitHub environment，environment 留空。
 5. 运行 Release workflow 或推送版本 tag。
 
-workflow 已配置 `id-token: write`，npm 接受 token 后可以通过 `npm publish --provenance` 写入 provenance。
+workflow 已配置 `id-token: write`，并使用 `npm publish --provenance` 发布。配置 Trusted Publishing 后，Release workflow 发布不再需要 `NPM_TOKEN`。短期 automation token 仍可用于首次手动发布。
 
 使用方可以从 npmjs 安装，也可以从同步 npmjs 的私有 registry 安装：
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.6
 ob-mcp --help
-npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
 ```
 
 手动发布：
 
 1. 打开 GitHub Actions。
 2. 运行 `Release`。
-3. 输入版本号，例如 `v1.1.5`。
-4. workflow 会创建 tag；配置 `NPM_TOKEN` 后发布 npm 包；随后发布镜像并上传 Release 附件。
+3. 输入版本号，例如 `v1.1.6`。
+4. workflow 会创建 tag；配置 Trusted Publishing 后发布 npm 包；随后发布镜像并上传 Release 附件。
 
 加载离线镜像：
 
 ```bash
-gunzip oceanbase-mcp-1.1.5-amd64.tar.gz
-docker load -i oceanbase-mcp-1.1.5-amd64.tar
-docker run --rm oceanbase-mcp:1.1.5-amd64
+gunzip oceanbase-mcp-1.1.6-amd64.tar.gz
+docker load -i oceanbase-mcp-1.1.6-amd64.tar
+docker run --rm oceanbase-mcp:1.1.6-amd64
 ```
 
 离线源码构建：
 
 ```bash
-tar -xzf oceanbase-mcp-1.1.5-source.tar.gz
-cd oceanbase-mcp-1.1.5
+tar -xzf oceanbase-mcp-1.1.6-source.tar.gz
+cd oceanbase-mcp-1.1.6
 npm ci
 npm run build
 npm run start

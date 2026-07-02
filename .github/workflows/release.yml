@@ -136,19 +136,21 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
+      - name: 安装 npm 11
+        run: npm install -g npm@11
+
       - name: 发布到 npmjs
         shell: bash
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [[ -z "${NODE_AUTH_TOKEN:-}" ]]; then
-            echo "NPM_TOKEN is not configured; npmjs publish was skipped."
-            exit 0
-          fi
+          set -euo pipefail
           tarball="$(find dist-release -maxdepth 1 -name "*.tgz" -print -quit)"
           if [[ -z "${tarball}" ]]; then
             echo "No npm package tarball was found." >&2
             exit 1
+          fi
+          if npm view "@sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
+            echo "@sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }} is already published; skipping npmjs publish."
+            exit 0
           fi
           npm publish "${tarball}" --access public --provenance
 
@@ -277,9 +279,9 @@ jobs:
 
           - npm 包名改为 `@sevoniva/oceanbase-mcp`，方便公开 npmjs 分发和私有制品库同步。
           - CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
-          - 支持全局 npm 安装，也支持在开发终端通过 `npx` 直接启动。
-          - Release workflow 增加 npmjs 发布步骤；配置 `NPM_TOKEN` 后会发布 `@sevoniva/oceanbase-mcp`。
-          - npm token 需要具备 `@sevoniva` scope 下的包发布权限。
+          - 支持全局 npm 安装，也支持在开发终端通过 `npx --package` 调用 `ob-mcp`。
+          - Release workflow 使用 npm Trusted Publishing；npmjs 需要绑定 GitHub repository 和 `release.yml` workflow。
+          - npmjs 已存在相同版本时，Release workflow 会跳过 npm 发布并继续创建 Release 资产。
           - Release 附件包含 scoped npm tarball 和 `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`。
           - README、部署文档、OpenCode 文档和 release 文档补充 npmjs 安装与私有制品库同步说明。
           - 只读策略、profile 权限、行数限制、输出大小限制、超时、审计日志和错误脱敏保持不变。
@@ -292,7 +294,7 @@ jobs:
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-amd64.tar.gz`：amd64 离线镜像。
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-arm64.tar.gz`：arm64 离线镜像。
           - `npm install -g @sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }}`
-          - `npx -y @sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }} --help`
+          - `npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }} ob-mcp --help`
           - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.tag }}`
           - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.version }}`
 
@@ -315,7 +317,7 @@ jobs:
           - 本地 OceanBase MySQL stdio 和 HTTP smoke test 通过。
           - 本地 OceanBase Oracle stdio 和 HTTP smoke test 通过。
           - `npm pack --dry-run` 产物名为 `sevoniva-oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`。
-          - npmjs 发布步骤需要仓库 secret `NPM_TOKEN`；未配置时会跳过并保持 Release 成功。
+          - npmjs 发布步骤使用 Trusted Publishing；首次启用前需要在 npmjs 包设置中绑定 GitHub Actions。
 
           ## 生产注意事项
 

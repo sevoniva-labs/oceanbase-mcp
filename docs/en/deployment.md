@@ -200,14 +200,14 @@ Use Windows for local development and OpenCode connectivity. For production host
 The repository includes:
 
 - [.github/workflows/ci.yml](../../.github/workflows/ci.yml): build, test, audit, SBOM, npm pack dry-run, Docker build.
-- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, publish to npmjs when `NPM_TOKEN` is configured, archive source, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
+- [.github/workflows/release.yml](../../.github/workflows/release.yml): create tag, build npm package, publish to npmjs through Trusted Publishing, archive source, generate SBOM, push multi-architecture GHCR image, build offline image archives, create GitHub Release.
 
 Release workflow outputs:
 
 - `ghcr.io/sevoniva/oceanbase-mcp:vX.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:X.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:latest`
-- `@sevoniva/oceanbase-mcp@X.Y.Z` on npmjs when `NPM_TOKEN` is configured
+- `@sevoniva/oceanbase-mcp@X.Y.Z` on npmjs
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
 - `sevoniva-oceanbase-mcp-X.Y.Z.tgz`
@@ -218,44 +218,45 @@ Release workflow outputs:
 
 Publish uses the public package name `@sevoniva/oceanbase-mcp`. The package is the Node.js CLI/runtime distribution. The CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`.
 
-To enable npmjs publishing:
+To enable GitHub Actions publishing through npm Trusted Publishing:
 
-1. Create an npmjs account.
-2. Ensure the npm account can publish packages under the `@sevoniva` scope.
-3. Enable account security and create an automation token with publish access.
-4. Add the token to this GitHub repository as the secret `NPM_TOKEN`.
-5. Run the release workflow or push a version tag.
+1. Publish the package once manually if the package does not exist yet.
+2. Open the package settings on npmjs.
+3. Add a GitHub Actions trusted publisher:
+   owner `sevoniva`, repository `oceanbase-mcp`, workflow `release.yml`.
+4. Leave the environment field empty unless the workflow uses a GitHub environment.
+5. Run the Release workflow or push a version tag.
 
-The workflow already grants `id-token: write`, so `npm publish --provenance` can attach provenance when npm accepts the token.
+The workflow grants `id-token: write` and publishes with `npm publish --provenance`. After Trusted Publishing is configured, `NPM_TOKEN` is not required for Release workflow publishing. A short-lived automation token can still be used for the first manual publish.
 
 Consumers can install from npmjs or a private registry that mirrors npmjs:
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.6
 ob-mcp --help
-npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
 ```
 
 Manual release:
 
 1. Open GitHub Actions.
 2. Run `Release`.
-3. Enter a version such as `v1.1.5`.
-4. The workflow creates the tag, publishes the npm package when `NPM_TOKEN` is configured, publishes images, and attaches release assets.
+3. Enter a version such as `v1.1.6`.
+4. The workflow creates the tag, publishes the npm package when Trusted Publishing is configured, publishes images, and attaches release assets.
 
 Load an offline image:
 
 ```bash
-gunzip oceanbase-mcp-1.1.5-amd64.tar.gz
-docker load -i oceanbase-mcp-1.1.5-amd64.tar
-docker run --rm oceanbase-mcp:1.1.5-amd64
+gunzip oceanbase-mcp-1.1.6-amd64.tar.gz
+docker load -i oceanbase-mcp-1.1.6-amd64.tar
+docker run --rm oceanbase-mcp:1.1.6-amd64
 ```
 
 Build from the source archive in an offline environment:
 
 ```bash
-tar -xzf oceanbase-mcp-1.1.5-source.tar.gz
-cd oceanbase-mcp-1.1.5
+tar -xzf oceanbase-mcp-1.1.6-source.tar.gz
+cd oceanbase-mcp-1.1.6
 npm ci
 npm run build
 npm run start

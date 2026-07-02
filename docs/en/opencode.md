@@ -19,7 +19,13 @@ Use the published package:
   "mcp": {
     "oceanbase": {
       "type": "local",
-      "command": ["npx", "-y", "@sevoniva/oceanbase-mcp@1.1.5"],
+      "command": [
+        "npx",
+        "--registry=https://registry.npmjs.org/",
+        "--yes",
+        "--package=@sevoniva/oceanbase-mcp@1.1.6",
+        "ob-mcp"
+      ],
       "enabled": true,
       "environment": {
         "OB_HOST": "127.0.0.1",
