@@ -145,6 +145,7 @@ const QUERY_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 const MAX_QUERY_SESSIONS = 100;
 const SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT = 25;
 const TOOL_TIMEOUT_GRACE_MS = 250;
+const LARGE_TABLE_CONTEXT_SAMPLE_ROW_THRESHOLD = 100_000;
 const QUERY_TERM_STOPWORDS = new Set([
   "show",
   "list",
@@ -2124,28 +2125,39 @@ export function createObMcpServer(
 
       let sample: QueryOutput | undefined;
       if (includeSample) {
-        const sampleColumns = safeSampleColumnNames(columns).slice(0, 50);
-        const skippedLargeColumns = columnNames(columns).filter((column) => !sampleColumns.includes(column));
-        if (skippedLargeColumns.length > 0) {
-          warnings.push(`Sample rows skipped large or binary columns: ${skippedLargeColumns.slice(0, 10).join(", ")}${skippedLargeColumns.length > 10 ? ", ..." : ""}.`);
-        }
-        if (sampleColumns.length === 0) {
-          warnings.push("Sample rows were skipped because no visible columns are available.");
-        } else {
-          const output = await withQuerySlot(selected, () =>
-            sampleRows(
-              selected.pool,
-              selected.config.compatibility,
-              effectiveSchema,
-              table,
-              sampleColumns,
-              Math.min(sampleLimit ?? 3, selected.config.maxRows, 20),
-              selected.config.queryTimeoutMs,
-              selected.config.maxResultBytes
-            )
+        const rowEstimate = statistics.rowEstimate?.value;
+        const skipLargeTableSample =
+          sampleLimit == null &&
+          rowEstimate != null &&
+          rowEstimate >= LARGE_TABLE_CONTEXT_SAMPLE_ROW_THRESHOLD;
+        if (skipLargeTableSample) {
+          warnings.push(
+            `Sample rows were skipped because the table row estimate is ${rowEstimate}. Pass sampleLimit explicitly to request a bounded sample.`
           );
-          assertOutputAllowed(output, selected.config.policy);
-          sample = maskOutput(output, selected.config, effectiveSchema, table);
+        } else {
+          const sampleColumns = safeSampleColumnNames(columns).slice(0, 50);
+          const skippedLargeColumns = columnNames(columns).filter((column) => !sampleColumns.includes(column));
+          if (skippedLargeColumns.length > 0) {
+            warnings.push(`Sample rows skipped large or binary columns: ${skippedLargeColumns.slice(0, 10).join(", ")}${skippedLargeColumns.length > 10 ? ", ..." : ""}.`);
+          }
+          if (sampleColumns.length === 0) {
+            warnings.push("Sample rows were skipped because no visible columns are available.");
+          } else {
+            const output = await withQuerySlot(selected, () =>
+              sampleRows(
+                selected.pool,
+                selected.config.compatibility,
+                effectiveSchema,
+                table,
+                sampleColumns,
+                Math.min(sampleLimit ?? 3, selected.config.maxRows, 20),
+                selected.config.queryTimeoutMs,
+                selected.config.maxResultBytes
+              )
+            );
+            assertOutputAllowed(output, selected.config.policy);
+            sample = maskOutput(output, selected.config, effectiveSchema, table);
+          }
         }
       }
 
