@@ -68,8 +68,7 @@ import {
   filterSchemas,
   filterTables,
   isSchemaAllowed,
-  isDeniedColumn,
-  isMaskedColumn
+  isDeniedColumn
 } from "../policy.js";
 import {
   effectiveRowLimit,
@@ -82,6 +81,17 @@ import {
 } from "../query/output.js";
 import { hasSqlRowLimit, queryPreviewWarnings, queryShape, sensitiveSqlTerms } from "../query/preview.js";
 import { buildResultPreview, compareQueryResultRows, summarizeQueryResultRows } from "../query/result-tools.js";
+import {
+  cleanupQuerySessions,
+  ensureQuerySessionStore,
+  getQuerySessionForProfile,
+  publicQuerySession,
+  pruneQuerySessions,
+  querySessionMasking,
+  QUERY_SESSION_TTL_MS,
+  validateQuerySessionColumns,
+  type QuerySessionState
+} from "../query/sessions.js";
 import { SENSITIVE_SAMPLE_PATTERN } from "../sensitive.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "../query-generation.js";
 import { selectRuntimeProfile, withMetadataCache, withQuerySlot, type GatewayRuntime } from "../runtime.js";
@@ -127,8 +137,6 @@ export { effectiveRowLimit, shouldMaskColumnValue } from "../query/output.js";
 export { isToolAllowed } from "./access.js";
 export type { McpRequestContext } from "./context.js";
 
-const QUERY_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
-const MAX_QUERY_SESSIONS = 100;
 const SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT = 25;
 const TOOL_TIMEOUT_GRACE_MS = 250;
 const LARGE_TABLE_CONTEXT_SAMPLE_ROW_THRESHOLD = 100_000;
@@ -155,38 +163,6 @@ const QUERY_TERM_STOPWORDS = new Set([
   "统计",
   "数量"
 ]);
-
-interface QuerySessionState {
-  id: string;
-  profile: string;
-  mode: ObConfig["compatibility"];
-  createdAt: string;
-  updatedAt: string;
-  expiresAt: string;
-  businessTerm?: string;
-  schema?: string;
-  table?: string;
-  columns: string[];
-  sql?: string;
-  params: SqlParam[];
-  page: number;
-  pageSize?: number;
-  orderBy?: string;
-  warnings: string[];
-  masking: {
-    maskedColumns: string[];
-    sensitiveColumns: string[];
-  };
-  resultState: {
-    rowCount?: number;
-    hasMore?: boolean;
-    truncated?: boolean;
-  };
-}
-
-type RuntimeWithQuerySessions = GatewayRuntime & {
-  querySessions?: Map<string, QuerySessionState>;
-};
 
 export function createObMcpServer(
   runtime: GatewayRuntime,
@@ -686,7 +662,13 @@ export function createObMcpServer(
       const selected = selectAuthorizedProfile(runtime, profile, context);
       cleanupQuerySessions(querySessions);
       const effectiveSchema = metadataSchema(selected.config, schema);
-      const sessionColumns = validateQuerySessionColumns(columns, effectiveSchema, table, selected.config);
+      const sessionColumns = validateQuerySessionColumns(
+        columns,
+        effectiveSchema,
+        table,
+        selected.config,
+        (schema, targetTable) => assertTableAccess(schema, targetTable, policyContext(selected.config))
+      );
       if (table) {
         assertTableAccess(effectiveSchema, table, policyContext(selected.config));
       } else if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
@@ -9061,105 +9043,6 @@ function uniqueTableRefs(refs: Array<{ schema?: string; table: string }>): Array
     output.push(ref);
   }
   return output;
-}
-
-function ensureQuerySessionStore(runtime: GatewayRuntime): Map<string, QuerySessionState> {
-  const shared = runtime as RuntimeWithQuerySessions;
-  if (!shared.querySessions) {
-    shared.querySessions = new Map();
-  }
-  return shared.querySessions;
-}
-
-function cleanupQuerySessions(store: Map<string, QuerySessionState>) {
-  const now = Date.now();
-  for (const [id, session] of store.entries()) {
-    if (Date.parse(session.expiresAt) <= now) {
-      store.delete(id);
-    }
-  }
-}
-
-function pruneQuerySessions(store: Map<string, QuerySessionState>) {
-  if (store.size <= MAX_QUERY_SESSIONS) {
-    return;
-  }
-  const sessions = [...store.values()].sort((left, right) =>
-    Date.parse(left.updatedAt) - Date.parse(right.updatedAt)
-  );
-  for (const session of sessions.slice(0, store.size - MAX_QUERY_SESSIONS)) {
-    store.delete(session.id);
-  }
-}
-
-function getQuerySessionForProfile(
-  store: Map<string, QuerySessionState>,
-  sessionId: string,
-  profile: string
-): QuerySessionState {
-  const session = store.get(sessionId);
-  if (!session) {
-    throw new Error(`Query session "${sessionId}" was not found or has expired.`);
-  }
-  if (session.profile !== profile) {
-    throw new Error(`Query session "${sessionId}" does not belong to profile "${profile}".`);
-  }
-  return session;
-}
-
-function validateQuerySessionColumns(
-  columns: string[],
-  schema: string | undefined,
-  table: string | undefined,
-  config: ObConfig
-): string[] {
-  const output = uniqueStrings(columns.map((column) => column.trim()).filter(Boolean));
-  for (const column of output) {
-    if (isDeniedColumn(column, config.policy)) {
-      throw new Error(`Column "${column}" is blocked by OB_DENIED_COLUMNS.`);
-    }
-  }
-  if (table) {
-    assertTableAccess(schema, table, policyContext(config));
-  }
-  return output;
-}
-
-function querySessionMasking(
-  columns: string[],
-  schema: string | undefined,
-  table: string | undefined,
-  config: ObConfig
-) {
-  const maskedColumns = columns.filter((column) => isMaskedColumn(column, config.policy, schema, table));
-  const sensitiveColumns = columns.filter((column) => SENSITIVE_SAMPLE_PATTERN.test(column));
-  return {
-    maskedColumns: uniqueStrings(maskedColumns),
-    sensitiveColumns: uniqueStrings(sensitiveColumns)
-  };
-}
-
-function publicQuerySession(session: QuerySessionState) {
-  return {
-    sessionId: session.id,
-    profile: session.profile,
-    mode: session.mode,
-    createdAt: session.createdAt,
-    updatedAt: session.updatedAt,
-    expiresAt: session.expiresAt,
-    businessTerm: session.businessTerm ?? null,
-    schema: session.schema ?? null,
-    table: session.table ?? null,
-    columns: session.columns,
-    sql: session.sql ?? null,
-    paramCount: session.params.length,
-    page: session.page,
-    pageSize: session.pageSize ?? null,
-    orderBy: session.orderBy ?? null,
-    warnings: session.warnings,
-    masking: session.masking,
-    resultState: session.resultState
-  };
 }
 
 async function runQuerySessionPage(
