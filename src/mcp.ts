@@ -1153,7 +1153,7 @@ export function createObMcpServer(
         schema: z.string().optional(),
         tablePattern: z.string().optional(),
         format: z.enum(["json", "markdown"]).optional().default("json"),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxColumnsPerTable: z.number().int().positive().max(100).optional()
       }
     },
@@ -1199,7 +1199,7 @@ export function createObMcpServer(
         schema: z.string().optional(),
         tablePattern: z.string().optional(),
         format: dataDictionaryFormatSchema.optional().default("markdown"),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxColumnsPerTable: z.number().int().positive().max(100).optional(),
         title: z.string().min(1).max(120).optional()
       }
@@ -1252,7 +1252,7 @@ export function createObMcpServer(
         objectTypes: z.array(oracleObjectTypeSchema).max(20).optional(),
         includeRelationships: z.boolean().optional().default(true),
         includeOracleObjects: z.boolean().optional().default(true),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxColumnsPerTable: z.number().int().positive().max(200).optional(),
         maxObjects: z.number().int().positive().max(500).optional(),
         maxRelationships: z.number().int().positive().max(1_000).optional()
@@ -1354,7 +1354,7 @@ export function createObMcpServer(
         leftSchema: z.string().min(1),
         rightSchema: z.string().min(1),
         tablePattern: z.string().optional(),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         compareCommonTables: z.number().int().positive().max(50).optional()
       }
     },
@@ -3663,7 +3663,7 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
         relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
@@ -3689,7 +3689,7 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
         relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
@@ -3766,7 +3766,7 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
         relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
@@ -3836,7 +3836,7 @@ export function createObMcpServer(
         table: z.string().optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
         relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
@@ -3980,7 +3980,7 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(200).optional(),
+        maxTables: z.number().int().positive().max(500).optional(),
         maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
         relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
@@ -5839,7 +5839,7 @@ async function buildErDiagramResult(
   const startedAt = Date.now();
   const effectiveSchema = metadataSchema(selected.config, input.schema);
   const configuredMaxTables = Math.max(1, selected.config.erMaxTables);
-  const tableLimit = Math.min(input.maxTables ?? (input.table ? Math.min(20, configuredMaxTables) : Math.min(12, configuredMaxTables)), configuredMaxTables, 200);
+  const tableLimit = Math.min(input.maxTables ?? (input.table ? Math.min(20, configuredMaxTables) : Math.min(12, configuredMaxTables)), configuredMaxTables, 500);
   const maxRelationships = Math.min(input.maxRelationships ?? selected.config.erMaxRelationships, selected.config.erMaxRelationships, 1000);
   const depthLimit = input.depth ?? 1;
   const relationshipMode = input.includeInferred ? "inferred" : input.relationshipMode ?? "foreign_key";

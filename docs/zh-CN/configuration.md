@@ -85,6 +85,17 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_METADATA_CACHE_TTL_MS` | `60000` | 元数据缓存 TTL。仅缓存表结构、约束、关系等元数据。 |
 | `OB_METADATA_CACHE_MAX_ENTRIES` | `500` | 每个 profile 的元数据缓存最大条目数。 |
 
+## ER 图保护
+
+| 变量 | 默认值 | 说明 |
+| --- | --- | --- |
+| `OB_ER_TOTAL_TIMEOUT_MS` | `15000` | 单次 ER 生成总时间预算。超时返回部分结果和提示。 |
+| `OB_ER_QUERY_TIMEOUT_MS` | `5000` | ER 元数据查询的单次超时。 |
+| `OB_ER_MAX_TABLES` | `50` | ER 表数量上限。默认保守，可按本地机器资源调高，工具输入最大 500。 |
+| `OB_ER_MAX_COLUMNS_PER_TABLE` | `12` | 每张表在 ER 图中返回的最大字段数。 |
+| `OB_ER_MAX_RELATIONSHIPS` | `100` | ER 关系数量上限。 |
+| `OB_ER_INLINE_HTML_MAX_BYTES` | `262144` | MCP inline HTML 返回大小上限。大图建议使用 `ob-mcp export-er --out-dir` 分片导出。 |
+
 脱敏优先级：
 
 1. `OB_DENIED_COLUMNS` 最强：匹配的列会被禁止出现在查询结果中，也会从元数据里隐藏。

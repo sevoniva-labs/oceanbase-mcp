@@ -142,7 +142,7 @@ export function parseExportErArgs(args: string[]): ExportErOptions {
         options.depth = parsePositiveInt(value, name, 3);
         break;
       case "--max-tables":
-        options.maxTables = parsePositiveInt(value, name, 200);
+        options.maxTables = parsePositiveInt(value, name, 500);
         break;
       case "--max-relationships":
         options.maxRelationships = parsePositiveInt(value, name, 1000);

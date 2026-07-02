@@ -85,6 +85,17 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_METADATA_CACHE_TTL_MS` | `60000` | Metadata cache TTL. Only table, column, constraint, and relationship metadata is cached. |
 | `OB_METADATA_CACHE_MAX_ENTRIES` | `500` | Maximum metadata cache entries per profile. |
 
+## ER Diagram Limits
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `OB_ER_TOTAL_TIMEOUT_MS` | `15000` | Total time budget for one ER generation request. Timeout returns partial results and warnings. |
+| `OB_ER_QUERY_TIMEOUT_MS` | `5000` | Per-query timeout for ER metadata reads. |
+| `OB_ER_MAX_TABLES` | `50` | Table-count cap for ER diagrams. The default is conservative; local use can raise it, with tool input capped at 500. |
+| `OB_ER_MAX_COLUMNS_PER_TABLE` | `12` | Maximum columns returned per table in ER diagrams. |
+| `OB_ER_MAX_RELATIONSHIPS` | `100` | Relationship-count cap for ER diagrams. |
+| `OB_ER_INLINE_HTML_MAX_BYTES` | `262144` | Inline MCP HTML response cap. Use `ob-mcp export-er --out-dir` for chunked large-diagram export. |
+
 Masking priority:
 
 1. `OB_DENIED_COLUMNS` is strongest: matching columns are blocked from query output and hidden from metadata.

@@ -21,13 +21,13 @@ test("ob_generate_er_diagram loads large schema metadata in bounded batches", as
 
   const result = await server.executeToolHandler(server._registeredTools.ob_generate_er_diagram, {
     schema: "big_model",
-    maxTables: 200,
+    maxTables: 220,
     relationshipMode: "none"
   }, {});
   const payload = JSON.parse(result.content[0].text);
 
-  assert.equal(payload.tableCount, 200);
-  assert.equal(payload.stats.loadedTables, 200);
+  assert.equal(payload.tableCount, 220);
+  assert.equal(payload.stats.loadedTables, 220);
   assert.equal(payload.stats.queryCount, 4);
   assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name, column_type/i.test(entry.sql)).length, 1);
   assert.equal(queryLog.filter((entry) => /information_schema\.statistics/i.test(entry.sql)).length, 1);
@@ -72,8 +72,8 @@ function largeSchemaQuery(queryLog) {
   return async ({ sql, values = [] }) => {
     queryLog.push({ sql, values });
     if (/FROM information_schema\.tables/i.test(sql)) {
-      const limit = Number(values.at(-1) ?? 200);
-      return [Array.from({ length: Math.min(limit, 200) }, (_, index) => ({
+      const limit = Number(values.at(-1) ?? 220);
+      return [Array.from({ length: Math.min(limit, 220) }, (_, index) => ({
         table_schema: "big_model",
         table_name: `t_${String(index + 1).padStart(3, "0")}`,
         table_type: "BASE TABLE",
