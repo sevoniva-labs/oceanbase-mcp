@@ -72,6 +72,50 @@ test("renderErHtml supports compact and detailed formats", () => {
   assert.match(detailed, /PRIMARY/);
 });
 
+test("renderErHtml uses overview layout for large schemas", () => {
+  const entities = Array.from({ length: 220 }, (_, index) => {
+    const suffix = String(index + 1).padStart(3, "0");
+    return {
+      schema: "large_demo",
+      table: `order_domain_${suffix}`,
+      columns: [
+        { name: "id", type: "bigint", primaryKey: true, nullable: false, indexed: true, indexNames: ["PRIMARY"] },
+        { name: `parent_${suffix}_id`, type: "bigint", nullable: false, indexed: true, indexNames: [`idx_parent_${suffix}`] },
+        { name: "created_at", type: "datetime", nullable: false, indexed: true, indexNames: [`idx_created_${suffix}`] },
+        { name: "status", type: "varchar(32)", nullable: false },
+        { name: "amount", type: "decimal(18,2)", nullable: true },
+        { name: "remark", type: "varchar(255)", nullable: true },
+        { name: "payload", type: "json", nullable: true },
+        { name: "extra_info", type: "varchar(255)", nullable: true }
+      ]
+    };
+  });
+  const relationships = entities.slice(1).map((entity, index) => ({
+    relationType: "foreign_key",
+    direction: "outbound",
+    confidence: 1,
+    sourceSchema: entity.schema,
+    sourceTable: entity.table,
+    sourceColumns: [`parent_${String(index + 2).padStart(3, "0")}_id`],
+    targetSchema: "large_demo",
+    targetTable: `order_domain_${String(index + 1).padStart(3, "0")}`,
+    targetColumns: ["id"],
+    constraintName: `fk_${String(index + 2).padStart(3, "0")}_${String(index + 1).padStart(3, "0")}`,
+    depth: 1,
+    evidence: [{ type: "foreign_key", detail: "Relationship comes from database metadata.", columns: ["parent_id"] }]
+  }));
+  const diagram = buildErDiagram("mysql", entities, relationships);
+  const html = renderErHtml(diagram, { format: "html-interactive", title: "Large ER" });
+
+  assert.match(html, /8-column overview layout \/ key fields first/);
+  assert.match(html, /Showing up to 6 fields per table/);
+  assert.match(html, /data-layout-columns="8"/);
+  assert.match(html, /id="er-filter-count"/);
+  assert.match(html, /Schema Overview/);
+  assert.match(html, /Most Connected Tables/);
+  assert.match(html, /scrollNodeIntoView/);
+});
+
 test("ER document renderers output Markdown PlantUML and DOT", () => {
   const diagram = buildErDiagram(
     "mysql",
