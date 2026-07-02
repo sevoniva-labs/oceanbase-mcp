@@ -145,8 +145,12 @@ jobs:
             echo "NPM_TOKEN is not configured; npmjs publish was skipped."
             exit 0
           fi
-          tarball="$(ls dist-release/oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz)"
-          npm publish "${tarball}" --provenance
+          tarball="$(find dist-release -maxdepth 1 -name "*.tgz" -print -quit)"
+          if [[ -z "${tarball}" ]]; then
+            echo "No npm package tarball was found." >&2
+            exit 1
+          fi
+          npm publish "${tarball}" --access public --provenance
 
   image:
     name: 推送多架构镜像
@@ -267,25 +271,28 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release adds npmjs distribution for OceanBase MCP. The public package name is `oceanbase-mcp`; the CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`. The server remains strictly read-only.
+          This release adds npmjs distribution for OceanBase MCP as a Node.js CLI/runtime package. The public package name is `@sevoniva/oceanbase-mcp`; the CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`. The server remains strictly read-only.
 
           ## 新增与修复
 
-          - npm 包名改为 `oceanbase-mcp`，方便公开 npmjs 分发和私有制品库同步。
+          - npm 包名改为 `@sevoniva/oceanbase-mcp`，方便公开 npmjs 分发和私有制品库同步。
           - CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
-          - Release workflow 增加 npmjs 发布步骤；配置 `NPM_TOKEN` 后会发布 `oceanbase-mcp`。
-          - Release 附件改为 `oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz` 和 `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`。
+          - 支持全局 npm 安装，也支持在开发终端通过 `npx` 直接启动。
+          - Release workflow 增加 npmjs 发布步骤；配置 `NPM_TOKEN` 后会发布 `@sevoniva/oceanbase-mcp`。
+          - npm token 需要具备 `@sevoniva` scope 下的包发布权限。
+          - Release 附件包含 scoped npm tarball 和 `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`。
           - README、部署文档、OpenCode 文档和 release 文档补充 npmjs 安装与私有制品库同步说明。
           - 只读策略、profile 权限、行数限制、输出大小限制、超时、审计日志和错误脱敏保持不变。
 
           ## Delivery Assets
 
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`：源码归档，用于离线构建。
-          - `oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`：npm package。
+          - `sevoniva-oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`：npm package。
           - `sbom.cdx.json`：CycloneDX SBOM。
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-amd64.tar.gz`：amd64 离线镜像。
           - `oceanbase-mcp-${{ needs.metadata.outputs.version }}-arm64.tar.gz`：arm64 离线镜像。
-          - `npm install -g oceanbase-mcp@${{ needs.metadata.outputs.version }}`
+          - `npm install -g @sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }}`
+          - `npx -y @sevoniva/oceanbase-mcp@${{ needs.metadata.outputs.version }} --help`
           - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.tag }}`
           - `ghcr.io/sevoniva/oceanbase-mcp:${{ needs.metadata.outputs.version }}`
 
@@ -307,7 +314,7 @@ jobs:
           - `npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
           - 本地 OceanBase MySQL stdio 和 HTTP smoke test 通过。
           - 本地 OceanBase Oracle stdio 和 HTTP smoke test 通过。
-          - `npm pack --dry-run` 产物名为 `oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`。
+          - `npm pack --dry-run` 产物名为 `sevoniva-oceanbase-mcp-${{ needs.metadata.outputs.version }}.tgz`。
           - npmjs 发布步骤需要仓库 secret `NPM_TOKEN`；未配置时会跳过并保持 Release 成功。
 
           ## 生产注意事项

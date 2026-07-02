@@ -207,29 +207,33 @@ Release workflow outputs:
 - `ghcr.io/sevoniva/oceanbase-mcp:vX.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:X.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:latest`
-- `oceanbase-mcp@X.Y.Z` on npmjs when `NPM_TOKEN` is configured
+- `@sevoniva/oceanbase-mcp@X.Y.Z` on npmjs when `NPM_TOKEN` is configured
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
-- `oceanbase-mcp-X.Y.Z.tgz`
+- `sevoniva-oceanbase-mcp-X.Y.Z.tgz`
 - `oceanbase-mcp-X.Y.Z-source.tar.gz`
 - `sbom.cdx.json`
 
 ## npmjs Distribution
 
-Publish uses the public package name `oceanbase-mcp`. The CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`.
+Publish uses the public package name `@sevoniva/oceanbase-mcp`. The package is the Node.js CLI/runtime distribution. The CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`.
 
 To enable npmjs publishing:
 
 1. Create an npmjs account.
-2. Enable account security and create an automation token for publishing.
-3. Add the token to this GitHub repository as the secret `NPM_TOKEN`.
-4. Run the release workflow or push a version tag.
+2. Ensure the npm account can publish packages under the `@sevoniva` scope.
+3. Enable account security and create an automation token with publish access.
+4. Add the token to this GitHub repository as the secret `NPM_TOKEN`.
+5. Run the release workflow or push a version tag.
+
+The workflow already grants `id-token: write`, so `npm publish --provenance` can attach provenance when npm accepts the token.
 
 Consumers can install from npmjs or a private registry that mirrors npmjs:
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 Manual release:

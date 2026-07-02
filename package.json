@@ -1,5 +1,5 @@
 {
-  "name": "oceanbase-mcp",
+  "name": "@sevoniva/oceanbase-mcp",
   "version": "1.1.5",
   "description": "Read-only MCP gateway and local developer assistant for OceanBase.",
   "homepage": "https://github.com/sevoniva/oceanbase-mcp#readme",

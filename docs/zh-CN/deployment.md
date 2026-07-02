@@ -207,29 +207,33 @@ Release workflow 产物：
 - `ghcr.io/sevoniva/oceanbase-mcp:vX.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:X.Y.Z`
 - `ghcr.io/sevoniva/oceanbase-mcp:latest`
-- 配置 `NPM_TOKEN` 后发布 `oceanbase-mcp@X.Y.Z` 到 npmjs
+- 配置 `NPM_TOKEN` 后发布 `@sevoniva/oceanbase-mcp@X.Y.Z` 到 npmjs
 - `oceanbase-mcp-X.Y.Z-amd64.tar.gz`
 - `oceanbase-mcp-X.Y.Z-arm64.tar.gz`
-- `oceanbase-mcp-X.Y.Z.tgz`
+- `sevoniva-oceanbase-mcp-X.Y.Z.tgz`
 - `oceanbase-mcp-X.Y.Z-source.tar.gz`
 - `sbom.cdx.json`
 
 ## npmjs 分发
 
-公开 npm 包名为 `oceanbase-mcp`。CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
+公开 npm 包名为 `@sevoniva/oceanbase-mcp`。这是 Node.js CLI/runtime 分发包。CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
 
 启用 npmjs 发布：
 
 1. 注册 npmjs 账号。
-2. 开启账号安全设置，并创建用于发布的 automation token。
-3. 将 token 添加到 GitHub 仓库 secret，名称为 `NPM_TOKEN`。
-4. 运行 Release workflow 或推送版本 tag。
+2. 确认 npm 账号有 `@sevoniva` scope 下的包发布权限。
+3. 开启账号安全设置，并创建具备发布权限的 automation token。
+4. 将 token 添加到 GitHub 仓库 secret，名称为 `NPM_TOKEN`。
+5. 运行 Release workflow 或推送版本 tag。
+
+workflow 已配置 `id-token: write`，npm 接受 token 后可以通过 `npm publish --provenance` 写入 provenance。
 
 使用方可以从 npmjs 安装，也可以从同步 npmjs 的私有 registry 安装：
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 手动发布：

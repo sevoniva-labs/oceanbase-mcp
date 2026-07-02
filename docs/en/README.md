@@ -36,7 +36,7 @@ This table lists release themes only. Per-tool versioning is in the Tools table 
 | v1.1.2 | Local OpenCode query stability, higher local HTTP rate-limit default, crash/slow-call logging, and Oracle named bind compatibility. |
 | v1.1.3 | Lightweight large-schema ER planning, chunk strategy options, and 200+ table local validation. |
 | v1.1.4 | Reduced duplicate ER metadata reads and early fallback for large inline ER HTML. |
-| v1.1.5 | npmjs distribution under `oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
+| v1.1.5 | npmjs distribution under `@sevoniva/oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -55,11 +55,12 @@ Even if `OB_USER` is a read-write database account, the MCP surface remains read
 
 ## Install
 
-Install from npmjs or a private npm registry:
+Install the Node.js CLI/runtime package from npmjs or a private npm registry:
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp doctor
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 Build from source:
@@ -244,11 +245,12 @@ These commands only read metadata or local project files. Reports contain risks,
 
 ## Distribution
 
-The public npm package is `oceanbase-mcp`, and the CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`. Private registries can mirror npmjs and install pinned versions from the private registry.
+The public npm package is `@sevoniva/oceanbase-mcp`, and the CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`. It is the Node.js CLI/runtime distribution and can be installed globally or launched with `npx` from another terminal. Private registries can mirror npmjs and install pinned versions from the private registry.
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 Release assets still include a source archive for offline source builds:
@@ -267,7 +269,7 @@ The source archive excludes `node_modules` and `dist`. The private npm registry 
 
 | Asset | Purpose |
 | --- | --- |
-| `oceanbase-mcp-1.1.5.tgz` | npm package. |
+| `sevoniva-oceanbase-mcp-1.1.5.tgz` | npm package. |
 | `oceanbase-mcp-1.1.5-source.tar.gz` | Source archive for offline source builds. |
 | `sbom.cdx.json` | CycloneDX SBOM. |
 | `oceanbase-mcp-1.1.5-amd64.tar.gz` | amd64 offline image. |

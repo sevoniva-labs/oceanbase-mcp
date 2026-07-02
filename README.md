@@ -45,7 +45,7 @@ This table lists release themes only. Per-tool versioning is in the `Tools / 工
 | v1.1.2 | 修复本地 OpenCode 连续查询稳定性，放宽本地 HTTP 默认限流，增加故障日志，并兼容 Oracle 常见命名占位符。 | Local OpenCode query stability, higher local HTTP rate-limit default, crash/slow-call logging, and Oracle named bind compatibility. |
 | v1.1.3 | 优化大 schema ER 规划为轻量估算，增加分片策略参数，并完成 200+ 表本地验证。 | Lightweight large-schema ER planning, chunk strategy options, and 200+ table local validation. |
 | v1.1.4 | 减少 ER 默认关系发现的重复元数据读取，并对大范围 inline ER HTML 提前降级。 | Reduced duplicate ER metadata reads and early fallback for large inline ER HTML. |
-| v1.1.5 | 增加 npmjs 分发，包名为 `oceanbase-mcp`，CLI 命令继续保持 `ob-mcp`。 | npmjs distribution under `oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
+| v1.1.5 | 增加 npmjs 分发，包名为 `@sevoniva/oceanbase-mcp`，CLI 命令继续保持 `ob-mcp`。 | npmjs distribution under `@sevoniva/oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -53,13 +53,14 @@ All data-access tools are governed by profile permissions, schema/table/column p
 
 ## Quick Start / 快速开始
 
-Install from npmjs or a private npm registry:
+Install the Node.js CLI/runtime package from npmjs or a private npm registry:
 
-通过 npmjs 或私有 npm 制品库安装：
+通过 npmjs 或私有 npm 制品库安装 Node.js CLI/runtime 包：
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp doctor
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 Build from source:
@@ -223,13 +224,14 @@ These commands only read metadata or local project files. Reports contain risks,
 
 ## Distribution / 分发
 
-公开 npm 包名为 `oceanbase-mcp`，CLI 命令名保持 `ob-mcp`。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
+公开 npm 包名为 `@sevoniva/oceanbase-mcp`，CLI 命令名保持 `ob-mcp`。这是 Node.js CLI/runtime 分发包，可以全局安装，也可以通过 `npx` 在其他终端直接拉取并启动。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
 
-The public npm package is `oceanbase-mcp`, and the CLI command remains `ob-mcp`. Private registries can mirror npmjs and install pinned versions from the private registry.
+The public npm package is `@sevoniva/oceanbase-mcp`, and the CLI command remains `ob-mcp`. It is the Node.js CLI/runtime distribution and can be installed globally or launched with `npx` from another terminal. Private registries can mirror npmjs and install pinned versions from the private registry.
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 Release 仍附带源码归档，适合离线源码构建：
@@ -252,7 +254,7 @@ The source archive excludes `node_modules` and `dist`. The private npm registry 
 
 | Asset | 中文 | English |
 | --- | --- | --- |
-| `oceanbase-mcp-1.1.5.tgz` | npm 包。 | npm package. |
+| `sevoniva-oceanbase-mcp-1.1.5.tgz` | npm 包。 | npm package. |
 | `oceanbase-mcp-1.1.5-source.tar.gz` | 源码归档，用于离线构建。 | Source archive for offline source builds. |
 | `sbom.cdx.json` | CycloneDX SBOM。 | CycloneDX SBOM. |
 | `oceanbase-mcp-1.1.5-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |

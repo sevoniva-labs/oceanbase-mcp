@@ -19,7 +19,7 @@ OpenCode 有两种接入方式：
   "mcp": {
     "oceanbase": {
       "type": "local",
-      "command": ["npx", "-y", "oceanbase-mcp@1.1.5"],
+      "command": ["npx", "-y", "@sevoniva/oceanbase-mcp@1.1.5"],
       "enabled": true,
       "environment": {
         "OB_HOST": "127.0.0.1",

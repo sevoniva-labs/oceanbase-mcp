@@ -36,7 +36,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v1.1.2 | 修复本地 OpenCode 连续查询稳定性，放宽本地 HTTP 默认限流，增加故障日志，并兼容 Oracle 常见命名占位符。 |
 | v1.1.3 | 将大 schema ER 规划改为轻量估算，增加分片策略参数，并完成 200+ 表本地验证。 |
 | v1.1.4 | 减少 ER 默认关系发现的重复元数据读取，并对大范围 inline ER HTML 提前降级。 |
-| v1.1.5 | 增加 npmjs 分发，包名为 `oceanbase-mcp`，CLI 命令继续保持 `ob-mcp`。 |
+| v1.1.5 | 增加 npmjs 分发，包名为 `@sevoniva/oceanbase-mcp`，CLI 命令继续保持 `ob-mcp`。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -55,11 +55,12 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 
 ## 安装
 
-通过 npmjs 或私有 npm 制品库安装：
+通过 npmjs 或私有 npm 制品库安装 Node.js CLI/runtime 包：
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp doctor
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 从源码构建：
@@ -244,11 +245,12 @@ ob-mcp metadata report --before snapshots/before.json --after snapshots/after.js
 
 ## 分发
 
-公开 npm 包名为 `oceanbase-mcp`，CLI 命令名保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
+公开 npm 包名为 `@sevoniva/oceanbase-mcp`，CLI 命令名保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。这是 Node.js CLI/runtime 分发包，可以全局安装，也可以通过 `npx` 在其他终端直接拉取并启动。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
 
 ```bash
-npm install -g oceanbase-mcp@1.1.5
+npm install -g @sevoniva/oceanbase-mcp@1.1.5
 ob-mcp --help
+npx -y @sevoniva/oceanbase-mcp@1.1.5 --help
 ```
 
 Release 仍附带源码归档，适合离线源码构建：
@@ -267,7 +269,7 @@ npm run start
 
 | 资产 | 用途 |
 | --- | --- |
-| `oceanbase-mcp-1.1.5.tgz` | npm 包。 |
+| `sevoniva-oceanbase-mcp-1.1.5.tgz` | npm 包。 |
 | `oceanbase-mcp-1.1.5-source.tar.gz` | 源码归档，用于离线构建。 |
 | `sbom.cdx.json` | CycloneDX SBOM。 |
 | `oceanbase-mcp-1.1.5-amd64.tar.gz` | amd64 离线镜像。 |
