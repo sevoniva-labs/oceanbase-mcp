@@ -97,7 +97,7 @@ test("ob_generate_er_html skips schema-level inline rendering for large scopes",
   assert(payload.warnings.some((warning) => /cluster export/.test(warning)));
 });
 
-test("ob_plan_er_export returns chunked local export commands", async () => {
+test("ob_plan_er_export returns cluster local export commands", async () => {
   const queryLog = [];
   const config = loadConfig({
     OB_ALLOWED_SCHEMAS: "big_model",

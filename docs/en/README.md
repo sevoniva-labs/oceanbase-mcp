@@ -60,9 +60,9 @@ Even if `OB_USER` is a read-write database account, the MCP surface remains read
 Install the Node.js CLI/runtime package from npmjs or a private npm registry:
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.6
+npm install -g @sevoniva/oceanbase-mcp@1.2.0
 ob-mcp doctor
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
 ```
 
 Build from source:
@@ -163,7 +163,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v0.4.0 | `ob_verify_permissions` | Check current database grants for write or administrative privileges. |
 | v0.5.0 | `ob_analyze_query_plan` | Run `EXPLAIN` and return evidence-based plan findings. |
 | v0.5.0 | `ob_find_related_tables` | Find foreign-key and conservative naming-based table relationships. |
-| v0.5.0 | `ob_generate_er_diagram` | Generate Mermaid and JSON ER metadata from allowed tables; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls. |
+| v0.5.0 | `ob_generate_er_diagram` | Generate Mermaid and JSON ER metadata from allowed tables; v1.2.0 adds stable graph IDs and relationship classes. |
 | v0.5.0 | `ob_generate_performance_report` | Generate a read-only performance advisory report from EXPLAIN and metadata. |
 | v0.5.0 | `ob_generate_query` | Generate read-only SQL templates from table metadata. |
 | v0.5.0 | `ob_get_object_metadata` | Return bounded metadata and source preview for one Oracle object. |
@@ -196,7 +196,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_generate_data_dictionary` | Generate JSON, Markdown, or simple HTML data dictionaries. |
 | v1.0.0 | `ob_generate_entity_diagram` | Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence. |
 | v1.0.0 | `ob_generate_er_document` | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
-| v1.0.0 | `ob_generate_er_html` | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
+| v1.0.0 | `ob_generate_er_html` | Generate self-contained ER HTML from allowed metadata and relationship evidence; v1.2.0 uses an interactive graph canvas with stable IDs and evidence panels. |
 | v1.0.0 | `ob_generate_mapper_context` | Generate table and column context for mapper or SQL files without modifying code. |
 | v1.0.0 | `ob_generate_onboarding_doc` | Generate onboarding documentation from visible metadata and business glossary hints. |
 | v1.0.0 | `ob_generate_query_doc` | Generate SQL snippet documentation without executing the target query. |
@@ -229,7 +229,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | Generate Markdown or simple HTML change reports from diff and impact evidence. |
-| v1.1.1 | `ob_plan_er_export` | Estimate large-schema ER size and plan local cluster ER export commands. |
+| v1.1.1 | `ob_plan_er_export` | Estimate large-schema ER size and plan local cluster ER export commands; v1.2.0 adds relationship index and diagnostics metadata. |
 
 ## Metadata Change Workflow
 
@@ -250,16 +250,16 @@ These commands only read metadata or local project files. Reports contain risks,
 The public npm package is `@sevoniva/oceanbase-mcp`, and the CLI commands remain `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`. It is the Node.js CLI/runtime distribution and can be installed globally or launched with `npx --package` from another terminal. Private registries can mirror npmjs and install pinned versions from the private registry.
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.6
+npm install -g @sevoniva/oceanbase-mcp@1.2.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
 ```
 
 Release assets still include a source archive for offline source builds:
 
 ```bash
-tar -xzf oceanbase-mcp-1.1.6-source.tar.gz
-cd oceanbase-mcp-1.1.6
+tar -xzf oceanbase-mcp-1.2.0-source.tar.gz
+cd oceanbase-mcp-1.2.0
 npm ci
 npm run build
 npm run start
@@ -271,12 +271,12 @@ The source archive excludes `node_modules` and `dist`. The private npm registry 
 
 | Asset | Purpose |
 | --- | --- |
-| `sevoniva-oceanbase-mcp-1.1.6.tgz` | npm package. |
-| `oceanbase-mcp-1.1.6-source.tar.gz` | Source archive for offline source builds. |
+| `sevoniva-oceanbase-mcp-1.2.0.tgz` | npm package. |
+| `oceanbase-mcp-1.2.0-source.tar.gz` | Source archive for offline source builds. |
 | `sbom.cdx.json` | CycloneDX SBOM. |
-| `oceanbase-mcp-1.1.6-amd64.tar.gz` | amd64 offline image. |
-| `oceanbase-mcp-1.1.6-arm64.tar.gz` | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.6` | GHCR image tag. |
+| `oceanbase-mcp-1.2.0-amd64.tar.gz` | amd64 offline image. |
+| `oceanbase-mcp-1.2.0-arm64.tar.gz` | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.2.0` | GHCR image tag. |
 
 ## Resources
 

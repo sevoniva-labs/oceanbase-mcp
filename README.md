@@ -60,9 +60,9 @@ Install the Node.js CLI/runtime package from npmjs or a private npm registry:
 通过 npmjs 或私有 npm 制品库安装 Node.js CLI/runtime 包：
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.6
+npm install -g @sevoniva/oceanbase-mcp@1.2.0
 ob-mcp doctor
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
 ```
 
 Build from source:
@@ -138,7 +138,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v0.4.0 | `ob_verify_permissions` | 检查数据库账号是否包含写入或管理权限。 | Check current database grants for write/admin privileges. |
 | v0.5.0 | `ob_analyze_query_plan` | 返回基于证据的执行计划分析。 | Return evidence-based plan findings. |
 | v0.5.0 | `ob_find_related_tables` | 查找外键关系和保守的命名推断关系。 | Find foreign-key and conservative naming-based table relationships. |
-| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 | Generate Mermaid and JSON ER metadata from allowed tables; v1.0.0 adds business-term scope, table lists, depth, confidence, and inferred-relation controls. |
+| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.2.0 增加稳定 graph ID 和关系分级。 | Generate Mermaid and JSON ER metadata from allowed tables; v1.2.0 adds stable graph IDs and relationship classes. |
 | v0.5.0 | `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 | Generate a read-only performance advisory report from EXPLAIN and metadata. |
 | v0.5.0 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 | Generate read-only SQL templates from table metadata. |
 | v0.5.0 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 | Return bounded metadata and source preview for one Oracle object. |
@@ -171,7 +171,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.0.0 | `ob_generate_data_dictionary` | 生成 JSON、Markdown 或简版 HTML 数据字典。 | Generate JSON, Markdown, or simple HTML data dictionaries. |
 | v1.0.0 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 | Generate local entity diagrams from a business term or table with Mermaid, JSON, HTML, and relationship evidence. |
 | v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 | Generate Markdown, PlantUML, and DOT ER documentation from allowed metadata and relationship evidence. |
-| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 | Generate self-contained static, interactive, compact, or detailed HTML ER diagrams from allowed metadata and relationship evidence. |
+| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成自包含 HTML ER 图；v1.2.0 使用稳定 ID 的交互式 graph 画布和证据面板。 | Generate self-contained ER HTML from allowed metadata and relationship evidence; v1.2.0 uses an interactive graph canvas with stable IDs and evidence panels. |
 | v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 | Generate table and column context for mapper or SQL files without modifying code. |
 | v1.0.0 | `ob_generate_onboarding_doc` | 基于可见元数据和业务字典生成新开发者入门文档。 | Generate onboarding documentation from visible metadata and business glossary hints. |
 | v1.0.0 | `ob_generate_query_doc` | 生成 SQL 片段说明文档，不执行目标查询。 | Generate SQL snippet documentation without executing the target query. |
@@ -204,7 +204,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | 对比两份元数据快照，返回基于证据的结构变化。 | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | 从静态 SQL 使用索引中查找表、字段或业务词引用。 | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | 基于 diff 和影响分析生成 Markdown 或简版 HTML 变更报告。 | Generate Markdown or simple HTML change reports from diff and impact evidence. |
-| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 cluster ER 导出命令。 | Estimate large-schema ER size and plan local cluster ER export commands. |
+| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 cluster ER 导出命令；v1.2.0 增加关系索引和诊断元数据。 | Estimate large-schema ER size and plan local cluster ER export commands; v1.2.0 adds relationship index and diagnostics metadata. |
 
 ## Metadata Change Workflow / 元数据变更流程
 
@@ -231,9 +231,9 @@ These commands only read metadata or local project files. Reports contain risks,
 The public npm package is `@sevoniva/oceanbase-mcp`, and the CLI command remains `ob-mcp`. It is the Node.js CLI/runtime distribution and can be installed globally or launched with `npx --package` from another terminal. Private registries can mirror npmjs and install pinned versions from the private registry.
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.6
+npm install -g @sevoniva/oceanbase-mcp@1.2.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
 ```
 
 Release 仍附带源码归档，适合离线源码构建：
@@ -241,8 +241,8 @@ Release 仍附带源码归档，适合离线源码构建：
 Release assets still include a source archive for offline source builds:
 
 ```bash
-tar -xzf oceanbase-mcp-1.1.6-source.tar.gz
-cd oceanbase-mcp-1.1.6
+tar -xzf oceanbase-mcp-1.2.0-source.tar.gz
+cd oceanbase-mcp-1.2.0
 npm ci
 npm run build
 npm run start
@@ -256,12 +256,12 @@ The source archive excludes `node_modules` and `dist`. The private npm registry 
 
 | Asset | 中文 | English |
 | --- | --- | --- |
-| `sevoniva-oceanbase-mcp-1.1.6.tgz` | npm 包。 | npm package. |
-| `oceanbase-mcp-1.1.6-source.tar.gz` | 源码归档，用于离线构建。 | Source archive for offline source builds. |
+| `sevoniva-oceanbase-mcp-1.2.0.tgz` | npm 包。 | npm package. |
+| `oceanbase-mcp-1.2.0-source.tar.gz` | 源码归档，用于离线构建。 | Source archive for offline source builds. |
 | `sbom.cdx.json` | CycloneDX SBOM。 | CycloneDX SBOM. |
-| `oceanbase-mcp-1.1.6-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |
-| `oceanbase-mcp-1.1.6-arm64.tar.gz` | arm64 离线镜像。 | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.6` | GHCR 镜像 tag。 | GHCR image tag. |
+| `oceanbase-mcp-1.2.0-amd64.tar.gz` | amd64 离线镜像。 | amd64 offline image. |
+| `oceanbase-mcp-1.2.0-arm64.tar.gz` | arm64 离线镜像。 | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.2.0` | GHCR 镜像 tag。 | GHCR image tag. |
 
 ## Validation / 验证
 

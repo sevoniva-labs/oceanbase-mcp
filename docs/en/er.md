@@ -8,9 +8,9 @@ ER diagrams are generated from visible metadata and relationship evidence. The s
 
 | Tool | Purpose |
 | --- | --- |
-| `ob_generate_er_diagram` | Generates Mermaid and JSON ER metadata with schema, table, business-term, depth, and table-count limits. |
-| `ob_generate_er_html` | Generates self-contained HTML ER diagrams in static, interactive, compact, or detailed form. Large schema scopes return export guidance instead of oversized inline HTML. |
-| `ob_plan_er_export` | Estimates table, column, and relationship scale, then plans local cluster ER export commands. |
+| `ob_generate_er_diagram` | Generates Mermaid and JSON ER metadata with schema, table, business-term, depth, table-count limits, stable graph IDs, and relationship classes. |
+| `ob_generate_er_html` | Generates self-contained HTML ER diagrams. In v1.2.0, interactive output uses a stable-ID graph canvas with table search, filters, evidence panels, and large-scope export guidance. |
+| `ob_plan_er_export` | Estimates table, column, and relationship scale, then plans local cluster ER export commands with relationship and diagnostics metadata. |
 | `ob_generate_entity_diagram` | Generates a local entity diagram from a business term or table, with Mermaid, JSON, HTML, and relationship evidence. |
 | `ob_explain_relationship` | Explains field, constraint, naming evidence, and confidence between two tables. |
 | `ob_generate_er_document` | Generates Markdown, PlantUML, and DOT model documentation. |

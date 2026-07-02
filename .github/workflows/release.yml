@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本，例如 v1.1.5"
+        description: "发布版本，例如 v1.2.0"
         required: true
         type: string
       prerelease:
@@ -42,7 +42,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必须是 vX.Y.Z，例如 v1.1.5" >&2
+            echo "版本必须是 vX.Y.Z，例如 v1.2.0" >&2
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"

@@ -8,9 +8,9 @@ ER 图能力基于可见元数据和关系证据生成，不会凭空补关系�
 
 | 工具 | 用途 |
 | --- | --- |
-| `ob_generate_er_diagram` | 生成 Mermaid 和 JSON ER 元数据，支持 schema、table、业务词、深度和表数量限制。 |
-| `ob_generate_er_html` | 生成自包含 HTML ER 图，支持 static、interactive、compact、detailed；大范围 schema 会返回导出建议，不返回超大 inline HTML。 |
-| `ob_plan_er_export` | 轻量估算表、字段和关系规模，并规划本地 cluster ER 导出命令。 |
+| `ob_generate_er_diagram` | 生成 Mermaid 和 JSON ER 元数据，支持 schema、table、业务词、深度、表数量限制、稳定 graph ID 和关系分级。 |
+| `ob_generate_er_html` | 生成自包含 HTML ER 图。v1.2.0 的 interactive 输出使用稳定 ID 的 graph 画布，支持表搜索、筛选、证据面板和大范围导出建议。 |
+| `ob_plan_er_export` | 轻量估算表、字段和关系规模，并规划本地 cluster ER 导出命令，同时输出关系和诊断元数据。 |
 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
 | `ob_explain_relationship` | 解释两张表之间的字段依据、约束依据、命名依据和置信度。 |
 | `ob_generate_er_document` | 生成 Markdown、PlantUML 和 DOT 格式的模型说明。 |

@@ -60,9 +60,9 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 通过 npmjs 或私有 npm 制品库安装 Node.js CLI/runtime 包：
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.6
+npm install -g @sevoniva/oceanbase-mcp@1.2.0
 ob-mcp doctor
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
 ```
 
 从源码构建：
@@ -163,7 +163,7 @@ npm run start:http
 | v0.4.0 | `ob_verify_permissions` | 检查当前数据库账号是否包含写入或管理权限。 |
 | v0.5.0 | `ob_analyze_query_plan` | 执行 `EXPLAIN` 并返回基于证据的执行计划分析。 |
 | v0.5.0 | `ob_find_related_tables` | 查找外键关系和保守的命名推断表关系。 |
-| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.0.0 增强业务词、表清单、深度、置信度和推断关系控制。 |
+| v0.5.0 | `ob_generate_er_diagram` | 基于允许访问的表生成 Mermaid 和 JSON ER 元数据；v1.2.0 增加稳定 graph ID 和关系分级。 |
 | v0.5.0 | `ob_generate_performance_report` | 基于 EXPLAIN 和元数据生成只读性能建议报告。 |
 | v0.5.0 | `ob_generate_query` | 基于表元数据生成只读 SQL 模板。 |
 | v0.5.0 | `ob_get_object_metadata` | 返回单个 Oracle 对象的有限元数据和源码预览。 |
@@ -196,7 +196,7 @@ npm run start:http
 | v1.0.0 | `ob_generate_data_dictionary` | 生成 JSON、Markdown 或简版 HTML 数据字典。 |
 | v1.0.0 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
 | v1.0.0 | `ob_generate_er_document` | 基于允许访问的元数据和关系证据生成 Markdown、PlantUML 和 DOT 模型文档。 |
-| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成静态、交互、紧凑或详细版自包含 HTML ER 图。 |
+| v1.0.0 | `ob_generate_er_html` | 基于允许访问的元数据和关系证据生成自包含 HTML ER 图；v1.2.0 使用稳定 ID 的交互式 graph 画布和证据面板。 |
 | v1.0.0 | `ob_generate_mapper_context` | 为 mapper 或 SQL 文件生成表字段上下文，不修改代码。 |
 | v1.0.0 | `ob_generate_onboarding_doc` | 基于可见元数据和业务字典生成新开发者入门文档。 |
 | v1.0.0 | `ob_generate_query_doc` | 生成 SQL 片段说明文档，不执行目标查询。 |
@@ -229,7 +229,7 @@ npm run start:http
 | v1.1.0 | `ob_compare_metadata_snapshots` | 对比两份元数据快照，返回基于证据的结构变化。 |
 | v1.1.0 | `ob_find_sql_usages` | 从静态 SQL 使用索引中查找表、字段或业务词引用。 |
 | v1.1.0 | `ob_generate_metadata_change_report` | 基于 diff 和影响分析生成 Markdown 或简版 HTML 变更报告。 |
-| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 cluster ER 导出命令。 |
+| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 cluster ER 导出命令；v1.2.0 增加关系索引和诊断元数据。 |
 
 ## 元数据变更流程
 
@@ -250,16 +250,16 @@ ob-mcp metadata report --before snapshots/before.json --after snapshots/after.js
 公开 npm 包名为 `@sevoniva/oceanbase-mcp`，CLI 命令名保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。这是 Node.js CLI/runtime 分发包，可以全局安装，也可以通过 `npx --package` 在其他终端直接拉取并启动。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.1.6
+npm install -g @sevoniva/oceanbase-mcp@1.2.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
 ```
 
 Release 仍附带源码归档，适合离线源码构建：
 
 ```bash
-tar -xzf oceanbase-mcp-1.1.6-source.tar.gz
-cd oceanbase-mcp-1.1.6
+tar -xzf oceanbase-mcp-1.2.0-source.tar.gz
+cd oceanbase-mcp-1.2.0
 npm ci
 npm run build
 npm run start
@@ -271,12 +271,12 @@ npm run start
 
 | 资产 | 用途 |
 | --- | --- |
-| `sevoniva-oceanbase-mcp-1.1.6.tgz` | npm 包。 |
-| `oceanbase-mcp-1.1.6-source.tar.gz` | 源码归档，用于离线构建。 |
+| `sevoniva-oceanbase-mcp-1.2.0.tgz` | npm 包。 |
+| `oceanbase-mcp-1.2.0-source.tar.gz` | 源码归档，用于离线构建。 |
 | `sbom.cdx.json` | CycloneDX SBOM。 |
-| `oceanbase-mcp-1.1.6-amd64.tar.gz` | amd64 离线镜像。 |
-| `oceanbase-mcp-1.1.6-arm64.tar.gz` | arm64 离线镜像。 |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.6` | GHCR 镜像 tag。 |
+| `oceanbase-mcp-1.2.0-amd64.tar.gz` | amd64 离线镜像。 |
+| `oceanbase-mcp-1.2.0-arm64.tar.gz` | arm64 离线镜像。 |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.2.0` | GHCR 镜像 tag。 |
 
 ## 资源
 

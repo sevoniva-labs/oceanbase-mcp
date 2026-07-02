@@ -23,7 +23,7 @@ OpenCode 有两种接入方式：
         "npx",
         "--registry=https://registry.npmjs.org/",
         "--yes",
-        "--package=@sevoniva/oceanbase-mcp@1.1.6",
+        "--package=@sevoniva/oceanbase-mcp@1.2.0",
         "ob-mcp"
       ],
       "enabled": true,
