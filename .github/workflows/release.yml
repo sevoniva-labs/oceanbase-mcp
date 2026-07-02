@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "发布版本，例如 v1.0.0"
+        description: "发布版本，例如 v1.1.0"
         required: true
         type: string
       prerelease:
@@ -41,7 +41,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
           fi
           if [[ ! "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$ ]]; then
-            echo "版本必须是 vX.Y.Z，例如 v1.0.0" >&2
+            echo "版本必须是 vX.Y.Z，例如 v1.1.0" >&2
             exit 1
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
@@ -233,19 +233,18 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release completes the local OceanBase Developer Assistant scope for OpenCode. It improves metadata discovery, read-only SQL assistance, paged query workflows, ER diagrams, data dictionaries, project SQL scanning, local setup checks, and internal delivery assets. The server remains strictly read-only.
+          This release adds metadata change analysis for local OceanBase development. It helps developers capture metadata snapshots, compare iteration changes, map changes to project SQL usage, and generate review reports. The server remains strictly read-only.
 
           ## 新增能力
 
-          - 本地初始化和诊断：`ob-mcp init`、`ob-mcp doctor`、`ob_check_opencode_setup`、`ob_get_usage_guide`、`ob_list_capabilities`。
-          - 元数据和字典：schema map、统一搜索、业务词找表、跨表找字段、表摘要、数据库字典、表和 schema 对比。
-          - SQL 辅助：查询准备、结构化 SELECT 构建、SQL lint、SQL 改写、MySQL/Oracle 方言转换、错误解释和查询示例。
-          - 查询体验：内存查询会话、上一页/下一页、查询细化、结果摘要、结果对比和 Markdown/CSV 预览。
-          - 数据理解：表画像、字段画像增强、值分布、时间字段识别、维度字段识别、最近数据查询和数据质量检查。
-          - ER 图：Mermaid、JSON、HTML static/interactive/compact/detailed、实体图、关系解释、Markdown/PlantUML/DOT 文档和 CLI 导出。
-          - 项目代码辅助：`ob-mcp scan-sql`、SQL 片段校验、项目 SQL 解释、mapper 上下文和未知字段候选。
-          - 文档生成：表文档、schema 文档、数据字典、SQL 文档和新开发者入门文档。
-          - 内网交付：Release 附带源码归档，可在内网 npm 制品库环境中编译运行。
+          - 元数据快照：`ob_capture_metadata_snapshot` 和 `ob-mcp metadata snapshot` 采集表、字段、索引、约束、分区、关系、统计信息、注释和 Oracle 对象元数据。
+          - 快照对比：`ob_compare_metadata_snapshots` 和 `ob-mcp metadata diff` 输出结构化 diff、风险等级和 Markdown 摘要。
+          - SQL 使用索引：`ob-mcp scan-sql --index-out` 为项目 SQL 生成静态索引。
+          - SQL 使用查询：`ob_find_sql_usages` 按表、字段或业务词查找项目 SQL 引用。
+          - 影响分析：`ob_analyze_metadata_impact` 和 `ob_analyze_change_sql_impact` 汇总受影响对象、SQL、文件、关系和风险证据。
+          - 变更报告：`ob_generate_metadata_change_report` 和 `ob-mcp metadata report` 输出 Markdown 或简版 HTML。
+          - 关系路径：`ob_explain_relationship` 增加有限深度 relationship path，显示路径表、关系数、confidence 和 evidence。
+          - OpenCode 工作流：Agent/Skill 增加“迭代开始快照 -> SQL index -> 迭代结束快照 -> diff -> impact -> report”的流程。
 
           ## Delivery Assets
 
@@ -271,15 +270,16 @@ jobs:
 
           ## 验证要求
 
-          - OceanBase MySQL 模式 smoke test 覆盖核心 1.0 能力。
-          - OceanBase Oracle 模式 smoke test 覆盖核心 1.0 能力。
+          - OceanBase MySQL 模式 smoke test 覆盖核心 1.1 能力。
+          - OceanBase Oracle 模式 smoke test 覆盖核心 1.1 能力。
           - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
 
           ## 生产注意事项
 
           - 建议数据库账号仍使用只读权限；MCP 会继续拦截写入、DDL、DCL、过程调用和序列 `NEXTVAL`。
-          - 业务字典只用于搜索提示，结果仍受 profile、schema、table、column 权限过滤。
-          - 字段画像使用受限查询和输出限制，不做无边界全表扫描。
+          - 元数据变更报告只输出风险、证据和评审建议，不输出可直接执行的 DDL。
+          - 大 schema 建议使用 schema、tablePattern 和 max 限制控制采集范围。
+          - SQL 使用索引来自静态扫描。动态 SQL 会标记为不确定，需要人工复核。
           - OpenCode 使用前建议先加载随包提供的 Agent/Skill 配置。
           EOF
 
