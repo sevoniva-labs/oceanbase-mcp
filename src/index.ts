@@ -103,7 +103,7 @@ Export ER options:
   --no-include-inferred
   --format static|interactive|compact|detailed
   --out <file>
-  --out-dir <dir>        Write index.html, overview.html, chunks/, tables/, and metadata/
+  --out-dir <dir>        Write index.html, overview.html, clusters/, tables/, and metadata/
   --chunk-size <n>
   --overwrite
 

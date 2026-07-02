@@ -3725,7 +3725,7 @@ export function createObMcpServer(
             stats: result.response.stats,
             warnings: uniqueStrings([
               ...result.response.warnings,
-              `Schema-level ER HTML rendering was skipped because tableCount=${result.response.tableCount} exceeds ${SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT}. Use ob_plan_er_export and CLI chunked export for large diagrams.`
+              `Schema-level ER HTML rendering was skipped because tableCount=${result.response.tableCount} exceeds ${SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT}. Use ob_plan_er_export and CLI cluster export for large diagrams.`
             ])
           },
           selected.config
@@ -6448,7 +6448,7 @@ async function buildErExportPlanResult(
   const plannedRelationships = planErExportRelationships(selected.config.compatibility, relationships, chunks);
 
   if (planStats.estimatedTableCount > chunkSize) {
-    risks.push("Schema is larger than one ER chunk; use chunked export instead of inline ER.");
+    risks.push("Schema is larger than one ER cluster; use cluster export instead of inline ER.");
   }
   if (planStats.estimatedColumnCount > planStats.estimatedTableCount * Math.max(1, selected.config.erMaxColumnsPerTable)) {
     risks.push("Column count is high; keep main diagrams compact and open table pages for details.");
@@ -11742,6 +11742,7 @@ function safeTool<Args>(
       assertToolAllowed(name, context.principal);
       const result = await handler(args);
       const durationMs = Date.now() - started;
+      const responseBytes = resultTextBytes(result);
       logAudit("tool_call", {
         ok: true,
         tool: name,
@@ -11750,6 +11751,7 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        responseBytes,
         ...auditArgs(args)
       });
       logSlowOperation("slow_tool_call", {
@@ -11760,11 +11762,14 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        responseBytes,
         ...auditArgs(args)
       });
       return result;
     } catch (error) {
       const durationMs = Date.now() - started;
+      const errorResult = toErrorResult(error, args);
+      const responseBytes = resultTextBytes(errorResult);
       metrics.recordToolBlocked();
       metrics.recordToolError();
       logAudit("tool_call", {
@@ -11775,6 +11780,7 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        responseBytes,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
       });
@@ -11786,15 +11792,20 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        responseBytes,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
       });
       logError(name, error);
-      return toErrorResult(error, args);
+      return errorResult;
     } finally {
       finish();
     }
   };
+}
+
+function resultTextBytes(result: ReturnType<typeof toResult>): number {
+  return result.content.reduce((sum, item) => sum + Buffer.byteLength(item.text ?? "", "utf8"), 0);
 }
 
 function errorHints(error: unknown, args: unknown): string[] {

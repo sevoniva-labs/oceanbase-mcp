@@ -6,7 +6,9 @@ import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 
+import { loadConfig } from "../dist/config.js";
 import { logAudit, logError, logSlowOperation } from "../dist/errors.js";
+import { createObMcpServer } from "../dist/mcp.js";
 
 test("json logs can be written to a file with sensitive values redacted", () => {
   const dir = mkdtempSync(join(tmpdir(), "ob-mcp-log-"));
@@ -77,6 +79,51 @@ test("process crash handler writes a redacted JSONL entry before exit", () => {
     assert.match(lines[0].error.message, /password=\[redacted\]/);
     assert.match(lines[0].error.message, /token=\[redacted\]/);
   } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("tool audit logs include bounded response size", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ob-mcp-tool-log-"));
+  const previousFile = process.env.OB_MCP_LOG_FILE;
+  const previousStderr = process.env.OB_MCP_LOG_STDERR;
+  try {
+    const file = join(dir, "tool.jsonl");
+    process.env.OB_MCP_LOG_FILE = file;
+    process.env.OB_MCP_LOG_STDERR = "false";
+    const config = loadConfig({
+      OB_ALLOWED_SCHEMAS: "biz_test",
+      OB_ENFORCE_READ_ONLY_TX: "false"
+    });
+    const server = createObMcpServer({
+      defaultProfile: "default",
+      configs: { default: config },
+      pools: {
+        default: {
+          async query() {
+            return [[{ id: 1, select_type: "SIMPLE", table: "orders", type: "const", key: "PRIMARY" }], []];
+          }
+        }
+      },
+      queryLimiters: { default: { active: 0, limit: 5 } }
+    });
+
+    await server.executeToolHandler(server._registeredTools.ob_query_preview, {
+      sql: "SELECT id FROM biz_test.orders WHERE id = ? LIMIT 1",
+      params: [1]
+    }, {});
+
+    const lines = readFileSync(file, "utf8").trim().split(/\n/).map((line) => JSON.parse(line));
+    const toolCall = lines.find((line) => line.event === "tool_call" && line.tool === "ob_query_preview");
+    assert.ok(toolCall);
+    assert.equal(toolCall.ok, true);
+    assert.equal(typeof toolCall.responseBytes, "number");
+    assert(toolCall.responseBytes > 0);
+    assert.equal(toolCall.paramCount, 1);
+    assert.equal(toolCall.sqlLength, 51);
+  } finally {
+    restoreEnv("OB_MCP_LOG_FILE", previousFile);
+    restoreEnv("OB_MCP_LOG_STDERR", previousStderr);
     rmSync(dir, { recursive: true, force: true });
   }
 });
