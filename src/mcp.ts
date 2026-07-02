@@ -39,6 +39,7 @@ import {
 } from "./db.js";
 import { diagnoseGateway } from "./diagnostics.js";
 import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "./er.js";
+import type { ErGraph, ErGraphDiagnostic, ErGraphStatus } from "./er-graph.js";
 import { logAudit, logError, logSlowOperation, serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "./format.js";
 import { captureMetadataSnapshot } from "./metadata-capture.js";
@@ -5821,6 +5822,8 @@ interface ErDiagramToolResponse {
   relationshipCount: number;
   discoveredRelationshipCount: number;
   filteredRelationshipCount: number;
+  status: ErGraphStatus;
+  diagnostics: ErGraphDiagnostic[];
   stats: {
     selectedTables: number;
     loadedTables: number;
@@ -5844,6 +5847,7 @@ interface ErDiagramToolResponse {
     entities: ErEntity[];
     relationships: TableRelationship[];
   };
+  graph: ErGraph;
   warnings: string[];
 }
 
@@ -6086,7 +6090,22 @@ async function buildErDiagramResult(
       entityKeys.has(tableRefKey(selected.config.compatibility, relation.sourceSchema, relation.sourceTable)) &&
       entityKeys.has(tableRefKey(selected.config.compatibility, relation.targetSchema, relation.targetTable))
   );
-  const diagram = buildErDiagram(selected.config.compatibility, entities, diagramRelationships);
+  const responseWarnings = uniqueStrings([
+    ...warnings,
+    ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
+    ...(relationshipMode === "foreign_key" ? ["Name-inferred relationships are disabled by default; pass relationshipMode=inferred for a bounded inferred diagram."] : []),
+    ...(filteredRelationshipCount > 0
+      ? [`${filteredRelationshipCount} relationship(s) were hidden by policy, minConfidence, or includeInferred.`]
+      : [])
+  ]);
+  const graphDiagnostics = erDiagnosticsFromWarnings(responseWarnings, {
+    truncated,
+    relationshipScopeLimited,
+    filteredRelationshipCount
+  });
+  const diagram = buildErDiagram(selected.config.compatibility, entities, diagramRelationships, {
+    diagnostics: graphDiagnostics
+  });
   const response = {
     mode: selected.config.compatibility,
     schema: effectiveSchema,
@@ -6103,6 +6122,8 @@ async function buildErDiagramResult(
     relationshipCount: diagramRelationships.length,
     discoveredRelationshipCount,
     filteredRelationshipCount,
+    status: diagram.graph.status,
+    diagnostics: diagram.graph.diagnostics,
     stats: {
       selectedTables: scope.size,
       loadedTables: entities.length,
@@ -6126,14 +6147,8 @@ async function buildErDiagramResult(
       entities: diagram.entities,
       relationships: diagram.relationships
     },
-    warnings: uniqueStrings([
-      ...warnings,
-      ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
-      ...(relationshipMode === "foreign_key" ? ["Name-inferred relationships are disabled by default; pass relationshipMode=inferred for a bounded inferred diagram."] : []),
-      ...(filteredRelationshipCount > 0
-        ? [`${filteredRelationshipCount} relationship(s) were hidden by policy, minConfidence, or includeInferred.`]
-        : [])
-    ])
+    graph: diagram.graph,
+    warnings: responseWarnings
   };
   return { diagram, response };
 }
@@ -6156,9 +6171,55 @@ function shouldSkipSchemaInlineErHtmlRender(
   return !explicitScope && response.tableCount > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT;
 }
 
+function erDiagnosticsFromWarnings(
+  warnings: string[],
+  context: {
+    truncated: boolean;
+    relationshipScopeLimited: boolean;
+    filteredRelationshipCount: number;
+  }
+): ErGraphDiagnostic[] {
+  const diagnostics: ErGraphDiagnostic[] = [];
+  if (context.truncated) {
+    diagnostics.push({
+      level: "warning",
+      code: "er_scope_truncated",
+      message: "ER metadata was truncated by configured limits or timeout.",
+      action: "Use a narrower schema/table scope or run a chunked ER export."
+    });
+  }
+  if (context.relationshipScopeLimited) {
+    diagnostics.push({
+      level: "warning",
+      code: "er_relationship_scope_limited",
+      message: "Some related tables were omitted from the ER scope.",
+      action: "Increase maxTables within the configured limit or inspect a smaller table neighborhood."
+    });
+  }
+  if (context.filteredRelationshipCount > 0) {
+    diagnostics.push({
+      level: "note",
+      code: "er_relationships_filtered",
+      message: `${context.filteredRelationshipCount} relationship(s) were hidden by policy or confidence settings.`,
+      action: "Review relationshipMode, minConfidence, and active access policy.",
+      count: context.filteredRelationshipCount
+    });
+  }
+  if (warnings.some((warning) => /Name-inferred relationships are disabled/i.test(warning))) {
+    diagnostics.push({
+      level: "note",
+      code: "er_inferred_relationships_disabled",
+      message: "Name-inferred relationships are disabled for this ER request.",
+      action: "Use relationshipMode=inferred for a bounded explicit scope when database foreign keys are not available."
+    });
+  }
+  return diagnostics;
+}
+
 function fitErDiagramResponseForLimit(response: ErDiagramToolResponse, config: ObConfig): ErDiagramToolResponse | (Omit<ErDiagramToolResponse, "mermaid" | "diagram"> & {
   mermaidOmitted: boolean;
   diagramOmitted: boolean;
+  graphOmitted: boolean;
   estimatedBytes: number;
 }) {
   const estimatedBytes = jsonByteLength(response);
@@ -6172,12 +6233,18 @@ function fitErDiagramResponseForLimit(response: ErDiagramToolResponse, config: O
       entities: [],
       relationships: []
     },
+    graph: {
+      ...response.graph,
+      nodes: [],
+      edges: []
+    },
     mermaidOmitted: true,
     diagramOmitted: true,
+    graphOmitted: true,
     estimatedBytes,
     warnings: uniqueStrings([
       ...response.warnings,
-      `ER diagram metadata is ${estimatedBytes} bytes; Mermaid and JSON details were omitted to stay within OB_MAX_RESULT_BYTES. Use CLI ER export for the full artifact.`
+      `ER diagram metadata is ${estimatedBytes} bytes; Mermaid, graph nodes, graph edges, and JSON details were omitted to stay within OB_MAX_RESULT_BYTES. Use CLI ER export for the full artifact.`
     ])
   };
 }

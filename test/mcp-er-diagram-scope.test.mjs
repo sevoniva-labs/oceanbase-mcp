@@ -49,6 +49,13 @@ test("ob_generate_er_diagram supports business term scope and relationship filte
     assert.match(diagram.mermaid, /biz_test_users \|\|--o\{ biz_test_orders : "fk_orders_user"/);
     assert.doesNotMatch(result.content[0].text, /secret_token/);
     assert.equal(diagram.diagram.relationships[0].relationType, "foreign_key");
+    assert.equal(diagram.status, "OK");
+    assert.equal(diagram.graph.summary.confirmedRelationships, 1);
+    assert.equal(diagram.graph.summary.visibleRelationships, 1);
+    assert.match(diagram.graph.nodes[0].id, /^t_[a-f0-9]{14}$/);
+    assert.equal(diagram.graph.edges[0].relationClass, "confirmed");
+    assert.equal(diagram.graph.edges[0].visibleByDefault, true);
+    assert(diagram.diagnostics.some((diagnostic) => diagnostic.code === "er_inferred_relationships_disabled"));
     assert(diagram.warnings.some((warning) => /Name-inferred relationships are disabled/i.test(warning)));
   } finally {
     rmSync(dir, { recursive: true, force: true });

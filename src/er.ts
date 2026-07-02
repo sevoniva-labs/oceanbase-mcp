@@ -1,6 +1,6 @@
 import type { CompatibilityMode } from "./config.js";
 import type { TableRelationship } from "./db.js";
-import { buildErGraph, type ErGraph } from "./er-graph.js";
+import { buildErGraph, type BuildErGraphOptions, type ErGraph } from "./er-graph.js";
 
 export interface ErColumn {
   name: string;
@@ -50,13 +50,14 @@ export interface ErDocumentOptions {
 export function buildErDiagram(
   mode: CompatibilityMode,
   entities: ErEntity[],
-  relationships: TableRelationship[]
+  relationships: TableRelationship[],
+  graphOptions: BuildErGraphOptions = {}
 ): ErDiagram {
   return {
     mode,
     entities,
     relationships,
-    graph: buildErGraph(mode, entities, relationships),
+    graph: buildErGraph(mode, entities, relationships, graphOptions),
     mermaid: renderMermaidEr(entities, relationships)
   };
 }
