@@ -34,7 +34,8 @@ test("ob_generate_er_html returns self-contained ER HTML from visible metadata",
   assert.match(payload.html, /data-relation-filter="confirmed" checked/);
   assert.match(payload.html, /Schema Overview/);
   assert.match(payload.html, /cytoscape\(/);
-  assert.doesNotMatch(payload.html, /<link/i);
+  assert.match(payload.html, /<link rel="icon" href="data:image\/svg\+xml/);
+  assert.doesNotMatch(payload.html, /<link[^>]+href=["']https?:/i);
   assert.doesNotMatch(payload.html, /src=["']/i);
   assert.doesNotMatch(payload.html, /secret_token/);
 });

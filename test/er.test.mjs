@@ -62,6 +62,7 @@ test("renderErHtml supports compact and detailed formats", () => {
   );
 
   const compact = renderErHtml(diagram, { format: "html-compact", title: "Compact ER" });
+  assert.match(compact, /<link rel="icon" href="data:image\/svg\+xml/);
   assert.match(compact, /Format: html-compact/);
   assert.doesNotMatch(compact, /Mermaid Source/);
   assert.match(compact, /2 column\(s\)/);
@@ -124,6 +125,13 @@ test("renderErHtml uses interactive graph map for large schemas", () => {
   assert.ok(html.includes("Large schema warning"));
   assert.ok(html.includes('"relationClass":"confirmed"'));
   assert.ok(html.includes("cytoscape("));
+  assert.ok(html.includes('layout.on("layoutstop"'));
+  assert.ok(html.includes("const targetNodeId = focusedNodeId && visibleNodeIds.has(focusedNodeId)"));
+  assert.ok(html.includes("focusNode(targetNodeId, elements.nodes.length > 30 ? 64 : 40)"));
+  assert.ok(html.includes("node.id === focusedNodeId ? ' active' : ''"));
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml/);
+  assert.doesNotMatch(html, /container: map,\s*wheelSensitivity/s);
+  assert.doesNotMatch(html, /wheelSensitivity:\s*0\.2/);
   assert.doesNotMatch(html, /<script[^>]+src=/i);
 });
 

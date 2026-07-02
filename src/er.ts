@@ -100,6 +100,7 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(title)}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f766e'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='15' font-weight='700' fill='white'%3EOB%3C/text%3E%3C/svg%3E">
   <style>
     :root {
       color-scheme: light;
@@ -446,6 +447,7 @@ function renderInteractiveErMapHtml(
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(options.title)}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230f766e'/%3E%3Ctext x='16' y='21' text-anchor='middle' font-family='Arial' font-size='15' font-weight='700' fill='white'%3EOB%3C/text%3E%3C/svg%3E">
   <style>
     :root {
       color-scheme: light;
@@ -813,7 +815,7 @@ function renderErMapScript(overviewHtml: string): string {
       tableList.innerHTML = '<li class="empty-state">No tables match the current filters.</li>';
       return;
     }
-    tableList.innerHTML = visibleNodes.map((node) => '<li><button type="button" class="table-item" data-table="' + escape(node.id) + '"><span class="table-name">' + escape(node.qualifiedName) + '</span><span class="table-meta"><span>' + (node.columns || []).length + ' columns</span><span>' + escape(node.domain) + '</span></span></button></li>').join("");
+    tableList.innerHTML = visibleNodes.map((node) => '<li><button type="button" class="table-item' + (node.id === focusedNodeId ? ' active' : '') + '" data-table="' + escape(node.id) + '"><span class="table-name">' + escape(node.qualifiedName) + '</span><span class="table-meta"><span>' + (node.columns || []).length + ' columns</span><span>' + escape(node.domain) + '</span></span></button></li>').join("");
     tableList.querySelectorAll("[data-table]").forEach((button) => {
       button.addEventListener("click", () => focusNode(button.getAttribute("data-table") || ""));
     });
@@ -825,23 +827,32 @@ function renderErMapScript(overviewHtml: string): string {
     map.dataset.visibleTables = String(elements.nodes.length);
     map.dataset.visibleRelationships = String(elements.edges.length);
     visibleRelationshipCount.textContent = String(elements.edges.length);
-    const readableGraph = elements.nodes.length > 12;
-    cy.layout({
+    const layout = cy.layout({
       name: "dagre",
       rankDir: "LR",
       nodeSep: 70,
       rankSep: 120,
       edgeSep: 24,
-      fit: !readableGraph,
+      fit: false,
       padding: 40
-    }).run();
-    if (readableGraph) {
-      const firstNode = cy.nodes()[0];
-      if (firstNode) {
-        cy.zoom(elements.nodes.length > 80 ? 0.65 : 0.9);
-        cy.center(firstNode);
+    });
+    layout.on("layoutstop", () => {
+      if (elements.nodes.length > 0) {
+        const firstNode = cy.nodes()[0];
+        const visibleNodeIds = new Set(elements.nodes.map((element) => element.data.id));
+        const targetNodeId = focusedNodeId && visibleNodeIds.has(focusedNodeId)
+          ? focusedNodeId
+          : elements.nodes.length > 30 && firstNode
+            ? firstNode.id()
+            : "";
+        if (targetNodeId) {
+          focusNode(targetNodeId, elements.nodes.length > 30 ? 64 : 40);
+        } else {
+          cy.fit(cy.elements(), 48);
+        }
       }
-    }
+    });
+    layout.run();
     renderTableList();
     const visibleNodeIds = new Set(elements.nodes.map((element) => element.data.id));
     if (focusedNodeId && !visibleNodeIds.has(focusedNodeId)) {
@@ -880,7 +891,7 @@ function renderErMapScript(overviewHtml: string): string {
     const evidence = (edge.evidence || []).map((item) => '<li class="field-item"><div class="field-name">' + escape(item.type) + '</div><div class="field-type">' + escape(item.detail) + '</div></li>').join("");
     inspector.innerHTML = '<div class="detail-title">' + escape(edge.label) + '</div><div class="detail-meta">' + escape(edge.relationClass + " / " + edge.relationType + " / confidence " + edge.confidence) + '</div><h3>Mapping</h3><ul class="field-list"><li class="field-item"><div class="field-name">' + escape(source ? source.qualifiedName : edge.sourceTable) + '.' + escape((edge.sourceColumns || []).join(",")) + '</div><div class="field-type">source</div></li><li class="field-item"><div class="field-name">' + escape(target ? target.qualifiedName : edge.targetTable) + '.' + escape((edge.targetColumns || []).join(",")) + '</div><div class="field-type">target</div></li></ul><h3>Evidence</h3>' + (evidence ? '<ul class="field-list">' + evidence + '</ul>' : '<p class="empty-state">No detailed evidence is available for this relationship.</p>');
   }
-  function focusNode(id) {
+  function focusNode(id, padding = 40) {
     focusedNodeId = id;
     map.dataset.selectedTable = id;
     const node = nodesById.get(id);
@@ -895,12 +906,11 @@ function renderErMapScript(overviewHtml: string): string {
     cy.elements().not(neighborhood).addClass("faded");
     neighborhood.nodes().not(cyNode).addClass("neighbor");
     cyNode.addClass("selected");
-    cy.fit(neighborhood, 40);
+    cy.fit(neighborhood, padding);
     renderNodeDetail(node);
   }
   const cy = cytoscape({
     container: map,
-    wheelSensitivity: 0.2,
     elements: [],
     style: [
       { selector: "node", style: {
