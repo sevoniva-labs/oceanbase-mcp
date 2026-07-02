@@ -233,17 +233,16 @@ jobs:
           cat > release-notes.md <<'EOF'
           ## OceanBase MCP ${{ needs.metadata.outputs.tag }}
 
-          This release improves local OpenCode query stability for OceanBase MCP. It raises the default local HTTP rate limit for tool-heavy workflows, adds crash and slow-call logs, and accepts common Oracle named bind placeholders when positional params are supplied. The server remains strictly read-only.
+          This release improves large-schema ER planning and export stability for OceanBase MCP. It reduces metadata load before export, adds explicit ER chunking options, and validates the flow with local OceanBase schemas above 200 complex tables. The server remains strictly read-only.
 
-          ## 新增能力
+          ## 新增与修复
 
-          - 本地 HTTP 默认限流从每分钟 60 次调整为 600 次，适配 OpenCode 连续元数据查询、预览和分页调用。
-          - 生产环境或非本地绑定仍默认每分钟 60 次，保持共享部署的保守边界。
-          - `OB_MCP_LOG_FILE` 支持 JSONL 日志落盘，便于排查 stdio 场景下的 OpenCode 断连。
-          - 新增进程级崩溃日志、慢工具调用日志、慢 HTTP 请求日志、HTTP 限流日志和 JSON body 错误日志。
-          - Oracle 模式在传入 `params` 数组时兼容简单 `:name` 和 `:1` 占位符，执行前转换为驱动可识别的参数形式。
-          - 占位符转换会跳过字符串、标识符和注释，避免改写 SQL 文本内容。
-          - SQL 辅助文档补充 Oracle 参数化写法，仍建议生成 MCP 调用时优先使用 `?` 位置占位符。
+          - `ob_plan_er_export` 改为轻量规划，规划阶段不再加载完整表详情。
+          - ER 导出 CLI 增加 `--strategy` 和 `--max-columns-per-table`。
+          - connected-components 和 table-prefix 分片策略会合并较小的孤立组件，避免生成大量单表 chunk。
+          - MySQL 表列表在可用时返回估算行数。
+          - ER 规划输出增加估算表数、估算字段数、估算关系数、大表提示、风险、推荐下一步工具和分片命令。
+          - OpenCode、README、部署文档和 release 文档已更新到当前大 schema ER 工作流。
           - 只读策略、profile 权限、行数限制、输出大小限制、超时、审计日志和错误脱敏保持不变。
 
           ## Delivery Assets
@@ -268,21 +267,25 @@ jobs:
 
           源码归档不包含 `node_modules` 和 `dist`。内网 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
 
-          ## 验证要求
+          ## 验证结果
 
-          - OceanBase MySQL 模式 smoke test 和连续查询压测通过。
-          - OceanBase Oracle 模式 smoke test、命名占位符查询预览和连续查询压测通过。
-          - 本地 HTTP 连续调用压测通过，未触发默认限流。
-          - JSONL 日志落盘和敏感字段脱敏单元测试通过。
-          - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
+          - `npm test`：211 个测试通过。
+          - `npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
+          - 本地 OceanBase MySQL stdio 和 HTTP smoke test 通过。
+          - 本地 OceanBase Oracle stdio 和 HTTP smoke test 通过。
+          - MySQL ER 导出：222 张表、5 个 chunk、215 条渲染关系、219 条规划关系。
+          - Oracle ER 导出：352 张表、8 个 chunk、220 条渲染关系、224 条规划关系。
+          - Oracle 验证包含全部 220 张 `OB_MCP_LG_*` 复杂测试表，覆盖范围大于 MySQL 验证。
+          - MySQL 和 Oracle 百万行表 `ob_describe_table` 验证通过，未扫描目标表数据。
+          - Oracle `OB_MCP_MILLION_DESCRIBE` 已用 1,048,576 行真实数据验证。
 
           ## 生产注意事项
 
           - 建议数据库账号仍使用只读权限；MCP 会继续拦截写入、DDL、DCL、过程调用和序列 `NEXTVAL`。
-          - 本地排查 OpenCode 断连时建议配置 `OB_MCP_LOG_FILE=/var/log/ob-mcp/ob-mcp.jsonl`。
-          - 本地 OpenCode 推荐使用 stdio；如使用 HTTP，本地默认限流为 600 次/分钟，可通过 `OB_MCP_RATE_LIMIT_MAX` 显式调整。
-          - 生产或非本地 HTTP 绑定必须配置鉴权、Host allowlist 和来源 IP allowlist。
-          - Oracle 模式生成新 SQL 时仍优先使用 `?` 位置占位符，避免重复命名参数带来的歧义。
+          - 大 schema 先运行 `ob_plan_er_export`，再使用 CLI 分片导出。
+          - 全库 ER 不建议通过 MCP inline HTML 返回，应使用本地目录导出。
+          - `relationshipMode=inferred` 只用于明确的小范围分析，并必须查看 confidence 和 evidence。
+          - 表多或字段多时调小 `--chunk-size` 和 `--max-columns-per-table`。
           - OpenCode 使用前建议先加载随包提供的 Agent/Skill 配置。
           EOF
 
