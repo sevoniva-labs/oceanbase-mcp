@@ -10,6 +10,15 @@ Read-only MCP gateway for OceanBase. It lets OpenCode and other MCP clients insp
 
 OceanBase MCP is read-only by design. It has no write tool, rejects write/control SQL, blocks `SELECT *` by default, runs user SQL in read-only transactions, and refuses to start when `OB_MCP_READ_ONLY=false`.
 
+## Project Snapshot / 项目概览
+
+| Item | Details |
+| --- | --- |
+| Category | MCP server, OceanBase, SQL metadata |
+| Runtime | TypeScript, Node.js |
+| Status | Public project under active development |
+| License | Apache-2.0; see [LICENSE](./LICENSE) |
+
 ## Documentation / 文档
 
 | 主题 / Topic | 中文 | English |
