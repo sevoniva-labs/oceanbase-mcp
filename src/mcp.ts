@@ -61,6 +61,7 @@ import { generateQueryTemplates, type QueryTemplateScenario } from "./query-gene
 import { selectRuntimeProfile, withMetadataCache, withQuerySlot, type GatewayRuntime } from "./runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "./sql.js";
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "./sql-scan.js";
+import { findSqlUsages } from "./sql-usage.js";
 
 const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
 const buildSelectFilterSchema = z.object({
@@ -89,6 +90,7 @@ const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
 const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
 const dataDictionaryFormatSchema = z.enum(["json", "markdown", "html"]);
 const metadataSnapshotInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
+const sqlUsageIndexInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
 const profileInput = {
   profile: z.string().optional()
 };
@@ -3071,6 +3073,34 @@ export function createObMcpServer(
         },
         selected.config
       );
+    }
+  );
+
+  registerTool(
+    "ob_find_sql_usages",
+    {
+      title: "Find SQL Usages",
+      description: "Find project SQL usages from a static SQL usage index without executing SQL or reading project files.",
+      inputSchema: {
+        ...profileInput,
+        sqlIndex: sqlUsageIndexInputSchema,
+        schema: z.string().optional(),
+        table: z.string().optional(),
+        column: z.string().optional(),
+        businessTerm: z.string().optional(),
+        maxResults: z.number().int().positive().max(200).optional()
+      }
+    },
+    async ({ profile, sqlIndex, schema, table, column, businessTerm, maxResults }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const result = findSqlUsages(sqlIndex, {
+        schema: metadataSchema(selected.config, schema),
+        table,
+        column,
+        businessTerm,
+        maxResults
+      });
+      return toLimitedResult(result, selected.config);
     }
   );
 

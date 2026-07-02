@@ -66,6 +66,7 @@ export const TOOL_CAPABILITIES: ToolCapability[] = [
   { name: "ob_lint_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Lint read-only SQL for policy, dialect, pagination, ordering, sensitive fields, and plan risk." },
   { name: "ob_validate_sql_snippet", since: "v1.0.0", group: "sql", mode: "all", description: "Validate pasted SQL snippets for policy, dialect, pagination, risk, and visible table or column metadata." },
   { name: "ob_explain_project_query", since: "v1.0.0", group: "sql", mode: "all", description: "Explain project SQL from text or a local file without executing it." },
+  { name: "ob_find_sql_usages", since: "v1.1.0", group: "metadata_change", mode: "all", description: "Find table, column, or business-term usages from a static SQL usage index." },
   { name: "ob_generate_mapper_context", since: "v1.0.0", group: "sql", mode: "all", description: "Generate table and column context for mapper or SQL files without modifying code." },
   { name: "ob_find_unknown_columns_in_sql", since: "v1.0.0", group: "sql", mode: "all", description: "Find unknown tables and columns in SQL with visible metadata-based candidates." },
   { name: "ob_generate_table_doc", since: "v1.0.0", group: "documentation", mode: "all", description: "Generate bounded JSON or Markdown documentation for one visible table." },
