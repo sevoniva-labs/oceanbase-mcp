@@ -208,6 +208,52 @@ try {
     name: "ob_get_database_dictionary",
     arguments: { schema: smokeSchema, tablePattern: smokeTable, format: "json", maxTables: 5, maxColumnsPerTable: 5 }
   });
+  const metadataSnapshot = await send("tools/call", {
+    name: "ob_capture_metadata_snapshot",
+    arguments: {
+      schema: smokeSchema,
+      tablePattern: smokeTable,
+      includeRelationships: false,
+      includeOracleObjects: isOracle,
+      maxTables: 5,
+      maxColumnsPerTable: 10,
+      maxObjects: 10,
+      maxRelationships: 20
+    }
+  });
+  const metadataSnapshotResult = parseToolJson(metadataSnapshot);
+  const changedSnapshot = changedSmokeSnapshot(metadataSnapshotResult);
+  const sqlUsageIndex = smokeSqlUsageIndex();
+  const metadataDiff = await send("tools/call", {
+    name: "ob_compare_metadata_snapshots",
+    arguments: {
+      beforeSnapshot: metadataSnapshotResult,
+      afterSnapshot: changedSnapshot,
+      changedOnly: true
+    }
+  });
+  const metadataDiffResult = parseToolJson(metadataDiff);
+  const sqlUsages = await send("tools/call", {
+    name: "ob_find_sql_usages",
+    arguments: { sqlIndex: sqlUsageIndex, schema: smokeSchema, table: smokeTable, maxResults: 10 }
+  });
+  const changeSqlImpact = await send("tools/call", {
+    name: "ob_analyze_change_sql_impact",
+    arguments: { metadataDiff: metadataDiffResult, sqlIndex: sqlUsageIndex, maxResults: 20 }
+  });
+  const metadataImpact = await send("tools/call", {
+    name: "ob_analyze_metadata_impact",
+    arguments: { metadataDiff: metadataDiffResult, sqlIndex: sqlUsageIndex, maxResults: 20 }
+  });
+  const metadataReport = await send("tools/call", {
+    name: "ob_generate_metadata_change_report",
+    arguments: {
+      metadataDiff: metadataDiffResult,
+      impact: parseToolJson(metadataImpact),
+      title: "MCP Smoke Metadata Change Report",
+      format: isOracle ? "html" : "markdown"
+    }
+  });
   const sqlSnippetValidation = await send("tools/call", {
     name: "ob_validate_sql_snippet",
     arguments: { schema: smokeSchema, sql: pageSql }
@@ -291,6 +337,10 @@ try {
   const querySessionCloseResult = parseToolJson(querySessionClose);
   const erHtmlResult = parseToolJson(erHtml);
   const databaseDictionaryResult = parseToolJson(databaseDictionary);
+  const sqlUsageResult = parseToolJson(sqlUsages);
+  const changeSqlImpactResult = parseToolJson(changeSqlImpact);
+  const metadataImpactResult = parseToolJson(metadataImpact);
+  const metadataReportResult = parseToolJson(metadataReport);
   const sqlSnippetValidationResult = parseToolJson(sqlSnippetValidation);
   const indexRows = parseToolJson(indexes);
   const constraintRows = parseToolJson(constraints);
@@ -330,6 +380,12 @@ try {
     "ob_close_query_session",
     "ob_generate_er_html",
     "ob_get_database_dictionary",
+    "ob_capture_metadata_snapshot",
+    "ob_compare_metadata_snapshots",
+    "ob_find_sql_usages",
+    "ob_analyze_change_sql_impact",
+    "ob_analyze_metadata_impact",
+    "ob_generate_metadata_change_report",
     "ob_validate_sql_snippet",
     "ob_get_indexes",
     "ob_get_constraints",
@@ -413,6 +469,32 @@ try {
     databaseDictionaryOk:
       databaseDictionaryResult.format === "json" &&
       databaseDictionaryResult.dictionary?.tables?.some((table) => table.schema === smokeSchema && table.table === smokeTable),
+    metadataSnapshotOk:
+      metadataSnapshotResult.snapshotVersion === "1.1" &&
+      metadataSnapshotResult.executed === false &&
+      metadataSnapshotResult.compatibility === compatibility &&
+      metadataSnapshotResult.tables.some((table) => table.schema === smokeSchema && table.table === smokeTable) &&
+      (!isOracle || metadataSnapshotResult.oracleObjects.length > 0),
+    metadataDiffOk:
+      metadataDiffResult.executed === false &&
+      metadataDiffResult.summary.totalChanges > 0 &&
+      metadataDiffResult.changes.columns.length > 0 &&
+      (!isOracle || metadataDiffResult.changes.oracleObjects.length > 0),
+    sqlUsageIndexOk:
+      sqlUsageResult.executed === false &&
+      sqlUsageResult.matchCount > 0 &&
+      sqlUsageResult.results.some((result) => result.file === "mapper/SmokeMapper.xml"),
+    changeSqlImpactOk:
+      changeSqlImpactResult.executed === false &&
+      changeSqlImpactResult.summary.impactedSql > 0,
+    metadataImpactOk:
+      metadataImpactResult.executed === false &&
+      metadataImpactResult.sqlImpact?.summary?.impactedSql > 0,
+    metadataReportOk:
+      metadataReportResult.executed === false &&
+      (isOracle
+        ? metadataReportResult.contentType === "text/html" && metadataReportResult.html.includes("MCP Smoke Metadata Change Report")
+        : metadataReportResult.contentType === "text/markdown" && metadataReportResult.markdown.includes("MCP Smoke Metadata Change Report")),
     sqlSnippetValidationOk:
       sqlSnippetValidationResult.executed === false &&
       Array.isArray(sqlSnippetValidationResult.findings) &&
@@ -472,6 +554,12 @@ try {
     !output.querySessionOk ||
     !output.erHtmlOk ||
     !output.databaseDictionaryOk ||
+    !output.metadataSnapshotOk ||
+    !output.metadataDiffOk ||
+    !output.sqlUsageIndexOk ||
+    !output.changeSqlImpactOk ||
+    !output.metadataImpactOk ||
+    !output.metadataReportOk ||
     !output.sqlSnippetValidationOk ||
     !output.partitionsOk ||
     output.sampleRows < 1 ||
@@ -516,4 +604,57 @@ function parseToolJson(result) {
 
 function toolObjectType(value) {
   return String(value).trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function changedSmokeSnapshot(snapshot) {
+  const changed = JSON.parse(JSON.stringify(snapshot));
+  changed.capturedAt = new Date(Date.now() + 1_000).toISOString();
+  changed.fingerprint = `${snapshot.fingerprint}:smoke-after`;
+
+  const table = changed.tables[0];
+  if (table) {
+    if (Array.isArray(table.columns) && table.columns.length > 1) {
+      table.columns = table.columns.slice(0, table.columns.length - 1);
+    } else {
+      table.comment = `${table.comment ?? ""} smoke change`.trim();
+    }
+    table.fingerprint = `${table.fingerprint}:smoke-after`;
+  }
+
+  const object = changed.oracleObjects?.[0];
+  if (object) {
+    object.status = "INVALID";
+    object.fingerprint = `${object.fingerprint}:smoke-after`;
+  }
+
+  return changed;
+}
+
+function smokeSqlUsageIndex() {
+  return {
+    indexVersion: "1.1",
+    generatedAt: new Date().toISOString(),
+    root: process.cwd(),
+    scannedFiles: 1,
+    skippedFiles: 0,
+    snippetCount: 1,
+    entries: [{
+      file: "mapper/SmokeMapper.xml",
+      line: 12,
+      sql: `SELECT ${smokeIdColumn}, ${smokeMaskedColumn} FROM ${qualifiedTable} WHERE ${smokeIdColumn} = #{id}`,
+      statementType: "select",
+      tables: [qualifiedTable],
+      columns: [smokeIdColumn, smokeMaskedColumn],
+      dynamicSql: { detected: false, sources: [] },
+      risks: ["missing_pagination"],
+      dialectHints: [isOracle ? "oracle" : "mysql"]
+    }],
+    warnings: [],
+    limits: {
+      maxFiles: 1,
+      maxBytes: 4096,
+      extensions: [".xml"],
+      ignore: []
+    }
+  };
 }
