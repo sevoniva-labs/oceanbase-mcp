@@ -70,6 +70,7 @@ interface ErDirectorySummary {
   format?: string;
   tableCount?: number;
   relationshipCount?: number;
+  plannedRelationshipCount?: number;
   chunkCount: number;
   chunkSize?: number;
   chunks: ErDirectoryChunk[];
@@ -333,6 +334,18 @@ async function runExportErDirectory(
       tables: chunk.tables
     });
   }
+  const visibleRelationshipCount = sumVisibleRelationships(written);
+  const warnings = [...plan.warnings];
+  if (plan.chunks.length > 1) {
+    warnings.push("Chunk files show relationships where both tables are present in the same chunk. Use a smaller manual scope when cross-chunk relationships must be inspected.");
+  }
+  if (
+    typeof visibleRelationshipCount === "number" &&
+    typeof plan.relationshipCount === "number" &&
+    visibleRelationshipCount !== plan.relationshipCount
+  ) {
+    warnings.push(`Rendered chunk relationships (${visibleRelationshipCount}) differ from the planning estimate or limit (${plan.relationshipCount}). Use chunk stats for rendered ER files.`);
+  }
   const summary: ErDirectorySummary = {
     mode: plan.mode,
     schema: plan.schema,
@@ -340,7 +353,8 @@ async function runExportErDirectory(
     businessTerm: plan.businessTerm,
     format: plan.format,
     tableCount: plan.tableCount,
-    relationshipCount: plan.relationshipCount,
+    relationshipCount: visibleRelationshipCount ?? plan.relationshipCount,
+    plannedRelationshipCount: plan.relationshipCount,
     chunkCount: plan.chunks.length,
     chunkSize: plan.chunkSize,
     chunks: written.map((chunk) => ({
@@ -352,7 +366,7 @@ async function runExportErDirectory(
       file: toPosixPath(relative(outputRoot, page.absoluteFile)),
       chunkFile: toPosixPath(relative(outputRoot, page.chunkFile))
     })),
-    warnings: plan.warnings,
+    warnings,
     generatedAt: new Date().toISOString()
   };
   writeErArtifact(resolve(outputRoot, "index.html"), renderErExportIndexHtml(summary), { overwrite: options.overwrite });
@@ -360,13 +374,15 @@ async function runExportErDirectory(
   writeErArtifact(resolve(outputRoot, "metadata/er-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/relationships.json"), `${JSON.stringify({
     relationshipCount: summary.relationshipCount,
+    visibleRelationshipCount: summary.relationshipCount,
+    plannedRelationshipCount: summary.plannedRelationshipCount,
     chunks: summary.chunks.map((chunk) => ({
       index: chunk.index,
       file: chunk.file,
       tableCount: chunk.tableCount,
       relationshipCount: chunk.relationshipCount
     })),
-    note: "Relationship details are embedded in each chunk HTML artifact."
+    note: "relationshipCount is the sum of relationships rendered inside chunk HTML files. Relationship details are embedded in each chunk HTML artifact."
   }, null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/warnings.json"), `${JSON.stringify(summary.warnings, null, 2)}\n`, { overwrite: options.overwrite });
   for (const page of tablePages) {
@@ -483,6 +499,13 @@ function planTablePages(plan: ParsedErPlan, cwd: string, outputRoot: string): Ar
   return pages;
 }
 
+function sumVisibleRelationships(chunks: ErDirectoryChunk[]): number | undefined {
+  if (chunks.some((chunk) => typeof chunk.relationshipCount !== "number")) {
+    return undefined;
+  }
+  return chunks.reduce((sum, chunk) => sum + (chunk.relationshipCount ?? 0), 0);
+}
+
 export function renderErExportIndexHtml(summary: ErDirectorySummary): string {
   const chunkRows = summary.chunks.map((chunk) => `<tr>
     <td>${chunk.index}</td>
@@ -562,6 +585,13 @@ function renderSummaryStats(summary: ErDirectorySummary): string {
     ["Format", summary.format ?? ""],
     ["Tables", String(summary.tableCount ?? summary.tablePages.length)],
     ["Relationships", String(summary.relationshipCount ?? "")],
+    [
+      "Planned relationships",
+      typeof summary.plannedRelationshipCount === "number" &&
+        summary.plannedRelationshipCount !== summary.relationshipCount
+        ? String(summary.plannedRelationshipCount)
+        : ""
+    ],
     ["Chunks", String(summary.chunkCount)],
     ["Generated", summary.generatedAt]
   ].filter(([, value]) => value);

@@ -91,6 +91,7 @@ test("ER export directory pages link chunks tables and metadata", () => {
     format: "html-interactive",
     tableCount: 2,
     relationshipCount: 1,
+    plannedRelationshipCount: 2,
     chunkCount: 1,
     chunkSize: 25,
     generatedAt: "2026-07-02T00:00:00.000Z",
@@ -117,6 +118,7 @@ test("ER export directory pages link chunks tables and metadata", () => {
   assert.match(index, /metadata\/er-summary\.json/);
   assert.match(index, /chunks\/er-part-001\.html/);
   assert.match(index, /tables\/biz_test\.orders\.html/);
+  assert.match(index, /Planned relationships/);
 
   const overview = renderErExportOverviewHtml(summary);
   assert.match(overview, /metadata-only/);
