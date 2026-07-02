@@ -217,22 +217,22 @@ Manual release:
 
 1. Open GitHub Actions.
 2. Run `Release`.
-3. Enter a version such as `v1.1.2`.
+3. Enter a version such as `v1.1.3`.
 4. The workflow creates the tag, publishes images, and attaches release assets.
 
 Load an offline image:
 
 ```bash
-gunzip oceanbase-mcp-1.1.2-amd64.tar.gz
-docker load -i oceanbase-mcp-1.1.2-amd64.tar
-docker run --rm oceanbase-mcp:1.1.2-amd64
+gunzip oceanbase-mcp-1.1.3-amd64.tar.gz
+docker load -i oceanbase-mcp-1.1.3-amd64.tar
+docker run --rm oceanbase-mcp:1.1.3-amd64
 ```
 
 Build from the source archive in an internal network:
 
 ```bash
-tar -xzf ob-mcp-1.1.2-source.tar.gz
-cd ob-mcp-1.1.2
+tar -xzf ob-mcp-1.1.3-source.tar.gz
+cd ob-mcp-1.1.3
 npm ci
 npm run build
 npm run start

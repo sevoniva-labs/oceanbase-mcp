@@ -34,6 +34,7 @@ This table lists release themes only. Per-tool versioning is in the Tools table 
 | v1.1.0 | Metadata snapshots, snapshot diff, SQL usage index, impact analysis, change reports, and relationship paths for iteration review. |
 | v1.1.1 | Large-schema ER stability, batched metadata loading, improved ER HTML browser, and chunked local export planning. |
 | v1.1.2 | Local OpenCode query stability, higher local HTTP rate-limit default, crash/slow-call logging, and Oracle named bind compatibility. |
+| v1.1.3 | Lightweight large-schema ER planning, chunk strategy options, and 200+ table local validation. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -235,8 +236,8 @@ These commands only read metadata or local project files. Reports contain risks,
 Release assets include a source archive for internal builds with an internal npm registry:
 
 ```bash
-tar -xzf ob-mcp-1.1.2-source.tar.gz
-cd ob-mcp-1.1.2
+tar -xzf ob-mcp-1.1.3-source.tar.gz
+cd ob-mcp-1.1.3
 npm ci
 npm run build
 npm run start
@@ -248,12 +249,12 @@ The source archive excludes `node_modules` and `dist`. The internal npm registry
 
 | Asset | Purpose |
 | --- | --- |
-| `ob-mcp-1.1.2.tgz` | npm package. |
-| `ob-mcp-1.1.2-source.tar.gz` | Source archive for internal builds. |
+| `ob-mcp-1.1.3.tgz` | npm package. |
+| `ob-mcp-1.1.3-source.tar.gz` | Source archive for internal builds. |
 | `sbom.cdx.json` | CycloneDX SBOM. |
-| `oceanbase-mcp-1.1.2-amd64.tar.gz` | amd64 offline image. |
-| `oceanbase-mcp-1.1.2-arm64.tar.gz` | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.2` | GHCR image tag. |
+| `oceanbase-mcp-1.1.3-amd64.tar.gz` | amd64 offline image. |
+| `oceanbase-mcp-1.1.3-arm64.tar.gz` | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.1.3` | GHCR image tag. |
 
 ## Resources
 
