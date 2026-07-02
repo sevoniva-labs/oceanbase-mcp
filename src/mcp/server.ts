@@ -144,6 +144,7 @@ const SENSITIVE_SAMPLE_PATTERN =
 const QUERY_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
 const MAX_QUERY_SESSIONS = 100;
 const SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT = 25;
+const TOOL_TIMEOUT_GRACE_MS = 250;
 const QUERY_TERM_STOPWORDS = new Set([
   "show",
   "list",
@@ -211,7 +212,7 @@ export function createObMcpServer(
     version: SERVER_VERSION
   });
   const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) =>
-    safeTool(name, handler, context);
+    safeTool(name, handler, context, runtime);
   const registerTool = (
     name: string,
     spec: {
@@ -11591,14 +11592,41 @@ function explainGeneratedQuery(sql: string, paramCount: number, config: ObConfig
   };
 }
 
+function toolWallTimeoutMs(name: string, runtime: GatewayRuntime, context: McpRequestContext): number {
+  const config = gatewayLimitConfig(runtime, context);
+  const budget = getToolCapability(name)?.budget.timeoutMs;
+  const configuredTimeout = budget === "profile.erTotalTimeoutMs"
+    ? config.erTotalTimeoutMs
+    : config.queryTimeoutMs;
+  return Math.max(1, configuredTimeout + TOOL_TIMEOUT_GRACE_MS);
+}
+
+async function withToolTimeout<T>(operation: Promise<T>, timeoutMs: number, name: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new Error(`Tool "${name}" exceeded configured timeout budget ${timeoutMs}ms.`));
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
+  }
+}
+
 function safeTool<Args>(
   name: string,
   handler: (args: Args) => Promise<ReturnType<typeof toResult>>,
-  context: McpRequestContext
+  context: McpRequestContext,
+  runtime: GatewayRuntime
 ) {
   return async (args: Args) => {
     const started = Date.now();
     const finish = metrics.startToolCall();
+    let timeoutMs: number | undefined;
     recordCrashBreadcrumb("tool_start", {
       tool: name,
       toolGroup: getToolCapability(name)?.group,
@@ -11611,14 +11639,16 @@ function safeTool<Args>(
     });
     try {
       assertToolAllowed(name, context.principal);
-      const result = await handler(args);
+      timeoutMs = toolWallTimeoutMs(name, runtime, context);
+      const result = await withToolTimeout(Promise.resolve().then(() => handler(args)), timeoutMs, name);
       const durationMs = Date.now() - started;
       const responseBytes = resultTextBytes(result);
       recordCrashBreadcrumb("tool_finish", {
         ok: true,
         tool: name,
         durationMs,
-        responseBytes
+        responseBytes,
+        timeoutMs
       });
       logAudit("tool_call", {
         ok: true,
@@ -11630,6 +11660,7 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        timeoutMs,
         responseBytes,
         ...auditArgs(args)
       });
@@ -11643,6 +11674,7 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        timeoutMs,
         responseBytes,
         ...auditArgs(args)
       });
@@ -11658,6 +11690,7 @@ function safeTool<Args>(
         tool: name,
         durationMs,
         responseBytes,
+        timeoutMs,
         error: (error as Error).message
       });
       logAudit("tool_call", {
@@ -11670,6 +11703,7 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        timeoutMs,
         responseBytes,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
@@ -11684,6 +11718,7 @@ function safeTool<Args>(
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
+        timeoutMs,
         responseBytes,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
@@ -11728,6 +11763,10 @@ function errorHints(error: unknown, args: unknown): string[] {
   }
   if (/access denied|permission|privilege|ora-01031|1044|1142/.test(lower)) {
     hints.push("The database account may not have the required read or metadata privilege. Run ob_verify_permissions and check grants.");
+  }
+  if (/exceeded configured timeout budget|timeout|timed out|query execution was interrupted/.test(lower)) {
+    hints.push("The request exceeded the configured timeout. Narrow the schema, table scope, row limit, or ER export window before retrying.");
+    hints.push("For large ER diagrams, use ob_plan_er_export and export smaller chunks instead of requesting a full inline diagram.");
   }
   if (sql && !/\border\s+by\b/i.test(sql) && /ob_query_page|paged/i.test(lower)) {
     hints.push("Add a stable ORDER BY for repeatable pagination.");
