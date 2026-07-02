@@ -214,7 +214,7 @@ npm run start:http
 | v1.1.0 | `ob_compare_metadata_snapshots` | 对比两份元数据快照，返回基于证据的结构变化。 |
 | v1.1.0 | `ob_find_sql_usages` | 从静态 SQL 使用索引中查找表、字段或业务词引用。 |
 | v1.1.0 | `ob_generate_metadata_change_report` | 基于 diff 和影响分析生成 Markdown 或简版 HTML 变更报告。 |
-| v1.1.1 | `ob_plan_er_export` | 为大 schema 规划本地 ER HTML 分片导出命令，避免 MCP inline 返回过大。 |
+| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 ER HTML 分片导出命令。 |
 
 ## 元数据变更流程
 

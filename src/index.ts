@@ -96,8 +96,10 @@ Export ER options:
   --business-term <term>
   --depth <n>
   --max-tables <n>
+  --max-columns-per-table <n>
   --max-relationships <n>
   --relationship-mode none|foreign_key|inferred
+  --strategy single|connected-components|table-prefix|business-term|manual|window
   --no-include-inferred
   --format static|interactive|compact|detailed
   --out <file>

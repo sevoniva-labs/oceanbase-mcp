@@ -93,7 +93,7 @@ node dist/index.js export-er --schema biz_test --business-term 订单 --format d
 表很多时建议导出可浏览目录：
 
 ```bash
-ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
+ob-mcp export-er --schema biz_test --format interactive --strategy table-prefix --out-dir docs/er --chunk-size 25
 ```
 
 支持格式：
@@ -115,9 +115,11 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 | `--business-term <term>` | 按业务词匹配表范围。 |
 | `--depth <1-3>` | 关系发现深度。 |
 | `--max-tables <n>` | 最大表数量。 |
+| `--max-columns-per-table <n>` | ER HTML 中每张表渲染的最大字段数量。 |
 | `--max-relationships <n>` | 最大关系数量。 |
 | `--min-confidence <0-1>` | 最低关系置信度。 |
 | `--relationship-mode <mode>` | `none`、`foreign_key` 或 `inferred`。默认 `foreign_key`。 |
+| `--strategy <strategy>` | `single`、`connected-components`、`table-prefix`、`business-term`、`manual` 或 `window`。 |
 | `--no-include-inferred` | 只保留真实外键等高可信关系。 |
 | `--format <format>` | `static`、`interactive`、`compact` 或 `detailed`。 |
 | `--out <file>` | 输出文件。未指定时使用安全默认文件名。 |
@@ -126,6 +128,8 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 | `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
 
 导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 ER 文件，不修改数据库。分片导出会绕开 MCP inline HTML 上限，但单个分片仍受 `OB_MAX_RESULT_BYTES` 控制；大库可以调小 `--chunk-size` 或适当调高 `OB_MAX_RESULT_BYTES`。
+
+真实外键较完整时使用 `connected-components`；表名有清晰前缀时使用 `table-prefix`；业务字典能定义范围时使用 `business-term`；明确表清单时使用 `manual`；其他场景用 `window` 按排序分页兜底。
 
 ## 元数据变更
 

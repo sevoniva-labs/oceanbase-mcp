@@ -118,7 +118,7 @@ The agent uses this query workflow:
 
 Do not let the agent guess table names, column names, or relationships. When context is insufficient, provide a business term, schema, or table name first.
 
-For large schemas, do not ask the agent to generate a full inline ER diagram. Ask it to run `ob_plan_er_export`, review warnings and stats, then export chunks locally with `ob-mcp export-er --out-dir`.
+For large schemas, do not ask the agent to generate a full inline ER diagram. Ask it to run `ob_plan_er_export`, review warnings, stats, and the suggested strategy, then export chunks locally with `ob-mcp export-er --out-dir`.
 
 For iteration metadata review, use this workflow:
 

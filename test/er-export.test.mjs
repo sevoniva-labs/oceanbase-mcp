@@ -22,7 +22,9 @@ test("parseExportErArgs parses ER export options", () => {
     "--business-term", "订单",
     "--depth", "2",
     "--max-tables", "12",
+    "--max-columns-per-table", "18",
     "--min-confidence", "0.8",
+    "--strategy", "table-prefix",
     "--format", "interactive",
     "--title", "Order ER",
     "--out", "er/order.html",
@@ -39,7 +41,9 @@ test("parseExportErArgs parses ER export options", () => {
     businessTerm: "订单",
     depth: 2,
     maxTables: 12,
+    maxColumnsPerTable: 18,
     minConfidence: 0.8,
+    strategy: "table-prefix",
     format: "html-interactive",
     title: "Order ER",
     output: "er/order.html",
@@ -58,6 +62,7 @@ test("parseExportErArgs parses ER export options", () => {
   assert.throws(() => parseExportErArgs(["--format", "svg"]), /--format/);
   assert.throws(() => parseExportErArgs(["--depth", "9"]), /--depth/);
   assert.throws(() => parseExportErArgs(["--relationship-mode", "wide"]), /--relationship-mode/);
+  assert.throws(() => parseExportErArgs(["--strategy", "wide"]), /--strategy/);
 });
 
 test("resolveErOutputPath uses safe default names", () => {

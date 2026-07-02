@@ -6,6 +6,7 @@ import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
 import { createObMcpServer } from "./mcp.js";
 
 export type ExportErFormat = "html-static" | "html-interactive" | "html-compact" | "html-detailed";
+export type ExportErStrategy = "single" | "connected-components" | "table-prefix" | "business-term" | "manual" | "window";
 
 export interface ExportErOptions {
   cwd?: string;
@@ -16,10 +17,12 @@ export interface ExportErOptions {
   businessTerm?: string;
   depth?: number;
   maxTables?: number;
+  maxColumnsPerTable?: number;
   maxRelationships?: number;
   minConfidence?: number;
   relationshipMode?: "none" | "foreign_key" | "inferred";
   includeInferred?: boolean;
+  strategy?: ExportErStrategy;
   format?: ExportErFormat;
   title?: string;
   output?: string;
@@ -99,6 +102,7 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
 
     const gatewayConfig = loadGatewayConfig();
     allowLocalErHtmlExport(gatewayConfig);
+    applyErExportOverrides(gatewayConfig, options);
     runtime = createGatewayRuntime(gatewayConfig);
     server = createObMcpServer(runtime) as unknown as ToolExecutorServer;
     if (options.outputDir) {
@@ -141,6 +145,15 @@ function allowLocalErHtmlExport(config: GatewayConfig): void {
       profile.erInlineHtmlMaxBytes,
       Math.min(profile.maxResultBytes, 64 * 1024 * 1024)
     );
+  }
+}
+
+function applyErExportOverrides(config: GatewayConfig, options: ExportErOptions): void {
+  if (!options.maxColumnsPerTable) {
+    return;
+  }
+  for (const profile of Object.values(config.profiles)) {
+    profile.erMaxColumnsPerTable = options.maxColumnsPerTable;
   }
 }
 
@@ -199,6 +212,9 @@ export function parseExportErArgs(args: string[]): ExportErOptions {
       case "--max-tables":
         options.maxTables = parsePositiveInt(value, name, 500);
         break;
+      case "--max-columns-per-table":
+        options.maxColumnsPerTable = parsePositiveInt(value, name, 500);
+        break;
       case "--max-relationships":
         options.maxRelationships = parsePositiveInt(value, name, 1000);
         break;
@@ -208,6 +224,9 @@ export function parseExportErArgs(args: string[]): ExportErOptions {
       case "--relationship-mode":
         options.relationshipMode = parseRelationshipMode(value);
         options.includeInferred = options.relationshipMode === "inferred";
+        break;
+      case "--strategy":
+        options.strategy = parseExportErStrategy(value);
         break;
       case "--format":
         options.format = parseExportErFormat(value);
@@ -273,6 +292,8 @@ function erToolArgs(options: ExportErOptions): Record<string, unknown> {
 function erPlanArgs(options: ExportErOptions): Record<string, unknown> {
   return {
     ...erToolArgs(options),
+    strategy: options.strategy,
+    maxColumnsPerTable: options.maxColumnsPerTable,
     outputDir: options.outputDir,
     chunkSize: options.chunkSize
   };
@@ -694,6 +715,21 @@ function parseRelationshipMode(value: string): "none" | "foreign_key" | "inferre
     return normalized;
   }
   throw new Error("--relationship-mode must be none, foreign_key, or inferred.");
+}
+
+function parseExportErStrategy(value: string): ExportErStrategy {
+  const normalized = value.trim();
+  if (
+    normalized === "single" ||
+    normalized === "connected-components" ||
+    normalized === "table-prefix" ||
+    normalized === "business-term" ||
+    normalized === "manual" ||
+    normalized === "window"
+  ) {
+    return normalized;
+  }
+  throw new Error("--strategy must be single, connected-components, table-prefix, business-term, manual, or window.");
 }
 
 function safeFileName(value: string): string {

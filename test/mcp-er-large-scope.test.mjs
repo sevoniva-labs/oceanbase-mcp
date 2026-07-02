@@ -53,24 +53,90 @@ test("ob_plan_er_export returns chunked local export commands", async () => {
     schema: "big_model",
     maxTables: 55,
     relationshipMode: "none",
+    strategy: "table-prefix",
+    maxColumnsPerTable: 6,
     chunkSize: 20,
     outputDir: "er-output"
   }, {});
   const payload = JSON.parse(result.content[0].text);
 
   assert.equal(payload.tableCount, 55);
+  assert.equal(payload.estimatedTableCount, 220);
+  assert.equal(payload.estimatedColumnCount, 3000);
+  assert.equal(payload.strategy, "table-prefix");
   assert.equal(payload.chunkCount, 3);
   assert.equal(payload.chunks[0].tableCount, 20);
   assert.equal(payload.chunks[2].tableCount, 15);
   assert.match(payload.singleFileCommand, /ob-mcp export-er/);
+  assert.match(payload.singleFileCommand, /--max-columns-per-table 6/);
   assert.match(payload.chunks[0].command, /--tables/);
   assert.equal(payload.chunks[0].file, "er-output/chunks/er-part-001.html");
   assert(payload.warnings.some((warning) => /chunk commands/.test(warning)));
+  assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name/i.test(entry.sql)).length, 0);
+  assert.equal(queryLog.filter((entry) => /FROM information_schema\.statistics/i.test(entry.sql)).length, 0);
+  assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 0);
+});
+
+test("ob_plan_er_export uses lightweight Oracle metadata planning", async () => {
+  const queryLog = [];
+  const config = loadConfig({
+    OB_COMPATIBILITY: "oracle",
+    OB_DATABASE: "OB_USER",
+    OB_ALLOWED_SCHEMAS: "OB_USER",
+    OB_ER_MAX_TABLES: "250",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "4",
+    OB_MAX_RESULT_BYTES: "4000000"
+  });
+  const server = createObMcpServer({
+    defaultProfile: "default",
+    configs: { default: config },
+    pools: { default: { query: oracleLargeSchemaQuery(queryLog) } },
+    queryLimiters: { default: { active: 0, limit: 5 } }
+  });
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_plan_er_export, {
+    schema: "OB_USER",
+    maxTables: 80,
+    relationshipMode: "foreign_key",
+    strategy: "connected-components",
+    chunkSize: 25,
+    outputDir: "oracle-er"
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.mode, "oracle");
+  assert.equal(payload.estimatedTableCount, 240);
+  assert.equal(payload.estimatedColumnCount, 3600);
+  assert.equal(payload.estimatedRelationshipCount, 30);
+  assert.equal(payload.relationshipCount, 2);
+  assert.equal(payload.strategy, "connected-components");
+  assert.equal(payload.chunkCount, 4);
+  assert.match(payload.chunks[0].command, /--relationship-mode foreign_key/);
+  assert.equal(queryLog.filter((entry) => /FROM all_tab_columns c/i.test(entry.sql)).length, 0);
+  assert.equal(queryLog.filter((entry) => /FROM all_indexes i/i.test(entry.sql)).length, 0);
 });
 
 function largeSchemaQuery(queryLog) {
   return async ({ sql, values = [] }) => {
     queryLog.push({ sql, values });
+    if (/COUNT\(\*\) AS count_value FROM information_schema\.tables/i.test(sql)) {
+      return [[{ count_value: 220 }], []];
+    }
+    if (/COUNT\(\*\) AS count_value FROM information_schema\.columns/i.test(sql)) {
+      return [[{ count_value: 3000 }], []];
+    }
+    if (/COUNT\(DISTINCT CONCAT_WS/i.test(sql)) {
+      return [[{ count_value: 12 }], []];
+    }
+    if (/SELECT table_schema, table_name, table_rows/i.test(sql)) {
+      return [[
+        { table_schema: "big_model", table_name: "t_001", table_rows: 1000000 },
+        { table_schema: "big_model", table_name: "t_002", table_rows: 900000 }
+      ], []];
+    }
+    if (/FROM information_schema\.key_column_usage kcu/i.test(sql)) {
+      return [[], []];
+    }
     if (/FROM information_schema\.tables/i.test(sql)) {
       const limit = Number(values.at(-1) ?? 220);
       return [Array.from({ length: Math.min(limit, 220) }, (_, index) => ({
@@ -111,6 +177,58 @@ function largeSchemaQuery(queryLog) {
       ]), []];
     }
     throw new Error(`Unexpected SQL: ${sql}`);
+  };
+}
+
+function oracleLargeSchemaQuery(queryLog) {
+  return async ({ sql, values = [] }) => {
+    queryLog.push({ sql, values });
+    if (/COUNT\(\*\) AS count_value FROM all_tables/i.test(sql)) {
+      return [[{ COUNT_VALUE: 240 }], []];
+    }
+    if (/COUNT\(\*\) AS count_value FROM all_tab_columns/i.test(sql)) {
+      return [[{ COUNT_VALUE: 3600 }], []];
+    }
+    if (/COUNT\(\*\) AS count_value FROM all_constraints/i.test(sql)) {
+      return [[{ COUNT_VALUE: 30 }], []];
+    }
+    if (/SELECT .*owner, table_name, num_rows/i.test(sql)) {
+      return [[
+        { OWNER: "OB_USER", TABLE_NAME: "ORDERS", NUM_ROWS: 1200000 },
+        { OWNER: "OB_USER", TABLE_NAME: "ORDER_ITEMS", NUM_ROWS: 3000000 }
+      ], []];
+    }
+    if (/FROM all_tables/i.test(sql)) {
+      const limit = Number(values.at(-1) ?? 80);
+      return [Array.from({ length: Math.min(limit, 80) }, (_, index) => ({
+        OWNER: "OB_USER",
+        TABLE_NAME: index === 0 ? "ORDERS" : index === 1 ? "ORDER_ITEMS" : index === 2 ? "USERS" : `BIZ_${String(index + 1).padStart(3, "0")}`,
+        NUM_ROWS: 1000 - index
+      })), []];
+    }
+    if (/FROM all_constraints c/i.test(sql) && /JOIN all_cons_columns cc/i.test(sql)) {
+      return [[
+        {
+          CONSTRAINT_NAME: "FK_ORDER_ITEMS_ORDER",
+          SOURCE_SCHEMA: "OB_USER",
+          SOURCE_TABLE: "ORDER_ITEMS",
+          SOURCE_COLUMN: "ORDER_ID",
+          TARGET_SCHEMA: "OB_USER",
+          TARGET_TABLE: "ORDERS",
+          TARGET_COLUMN: "ID"
+        },
+        {
+          CONSTRAINT_NAME: "FK_ORDERS_USER",
+          SOURCE_SCHEMA: "OB_USER",
+          SOURCE_TABLE: "ORDERS",
+          SOURCE_COLUMN: "USER_ID",
+          TARGET_SCHEMA: "OB_USER",
+          TARGET_TABLE: "USERS",
+          TARGET_COLUMN: "ID"
+        }
+      ], []];
+    }
+    throw new Error(`Unexpected Oracle SQL: ${sql}`);
   };
 }
 

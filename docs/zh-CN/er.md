@@ -10,7 +10,7 @@ ER 图能力基于可见元数据和关系证据生成，不会凭空补关系�
 | --- | --- |
 | `ob_generate_er_diagram` | 生成 Mermaid 和 JSON ER 元数据，支持 schema、table、业务词、深度和表数量限制。 |
 | `ob_generate_er_html` | 生成自包含 HTML ER 图，支持 static、interactive、compact、detailed。 |
-| `ob_plan_er_export` | 为大 schema 规划本地 ER HTML 分片导出命令，避免 MCP inline 返回过大。 |
+| `ob_plan_er_export` | 轻量估算表、字段和关系规模，并规划本地 ER HTML 分片导出命令。 |
 | `ob_generate_entity_diagram` | 围绕业务词或表名生成局部实体图，返回 Mermaid、JSON、HTML 和关系依据。 |
 | `ob_explain_relationship` | 解释两张表之间的字段依据、约束依据、命名依据和置信度。 |
 | `ob_generate_er_document` | 生成 Markdown、PlantUML 和 DOT 格式的模型说明。 |
@@ -39,7 +39,7 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 大 schema 分片导出：
 
 ```bash
-ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
+ob-mcp export-er --schema biz_test --format interactive --strategy connected-components --out-dir docs/er --chunk-size 25
 ```
 
 默认不会覆盖已有文件。需要覆盖时显式传入 `--overwrite`。
@@ -56,10 +56,13 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 
 分片导出时，`metadata/relationships.json` 中的 `relationshipCount` 表示已经渲染到 chunk HTML 里的关系数；`plannedRelationshipCount` 表示规划阶段的估算值或关系上限。需要在同一张图里检查跨 chunk 关系时，建议手动缩小表范围重新导出。
 
+`ob_plan_er_export` 只读取元数据，返回 `estimatedTableCount`、`estimatedColumnCount`、`estimatedRelationshipCount`、大表估算、`suggestedStrategy`、`suggestedMaxTablesPerFile`、风险、warnings 和分片命令。支持策略：`single`、`connected-components`、`table-prefix`、`business-term`、`manual`、`window`。
+
 ## 使用建议
 
 - 先缩小 schema、table 或业务词范围。
 - schema 级 ER 先调用 `ob_plan_er_export`，再决定是否分片导出。
+- 大 schema 优先使用 `ob-mcp export-er --out-dir`，先选分片策略，再考虑调大限制。
 - 默认使用 `relationshipMode=foreign_key`。只有明确的小范围分析才使用 `inferred`。
 - 优先查看 `ob_find_related_tables` 和 `ob_explain_relationship` 的证据。
 - 不要把低置信度推断关系当作真实外键。

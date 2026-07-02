@@ -93,7 +93,7 @@ node dist/index.js export-er --schema biz_test --business-term orders --format d
 For larger schemas, export a browsable directory:
 
 ```bash
-ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
+ob-mcp export-er --schema biz_test --format interactive --strategy table-prefix --out-dir docs/er --chunk-size 25
 ```
 
 Supported formats:
@@ -115,9 +115,11 @@ Common options:
 | `--business-term <term>` | Match the ER scope from a business term. |
 | `--depth <1-3>` | Relationship discovery depth. |
 | `--max-tables <n>` | Maximum table count. |
+| `--max-columns-per-table <n>` | Maximum columns rendered per table in ER HTML. |
 | `--max-relationships <n>` | Maximum relationship count. |
 | `--min-confidence <0-1>` | Minimum relationship confidence. |
 | `--relationship-mode <mode>` | `none`, `foreign_key`, or `inferred`. Defaults to `foreign_key`. |
+| `--strategy <strategy>` | `single`, `connected-components`, `table-prefix`, `business-term`, `manual`, or `window`. |
 | `--no-include-inferred` | Keep only high-confidence relationships such as real foreign keys. |
 | `--format <format>` | `static`, `interactive`, `compact`, or `detailed`. |
 | `--out <file>` | Output file. A safe default name is used when omitted. |
@@ -126,6 +128,8 @@ Common options:
 | `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
 
 Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only local ER artifacts and never modifies the database. Chunked export bypasses the MCP inline HTML cap, but each chunk is still controlled by `OB_MAX_RESULT_BYTES`; for large schemas, reduce `--chunk-size` or raise `OB_MAX_RESULT_BYTES` deliberately.
+
+Use `connected-components` when real foreign keys connect the model, `table-prefix` when tables are grouped by naming convention, `business-term` when a glossary term defines the scope, `manual` for an explicit table list, and `window` as the sorted paging fallback.
 
 ## Metadata Change
 

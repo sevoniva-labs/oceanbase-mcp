@@ -118,7 +118,7 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8
 
 不要让 agent 猜表名、字段名或关系。信息不足时，应先补充业务词、schema 或表名。
 
-大 schema 不要要求 agent 直接生成全量 inline ER。应先调用 `ob_plan_er_export`，查看 warnings 和 stats，再用 `ob-mcp export-er --out-dir` 本地分片导出。
+大 schema 不要要求 agent 直接生成全量 inline ER。应先调用 `ob_plan_er_export`，查看 warnings、stats 和建议策略，再用 `ob-mcp export-er --out-dir` 本地分片导出。
 
 迭代元数据评审使用这个流程：
 

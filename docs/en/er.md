@@ -10,7 +10,7 @@ ER diagrams are generated from visible metadata and relationship evidence. The s
 | --- | --- |
 | `ob_generate_er_diagram` | Generates Mermaid and JSON ER metadata with schema, table, business-term, depth, and table-count limits. |
 | `ob_generate_er_html` | Generates self-contained HTML ER diagrams in static, interactive, compact, or detailed form. |
-| `ob_plan_er_export` | Plans chunked local ER HTML export commands for large schemas to avoid oversized inline MCP responses. |
+| `ob_plan_er_export` | Estimates table, column, and relationship scale, then plans chunked local ER HTML export commands. |
 | `ob_generate_entity_diagram` | Generates a local entity diagram from a business term or table, with Mermaid, JSON, HTML, and relationship evidence. |
 | `ob_explain_relationship` | Explains field, constraint, naming evidence, and confidence between two tables. |
 | `ob_generate_er_document` | Generates Markdown, PlantUML, and DOT model documentation. |
@@ -39,7 +39,7 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 Chunked export for larger schemas:
 
 ```bash
-ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chunk-size 25
+ob-mcp export-er --schema biz_test --format interactive --strategy connected-components --out-dir docs/er --chunk-size 25
 ```
 
 Existing files are not overwritten by default. Pass `--overwrite` explicitly when needed.
@@ -56,10 +56,13 @@ Existing files are not overwritten by default. Pass `--overwrite` explicitly whe
 
 For chunked exports, `relationshipCount` in `metadata/relationships.json` is the number of relationships rendered inside chunk HTML files. `plannedRelationshipCount` records the planning-stage estimate or configured relationship limit. Cross-chunk relationships may need a smaller manual scope when they must be inspected in one diagram.
 
+`ob_plan_er_export` is metadata-only and lightweight. It returns `estimatedTableCount`, `estimatedColumnCount`, `estimatedRelationshipCount`, large-table estimates, `suggestedStrategy`, `suggestedMaxTablesPerFile`, risks, warnings, and chunk commands. Supported strategies are `single`, `connected-components`, `table-prefix`, `business-term`, `manual`, and `window`.
+
 ## Usage Notes
 
 - Start with a narrow schema, table, or business-term scope.
 - For schema-wide ER work, call `ob_plan_er_export` before generating HTML.
+- For large schemas, prefer `ob-mcp export-er --out-dir` and pick a strategy before raising limits.
 - Use `relationshipMode=foreign_key` by default. Use `inferred` only for a small, explicit scope.
 - Review evidence from `ob_find_related_tables` and `ob_explain_relationship`.
 - Do not treat low-confidence inferred relationships as real foreign keys.

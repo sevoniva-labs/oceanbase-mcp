@@ -214,7 +214,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | Generate Markdown or simple HTML change reports from diff and impact evidence. |
-| v1.1.1 | `ob_plan_er_export` | Plan chunked local ER HTML export commands for large schemas without returning large inline HTML. |
+| v1.1.1 | `ob_plan_er_export` | Estimate large-schema ER size and plan chunked local ER HTML export commands. |
 
 ## Metadata Change Workflow
 

@@ -67,6 +67,21 @@ export interface TableRef {
   table: string;
 }
 
+export interface ErExportPlanStats {
+  schema?: string;
+  estimatedTableCount: number;
+  estimatedColumnCount: number;
+  estimatedRelationshipCount: number;
+  largeTables: Array<{
+    schema?: string;
+    table: string;
+    estimatedRows: number | null;
+    estimated: boolean;
+  }>;
+  queryCount: number;
+  warnings: string[];
+}
+
 export interface RelatedTablesResult {
   mode: CompatibilityMode;
   root: {
@@ -479,7 +494,7 @@ export async function listTables(
 
   const [rows] = await pool.query({
     sql: `
-      SELECT table_schema, table_name, table_type, engine
+      SELECT table_schema, table_name, table_type, engine, table_rows
       FROM information_schema.tables
       WHERE table_schema = ?
       ORDER BY table_name
@@ -489,6 +504,208 @@ export async function listTables(
     timeout: timeoutMs
   });
   return rows as unknown[];
+}
+
+export async function estimateErExportPlanStats(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  timeoutMs: number
+): Promise<ErExportPlanStats> {
+  const resolvedSchema =
+    mode === "oracle"
+      ? schema?.trim().toUpperCase() || (await currentOracleSchema(pool, timeoutMs))
+      : schema?.trim() || (await currentMysqlSchema(pool, timeoutMs));
+  if (mode === "mysql" && !resolvedSchema) {
+    throw new Error("No MySQL database is selected. Pass the schema argument to ob_plan_er_export.");
+  }
+  const queryCount = { value: 0 };
+  const [tableCount, columnCount, relationshipCount, largeTables] = await Promise.all([
+    countSchemaTables(pool, mode, resolvedSchema, timeoutMs, queryCount),
+    countSchemaColumns(pool, mode, resolvedSchema, timeoutMs, queryCount),
+    countSchemaForeignKeys(pool, mode, resolvedSchema, timeoutMs, queryCount),
+    listLargeTables(pool, mode, resolvedSchema, timeoutMs, queryCount)
+  ]);
+  return {
+    schema: resolvedSchema,
+    estimatedTableCount: tableCount,
+    estimatedColumnCount: columnCount,
+    estimatedRelationshipCount: relationshipCount,
+    largeTables,
+    queryCount: queryCount.value,
+    warnings: [
+      "Counts are metadata estimates and depend on OceanBase statistics freshness.",
+      ...(largeTables.some((table) => table.estimatedRows == null)
+        ? ["Some table row estimates are unavailable from system metadata."]
+        : [])
+    ]
+  };
+}
+
+async function countSchemaTables(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  timeoutMs: number,
+  queryCount: { value: number }
+): Promise<number> {
+  queryCount.value += 1;
+  if (mode === "oracle") {
+    const owner = schema?.trim().toUpperCase();
+    const [rows] = await pool.query({
+      sql: owner
+        ? `SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS count_value FROM all_tables WHERE owner = ?`
+        : `SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS count_value FROM user_tables`,
+      values: owner ? [owner] : [],
+      timeout: timeoutMs
+    });
+    return numericCount(rows);
+  }
+  const mysqlSchema = schema ?? "";
+  const [rows] = await pool.query({
+    sql: "SELECT COUNT(*) AS count_value FROM information_schema.tables WHERE table_schema = ?",
+    values: [mysqlSchema],
+    timeout: timeoutMs
+  });
+  return numericCount(rows);
+}
+
+async function countSchemaColumns(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  timeoutMs: number,
+  queryCount: { value: number }
+): Promise<number> {
+  queryCount.value += 1;
+  if (mode === "oracle") {
+    const owner = schema?.trim().toUpperCase();
+    const [rows] = await pool.query({
+      sql: owner
+        ? `SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS count_value FROM all_tab_columns WHERE owner = ?`
+        : `SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS count_value FROM user_tab_columns`,
+      values: owner ? [owner] : [],
+      timeout: timeoutMs
+    });
+    return numericCount(rows);
+  }
+  const mysqlSchema = schema ?? "";
+  const [rows] = await pool.query({
+    sql: "SELECT COUNT(*) AS count_value FROM information_schema.columns WHERE table_schema = ?",
+    values: [mysqlSchema],
+    timeout: timeoutMs
+  });
+  return numericCount(rows);
+}
+
+async function countSchemaForeignKeys(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  timeoutMs: number,
+  queryCount: { value: number }
+): Promise<number> {
+  queryCount.value += 1;
+  if (mode === "oracle") {
+    const owner = schema?.trim().toUpperCase();
+    const [rows] = await pool.query({
+      sql: owner
+        ? `SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS count_value FROM all_constraints WHERE owner = ? AND constraint_type = 'R'`
+        : `SELECT ${oracleTimeoutHint(timeoutMs)} COUNT(*) AS count_value FROM user_constraints WHERE constraint_type = 'R'`,
+      values: owner ? [owner] : [],
+      timeout: timeoutMs
+    });
+    return numericCount(rows);
+  }
+  const mysqlSchema = schema ?? "";
+  const [rows] = await pool.query({
+    sql: `
+      SELECT COUNT(DISTINCT CONCAT_WS('.', constraint_schema, constraint_name, table_schema, table_name)) AS count_value
+      FROM information_schema.key_column_usage
+      WHERE table_schema = ?
+        AND referenced_table_name IS NOT NULL
+    `,
+    values: [mysqlSchema],
+    timeout: timeoutMs
+  });
+  return numericCount(rows);
+}
+
+async function listLargeTables(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  schema: string | undefined,
+  timeoutMs: number,
+  queryCount: { value: number }
+): Promise<ErExportPlanStats["largeTables"]> {
+  queryCount.value += 1;
+  if (mode === "oracle") {
+    const owner = schema?.trim().toUpperCase();
+    const [rows] = await pool.query({
+      sql: owner
+        ? `
+          SELECT ${oracleTimeoutHint(timeoutMs)} *
+          FROM (
+            SELECT owner, table_name, num_rows
+            FROM all_tables
+            WHERE owner = ?
+            ORDER BY num_rows DESC NULLS LAST, table_name
+          )
+          WHERE ROWNUM <= 10
+        `
+        : `
+          SELECT ${oracleTimeoutHint(timeoutMs)} *
+          FROM (
+            SELECT table_name, num_rows
+            FROM user_tables
+            ORDER BY num_rows DESC NULLS LAST, table_name
+          )
+          WHERE ROWNUM <= 10
+        `,
+      values: owner ? [owner] : [],
+      timeout: timeoutMs
+    });
+    return (rows as unknown[]).map((row) => {
+      const record = rowRecord(row);
+      const estimatedRows = numberField(record, "num_rows", "NUM_ROWS");
+      return {
+        schema: stringField(record, "owner", "OWNER") ?? schema,
+        table: stringField(record, "table_name", "TABLE_NAME") ?? "",
+        estimatedRows: estimatedRows ?? null,
+        estimated: true
+      };
+    }).filter((table) => table.table);
+  }
+  const mysqlSchema = schema ?? "";
+  const [rows] = await pool.query({
+    sql: `
+      SELECT table_schema, table_name, table_rows
+      FROM information_schema.tables
+      WHERE table_schema = ?
+      ORDER BY table_rows DESC, table_name
+      LIMIT 10
+    `,
+    values: [mysqlSchema],
+    timeout: timeoutMs
+  });
+  return (rows as unknown[]).map((row) => {
+    const record = rowRecord(row);
+    const estimatedRows = numberField(record, "table_rows", "TABLE_ROWS");
+    return {
+      schema: stringField(record, "table_schema", "TABLE_SCHEMA") ?? mysqlSchema,
+      table: stringField(record, "table_name", "TABLE_NAME") ?? "",
+      estimatedRows: estimatedRows ?? null,
+      estimated: true
+    };
+  }).filter((table) => table.table);
+}
+
+function numericCount(rows: unknown): number {
+  const first = Array.isArray(rows) ? rows[0] : undefined;
+  const value = first && typeof first === "object"
+    ? numberField(first as Record<string, unknown>, "count_value", "COUNT_VALUE", "COUNT(*)")
+    : undefined;
+  return value ?? 0;
 }
 
 export async function describeTable(
@@ -733,6 +950,25 @@ export async function loadErMetadataBatch(
     relationships,
     queryCount: queryCount.value,
     warnings
+  };
+}
+
+export async function listErForeignKeyRelationshipsBatch(
+  pool: ObPool,
+  mode: CompatibilityMode,
+  refs: TableRef[],
+  timeoutMs: number
+): Promise<{ relationships: TableRelationship[]; queryCount: number; warnings: string[] }> {
+  const normalizedRefs = uniqueTableRefs(mode, refs);
+  if (normalizedRefs.length === 0) {
+    return { relationships: [], queryCount: 0, warnings: [] };
+  }
+  const queryCount = { value: 0 };
+  const relationships = await queryBatchForeignKeys(pool, mode, normalizedRefs, timeoutMs, queryCount);
+  return {
+    relationships: dedupeTableRelationships(mode, relationships),
+    queryCount: queryCount.value,
+    warnings: []
   };
 }
 
