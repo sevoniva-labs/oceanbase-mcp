@@ -98,47 +98,36 @@ import {
   visibleDefaultProfile
 } from "./access.js";
 import type { McpRequestContext } from "./context.js";
+import {
+  buildSelectFilterSchema,
+  buildSelectOrderBySchema,
+  compatibilityModeSchema,
+  dataDictionaryFormatSchema,
+  entityDiagramOutputFormatSchema,
+  erDocumentFormatSchema,
+  erExportStrategySchema,
+  erHtmlFormatSchema,
+  erRelationshipModeSchema,
+  metadataChangeReportFormatSchema,
+  metadataDiffInputSchema,
+  metadataImpactInputSchema,
+  metadataSnapshotInputSchema,
+  oracleObjectTypeSchema,
+  profileInput,
+  queryScenarioSchema,
+  resultSummaryColumnSchema,
+  sqlParamSchema,
+  sqlUsageIndexInputSchema,
+  tableDocumentFormatSchema,
+  type BuildSelectFilter,
+  type BuildSelectOrderBy,
+  type ResultSummaryColumn
+} from "./schemas.js";
 
 export { effectiveRowLimit, shouldMaskColumnValue } from "../query/output.js";
 export { isToolAllowed } from "./access.js";
 export type { McpRequestContext } from "./context.js";
 
-const sqlParamSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
-const buildSelectFilterSchema = z.object({
-  column: z.string().min(1),
-  operator: z.enum(["eq", "ne", "gt", "gte", "lt", "lte", "like", "in", "between", "is_null", "is_not_null"]),
-  value: z.union([sqlParamSchema, z.array(sqlParamSchema)]).optional()
-});
-const buildSelectOrderBySchema = z.object({
-  column: z.string().min(1),
-  direction: z.enum(["asc", "desc"]).optional(),
-  nulls: z.enum(["first", "last"]).optional()
-});
-const resultSummaryColumnSchema = z.object({
-  name: z.string().min(1),
-  type: z.string().optional(),
-  table: z.string().optional(),
-  schema: z.string().optional(),
-  masked: z.boolean().optional()
-});
-const compatibilityModeSchema = z.enum(["mysql", "oracle"]);
-const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
-const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
-const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-compact", "html-detailed"]);
-const erRelationshipModeSchema = z.enum(["none", "foreign_key", "inferred"]);
-const erExportStrategySchema = z.enum(["single", "connected-components", "table-prefix", "business-term", "manual", "window"]);
-const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
-const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
-const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
-const dataDictionaryFormatSchema = z.enum(["json", "markdown", "html"]);
-const metadataSnapshotInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
-const metadataDiffInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
-const metadataImpactInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
-const sqlUsageIndexInputSchema = z.union([z.string().min(1), z.record(z.string(), z.unknown())]);
-const metadataChangeReportFormatSchema = z.enum(["markdown", "html"]);
-const profileInput = {
-  profile: z.string().optional()
-};
 const SENSITIVE_SAMPLE_PATTERN =
   /(password|passwd|pwd|secret|token|api[_-]?key|private[_-]?key|credential|session|cookie|email|phone|mobile|id[_-]?card|ssn)/i;
 const QUERY_SESSION_TTL_MS = 4 * 60 * 60 * 1000;
@@ -8659,9 +8648,6 @@ function isUsefulQueryTerm(value: string): boolean {
   return normalized.length >= 2 && !QUERY_TERM_STOPWORDS.has(normalized);
 }
 
-type BuildSelectFilter = z.infer<typeof buildSelectFilterSchema>;
-type BuildSelectOrderBy = z.infer<typeof buildSelectOrderBySchema>;
-
 function buildStructuredSelect(
   config: ObConfig,
   schema: string | undefined,
@@ -9425,8 +9411,6 @@ function updateSessionFromRefinedSql(
   session.expiresAt = new Date(now.getTime() + QUERY_SESSION_TTL_MS).toISOString();
   session.warnings = uniqueStrings([...session.warnings, ...warnings]);
 }
-
-type ResultSummaryColumn = z.infer<typeof resultSummaryColumnSchema>;
 
 function summarizeQueryResultRows(
   rows: Array<Record<string, unknown>>,
