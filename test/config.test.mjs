@@ -20,6 +20,12 @@ test("loadConfig uses local OceanBase defaults outside production", () => {
   assert.equal(config.maxRows, 100);
   assert.equal(config.maxResultBytes, 1_048_576);
   assert.equal(config.maxConcurrentQueries, 5);
+  assert.equal(config.erTotalTimeoutMs, 15_000);
+  assert.equal(config.erQueryTimeoutMs, 5_000);
+  assert.equal(config.erMaxTables, 50);
+  assert.equal(config.erMaxColumnsPerTable, 12);
+  assert.equal(config.erMaxRelationships, 100);
+  assert.equal(config.erInlineHtmlMaxBytes, 262_144);
   assert.deepEqual(config.policy.maskedColumns, []);
 });
 

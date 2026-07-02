@@ -35,6 +35,27 @@ test("ob_generate_er_html returns self-contained ER HTML from visible metadata",
   assert.doesNotMatch(payload.html, /secret_token/);
 });
 
+test("ob_generate_er_html omits large inline HTML and returns export guidance", async () => {
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "biz_test",
+    OB_ER_INLINE_HTML_MAX_BYTES: "128"
+  });
+  const server = createObMcpServer(runtime(config));
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_er_html, {
+    schema: "biz_test",
+    table: "orders",
+    format: "html-static"
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.inline, false);
+  assert.equal(payload.htmlOmitted, true);
+  assert.equal("html" in payload, false);
+  assert.match(payload.exportCommand, /ob-mcp export-er/);
+  assert(payload.warnings.some((warning) => /OB_ER_INLINE_HTML_MAX_BYTES/.test(warning)));
+});
+
 function runtime(config) {
   return {
     defaultProfile: "default",

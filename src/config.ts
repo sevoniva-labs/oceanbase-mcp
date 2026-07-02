@@ -61,6 +61,12 @@ export interface ObConfig {
   maxSqlLength: number;
   maxParamCount: number;
   maxConcurrentQueries: number;
+  erTotalTimeoutMs: number;
+  erQueryTimeoutMs: number;
+  erMaxTables: number;
+  erMaxColumnsPerTable: number;
+  erMaxRelationships: number;
+  erInlineHtmlMaxBytes: number;
   metadataCacheEnabled: boolean;
   metadataCacheTtlMs: number;
   metadataCacheMaxEntries: number;
@@ -153,6 +159,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
   const businessGlossary = loadBusinessGlossary(env);
   const enforceReadOnlyTransaction = parseBoolean(env.OB_ENFORCE_READ_ONLY_TX, true);
   const connectionLimit = parseInteger(env.OB_CONNECTION_LIMIT, 5, "OB_CONNECTION_LIMIT");
+  const queryTimeoutMs = parseInteger(env.OB_QUERY_TIMEOUT_MS, 30_000, "OB_QUERY_TIMEOUT_MS");
+  const maxResultBytes = parseInteger(env.OB_MAX_RESULT_BYTES, 1_048_576, "OB_MAX_RESULT_BYTES");
   const metadataCacheEnabled = parseBoolean(env.OB_METADATA_CACHE_ENABLED ?? env.OB_METADATA_CACHE, true);
   if (requireTls && !ssl) {
     throw new Error("OB_REQUIRE_TLS=true but no OB_SSL_* certificate material was configured.");
@@ -191,12 +199,18 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
     dbUserReadOnly,
     connectionLimit,
     connectTimeoutMs: parseInteger(env.OB_CONNECT_TIMEOUT_MS, 10_000, "OB_CONNECT_TIMEOUT_MS"),
-    queryTimeoutMs: parseInteger(env.OB_QUERY_TIMEOUT_MS, 30_000, "OB_QUERY_TIMEOUT_MS"),
+    queryTimeoutMs,
     maxRows: parseInteger(env.OB_MAX_ROWS, 100, "OB_MAX_ROWS"),
-    maxResultBytes: parseInteger(env.OB_MAX_RESULT_BYTES, 1_048_576, "OB_MAX_RESULT_BYTES"),
+    maxResultBytes,
     maxSqlLength: parseInteger(env.OB_MAX_SQL_LENGTH, 20_000, "OB_MAX_SQL_LENGTH"),
     maxParamCount: parseInteger(env.OB_MAX_PARAM_COUNT, 500, "OB_MAX_PARAM_COUNT"),
     maxConcurrentQueries: parseInteger(env.OB_MAX_CONCURRENT_QUERIES, Math.max(1, Math.min(connectionLimit, 5)), "OB_MAX_CONCURRENT_QUERIES"),
+    erTotalTimeoutMs: parseInteger(env.OB_ER_TOTAL_TIMEOUT_MS, 15_000, "OB_ER_TOTAL_TIMEOUT_MS"),
+    erQueryTimeoutMs: parseInteger(env.OB_ER_QUERY_TIMEOUT_MS, Math.min(queryTimeoutMs, 5_000), "OB_ER_QUERY_TIMEOUT_MS"),
+    erMaxTables: parseInteger(env.OB_ER_MAX_TABLES, 50, "OB_ER_MAX_TABLES"),
+    erMaxColumnsPerTable: parseInteger(env.OB_ER_MAX_COLUMNS_PER_TABLE, 12, "OB_ER_MAX_COLUMNS_PER_TABLE"),
+    erMaxRelationships: parseInteger(env.OB_ER_MAX_RELATIONSHIPS, 100, "OB_ER_MAX_RELATIONSHIPS"),
+    erInlineHtmlMaxBytes: parseInteger(env.OB_ER_INLINE_HTML_MAX_BYTES, Math.min(maxResultBytes, 262_144), "OB_ER_INLINE_HTML_MAX_BYTES"),
     metadataCacheEnabled,
     metadataCacheTtlMs: parseInteger(env.OB_METADATA_CACHE_TTL_MS, 60_000, "OB_METADATA_CACHE_TTL_MS"),
     metadataCacheMaxEntries: parseInteger(env.OB_METADATA_CACHE_MAX_ENTRIES, 500, "OB_METADATA_CACHE_MAX_ENTRIES"),

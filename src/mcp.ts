@@ -87,6 +87,7 @@ const compatibilityModeSchema = z.enum(["mysql", "oracle"]);
 const oracleObjectTypeSchema = z.enum(["view", "sequence", "synonym", "procedure", "function", "package", "package_body"]);
 const queryScenarioSchema = z.enum(["by_primary_key", "pagination", "time_range", "aggregation", "join"]);
 const erHtmlFormatSchema = z.enum(["html-static", "html-interactive", "html-compact", "html-detailed"]);
+const erRelationshipModeSchema = z.enum(["none", "foreign_key", "inferred"]);
 const entityDiagramOutputFormatSchema = z.enum(["mermaid", "json", "html"]);
 const erDocumentFormatSchema = z.enum(["markdown", "plantuml", "dot"]);
 const tableDocumentFormatSchema = z.enum(["json", "markdown"]);
@@ -3660,15 +3661,17 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(50).optional(),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
-        includeInferred: z.boolean().optional().default(true)
+        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
+        includeInferred: z.boolean().optional().default(false)
       }
     },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true }) => {
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
-      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred });
-      return toLimitedResult(result.response, selected.config);
+      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
+      return toLimitedResult(fitErDiagramResponseForLimit(result.response, selected.config), selected.config);
     }
   );
 
@@ -3684,21 +3687,50 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(50).optional(),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
-        includeInferred: z.boolean().optional().default(true),
+        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
+        includeInferred: z.boolean().optional().default(false),
         format: erHtmlFormatSchema.optional().default("html-static"),
         title: z.string().min(1).max(120).optional()
       }
     },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true, format = "html-static", title }) => {
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, format = "html-static", title }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
-      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred });
+      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
       const html = renderErHtml(result.diagram, {
         title: title ?? defaultErHtmlTitle(result.response),
         warnings: result.response.warnings,
-        format
+        format,
+        maxColumnsPerEntity: selected.config.erMaxColumnsPerTable
       });
+      const htmlBytes = Buffer.byteLength(html, "utf8");
+      if (htmlBytes > selected.config.erInlineHtmlMaxBytes) {
+        return toLimitedResult(
+          {
+            mode: result.response.mode,
+            schema: result.response.schema,
+            rootTable: result.response.rootTable,
+            businessTerm: result.response.businessTerm,
+            tableCount: result.response.tableCount,
+            relationshipCount: result.response.relationshipCount,
+            contentType: "text/html",
+            format,
+            inline: false,
+            htmlOmitted: true,
+            htmlBytes,
+            inlineLimitBytes: selected.config.erInlineHtmlMaxBytes,
+            exportCommand: buildErExportCommand(result.response, format),
+            stats: result.response.stats,
+            warnings: uniqueStrings([
+              ...result.response.warnings,
+              `ER HTML is ${htmlBytes} bytes and exceeds OB_ER_INLINE_HTML_MAX_BYTES=${selected.config.erInlineHtmlMaxBytes}; use CLI export for the full artifact.`
+            ])
+          },
+          selected.config
+        );
+      }
       return toLimitedResult(
         {
           mode: result.response.mode,
@@ -3709,8 +3741,10 @@ export function createObMcpServer(
           relationshipCount: result.response.relationshipCount,
           contentType: "text/html",
           format,
+          inline: true,
           html,
           mermaid: result.response.mermaid,
+          stats: result.response.stats,
           warnings: result.response.warnings
         },
         selected.config
@@ -3729,15 +3763,17 @@ export function createObMcpServer(
         table: z.string().optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(50).optional(),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
-        includeInferred: z.boolean().optional().default(true),
+        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
+        includeInferred: z.boolean().optional().default(false),
         formats: z.array(entityDiagramOutputFormatSchema).min(1).max(3).optional(),
         htmlFormat: erHtmlFormatSchema.optional().default("html-compact"),
         title: z.string().min(1).max(120).optional()
       }
     },
-    async ({ profile, schema, table, businessTerm, depth, maxTables, minConfidence, includeInferred = true, formats, htmlFormat = "html-compact", title }) => {
+    async ({ profile, schema, table, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, formats, htmlFormat = "html-compact", title }) => {
       if (!table && !businessTerm) {
         throw new Error("Pass table or businessTerm when generating an entity diagram.");
       }
@@ -3749,7 +3785,9 @@ export function createObMcpServer(
         businessTerm,
         depth: depth ?? 1,
         maxTables: maxTables ?? 12,
+        maxRelationships,
         minConfidence,
+        relationshipMode,
         includeInferred
       });
       const response: Record<string, unknown> = {
@@ -3761,6 +3799,7 @@ export function createObMcpServer(
         tableCount: result.response.tableCount,
         relationshipCount: result.response.relationshipCount,
         relationshipEvidence: result.diagram.relationships.map(entityRelationshipEvidence),
+        stats: result.response.stats,
         warnings: result.response.warnings
       };
       if (outputFormats.includes("mermaid")) {
@@ -3868,14 +3907,16 @@ export function createObMcpServer(
         tables: z.array(z.string().min(1)).max(50).optional(),
         businessTerm: z.string().min(1).optional(),
         depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(50).optional(),
+        maxTables: z.number().int().positive().max(200).optional(),
+        maxRelationships: z.number().int().positive().max(1000).optional(),
         minConfidence: z.number().min(0).max(1).optional(),
-        includeInferred: z.boolean().optional().default(true),
+        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
+        includeInferred: z.boolean().optional().default(false),
         formats: z.array(erDocumentFormatSchema).min(1).max(3).optional(),
         title: z.string().min(1).max(120).optional()
       }
     },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, minConfidence, includeInferred = true, formats, title }) => {
+    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, formats, title }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const result = await buildErDiagramResult(selected, {
         schema,
@@ -3884,7 +3925,9 @@ export function createObMcpServer(
         businessTerm,
         depth,
         maxTables,
+        maxRelationships,
         minConfidence,
+        relationshipMode,
         includeInferred
       });
       const requestedFormats = uniqueStrings(formats ?? ["markdown"]) as Array<"markdown" | "plantuml" | "dot">;
@@ -5668,7 +5711,9 @@ interface BuildErDiagramInput {
   businessTerm?: string;
   depth?: number;
   maxTables?: number;
+  maxRelationships?: number;
   minConfidence?: number;
+  relationshipMode?: "none" | "foreign_key" | "inferred";
   includeInferred: boolean;
 }
 
@@ -5679,13 +5724,33 @@ interface ErDiagramToolResponse {
   businessTerm: string | null;
   scope: ReturnType<typeof erScopeTableOutput>[];
   maxTables: number;
+  maxRelationships: number;
   depth: number;
   minConfidence: number;
+  relationshipMode: "none" | "foreign_key" | "inferred";
   includeInferred: boolean;
   tableCount: number;
   relationshipCount: number;
   discoveredRelationshipCount: number;
   filteredRelationshipCount: number;
+  stats: {
+    selectedTables: number;
+    loadedTables: number;
+    loadedColumns: number;
+    relationships: number;
+    queryCount: number;
+    elapsedMs: number;
+    cacheUsed: boolean;
+    cacheStats: {
+      hits: number;
+      misses: number;
+      evictions: number;
+      entries: number;
+    };
+    truncated: boolean;
+    skippedStages: string[];
+    warnings: string[];
+  };
   mermaid: string;
   diagram: {
     entities: ErEntity[];
@@ -5698,10 +5763,15 @@ async function buildErDiagramResult(
   selected: ReturnType<typeof selectRuntimeProfile>,
   input: BuildErDiagramInput
 ): Promise<{ diagram: ErDiagram; response: ErDiagramToolResponse }> {
+  const startedAt = Date.now();
   const effectiveSchema = metadataSchema(selected.config, input.schema);
-  const tableLimit = Math.min(input.maxTables ?? (input.table ? 20 : 12), 50);
+  const configuredMaxTables = Math.max(1, selected.config.erMaxTables);
+  const tableLimit = Math.min(input.maxTables ?? (input.table ? Math.min(20, configuredMaxTables) : Math.min(12, configuredMaxTables)), configuredMaxTables, 200);
+  const maxRelationships = Math.min(input.maxRelationships ?? selected.config.erMaxRelationships, selected.config.erMaxRelationships, 1000);
   const depthLimit = input.depth ?? 1;
-  const relationConfidenceFloor = input.minConfidence ?? (input.includeInferred ? 0.5 : 0.9);
+  const relationshipMode = input.includeInferred ? "inferred" : input.relationshipMode ?? "foreign_key";
+  const includeInferred = relationshipMode === "inferred";
+  const relationConfidenceFloor = input.minConfidence ?? (includeInferred ? 0.5 : 0.9);
   const requestedTables = uniqueStrings([input.table, ...(input.tables ?? [])].filter((value): value is string => Boolean(value)));
   if (requestedTables.length === 0 && !input.businessTerm && !effectiveSchema) {
     throw new Error("Pass schema or table when generating an ER diagram without a configured default schema.");
@@ -5710,7 +5780,16 @@ async function buildErDiagramResult(
   const scope = new Map<string, ErScopeTable>();
   const relationships: TableRelationship[] = [];
   const warnings: string[] = [];
+  const skippedStages: string[] = [];
   let relationshipScopeLimited = false;
+  let queryCount = 0;
+  let truncated = false;
+  const erTimeoutMs = Math.min(selected.config.erQueryTimeoutMs, selected.config.queryTimeoutMs);
+  const timeExpired = () => Date.now() - startedAt >= selected.config.erTotalTimeoutMs;
+  const stageQuery = async <T>(operation: () => Promise<T>): Promise<T> => {
+    queryCount += 1;
+    return withQuerySlot(selected, operation);
+  };
 
   for (const requestedTable of requestedTables) {
     const ref = parseErInputTableRef(selected.config.compatibility, requestedTable, effectiveSchema);
@@ -5744,13 +5823,13 @@ async function buildErDiagramResult(
 
   if (scope.size === 0) {
     const rows = filterTables(
-      await withQuerySlot(selected, () =>
+      await stageQuery(() =>
         listTables(
           selected.pool,
           selected.config.compatibility,
           effectiveSchema,
           tableLimit,
-          selected.config.queryTimeoutMs
+          erTimeoutMs
         )
       ),
       selected.config.policy
@@ -5770,85 +5849,124 @@ async function buildErDiagramResult(
   const initialRefs = [...scope.values()];
   let discoveredRelationshipCount = 0;
   let filteredRelationshipCount = 0;
-  for (const ref of initialRefs) {
-    const result = await withQuerySlot(selected, () =>
-      findRelatedTables(
-        selected.pool,
-        selected.config.compatibility,
-        ref.table,
-        ref.schema,
-        depthLimit,
-        tableLimit * 4,
-        selected.config.queryTimeoutMs
-      )
-    );
-    for (const relation of result.relations) {
-      discoveredRelationshipCount += 1;
-      if (!isErRelationshipVisible(relation, selected.config, relationConfidenceFloor, input.includeInferred)) {
-        filteredRelationshipCount += 1;
-        continue;
+  if (relationshipMode === "none") {
+    skippedStages.push("relationships");
+    warnings.push("Relationship discovery was skipped because relationshipMode=none.");
+  } else {
+    for (const ref of initialRefs) {
+      if (timeExpired()) {
+        truncated = true;
+        skippedStages.push("relationships_timeout");
+        warnings.push(`ER relationship discovery stopped after OB_ER_TOTAL_TIMEOUT_MS=${selected.config.erTotalTimeoutMs}.`);
+        break;
       }
-      relationships.push(relation);
-      const evidence = relation.evidence.map((item) => item.detail).slice(0, 5);
-      const addedSource = addErScopeTable(scope, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit, {
-        source: "relationship",
-        confidence: relation.confidence,
-        evidence
-      });
-      const addedTarget = addErScopeTable(scope, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit, {
-        source: "relationship",
-        confidence: relation.confidence,
-        evidence
-      });
-      if (!addedSource || !addedTarget) {
+      if (relationships.length >= maxRelationships) {
+        truncated = true;
         relationshipScopeLimited = true;
+        warnings.push(`Relationship discovery stopped at maxRelationships=${maxRelationships}.`);
+        break;
+      }
+      const result = await stageQuery(() =>
+        findRelatedTables(
+          selected.pool,
+          selected.config.compatibility,
+          ref.table,
+          ref.schema,
+          depthLimit,
+          maxRelationships,
+          erTimeoutMs,
+          includeInferred
+        )
+      );
+      for (const relation of result.relations) {
+        discoveredRelationshipCount += 1;
+        if (!isErRelationshipVisible(relation, selected.config, relationConfidenceFloor, includeInferred)) {
+          filteredRelationshipCount += 1;
+          continue;
+        }
+        if (relationships.length >= maxRelationships) {
+          truncated = true;
+          relationshipScopeLimited = true;
+          break;
+        }
+        relationships.push(relation);
+        const evidence = relation.evidence.map((item) => item.detail).slice(0, 5);
+        const addedSource = addErScopeTable(scope, selected.config.compatibility, relation.sourceSchema, relation.sourceTable, tableLimit, {
+          source: "relationship",
+          confidence: relation.confidence,
+          evidence
+        });
+        const addedTarget = addErScopeTable(scope, selected.config.compatibility, relation.targetSchema, relation.targetTable, tableLimit, {
+          source: "relationship",
+          confidence: relation.confidence,
+          evidence
+        });
+        if (!addedSource || !addedTarget) {
+          relationshipScopeLimited = true;
+        }
+      }
+      if (truncated) {
+        break;
       }
     }
   }
 
   const entities: ErEntity[] = [];
+  let loadedColumns = 0;
   for (const ref of scope.values()) {
+    if (timeExpired()) {
+      truncated = true;
+      skippedStages.push("entities_timeout");
+      warnings.push(`ER table metadata loading stopped after OB_ER_TOTAL_TIMEOUT_MS=${selected.config.erTotalTimeoutMs}.`);
+      break;
+    }
     const columns = filterColumnMetadata(
-      await withQuerySlot(selected, () =>
+      await stageQuery(() =>
         describeTable(
           selected.pool,
           selected.config.compatibility,
           ref.table,
           ref.schema,
-          selected.config.queryTimeoutMs
+          erTimeoutMs
         )
       ),
       selected.config.policy
     );
     const constraints = filterColumnMetadata(
-      await withQuerySlot(selected, () =>
+      await stageQuery(() =>
         listConstraints(
           selected.pool,
           selected.config.compatibility,
           ref.table,
           ref.schema,
-          selected.config.queryTimeoutMs
+          erTimeoutMs
         )
       ),
       selected.config.policy
     );
     const indexes = filterColumnMetadata(
-      await withQuerySlot(selected, () =>
+      await stageQuery(() =>
         listIndexes(
           selected.pool,
           selected.config.compatibility,
           ref.table,
           ref.schema,
-          selected.config.queryTimeoutMs
+          erTimeoutMs
         )
       ),
       selected.config.policy
     );
-    entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, columns, constraints, indexes));
+    loadedColumns += columns.length;
+    const visibleColumns = columns.slice(0, selected.config.erMaxColumnsPerTable);
+    if (columns.length > visibleColumns.length) {
+      truncated = true;
+      warnings.push(`Columns for ${ref.schema ? `${ref.schema}.` : ""}${ref.table} were limited to OB_ER_MAX_COLUMNS_PER_TABLE=${selected.config.erMaxColumnsPerTable}.`);
+    }
+    entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, visibleColumns, constraints, indexes));
   }
 
   const entityKeys = new Set(
-    [...scope.values()].map((ref) => tableRefKey(selected.config.compatibility, ref.schema, ref.table))
+    entities.map((entity) => tableRefKey(selected.config.compatibility, entity.schema, entity.table))
   );
   const diagramRelationships = dedupeRelationships(selected.config.compatibility, relationships).filter(
     (relation) =>
@@ -5863,13 +5981,33 @@ async function buildErDiagramResult(
     businessTerm: input.businessTerm ?? null,
     scope: [...scope.values()].map(erScopeTableOutput),
     maxTables: tableLimit,
+    maxRelationships,
     depth: depthLimit,
     minConfidence: relationConfidenceFloor,
-    includeInferred: input.includeInferred,
+    relationshipMode,
+    includeInferred,
     tableCount: entities.length,
     relationshipCount: diagramRelationships.length,
     discoveredRelationshipCount,
     filteredRelationshipCount,
+    stats: {
+      selectedTables: scope.size,
+      loadedTables: entities.length,
+      loadedColumns,
+      relationships: diagramRelationships.length,
+      queryCount,
+      elapsedMs: Date.now() - startedAt,
+      cacheUsed: selected.config.metadataCacheEnabled,
+      cacheStats: {
+        hits: selected.metadataCache.hits,
+        misses: selected.metadataCache.misses,
+        evictions: selected.metadataCache.evictions,
+        entries: selected.metadataCache.entries.size
+      },
+      truncated,
+      skippedStages,
+      warnings
+    },
     mermaid: diagram.mermaid,
     diagram: {
       entities: diagram.entities,
@@ -5878,6 +6016,7 @@ async function buildErDiagramResult(
     warnings: uniqueStrings([
       ...warnings,
       ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
+      ...(relationshipMode === "foreign_key" ? ["Name-inferred relationships are disabled by default; pass relationshipMode=inferred for a bounded inferred diagram."] : []),
       ...(filteredRelationshipCount > 0
         ? [`${filteredRelationshipCount} relationship(s) were hidden by policy, minConfidence, or includeInferred.`]
         : [])
@@ -5894,6 +6033,55 @@ function defaultErHtmlTitle(response: ErDiagramToolResponse): string {
     return `OceanBase ER Diagram - ${response.rootTable}`;
   }
   return response.schema ? `OceanBase ER Diagram - ${response.schema}` : "OceanBase ER Diagram";
+}
+
+function fitErDiagramResponseForLimit(response: ErDiagramToolResponse, config: ObConfig): ErDiagramToolResponse | (Omit<ErDiagramToolResponse, "mermaid" | "diagram"> & {
+  mermaidOmitted: boolean;
+  diagramOmitted: boolean;
+  estimatedBytes: number;
+}) {
+  const estimatedBytes = jsonByteLength(response);
+  if (estimatedBytes <= config.maxResultBytes * 0.75) {
+    return response;
+  }
+  return {
+    ...response,
+    mermaid: "",
+    diagram: {
+      entities: [],
+      relationships: []
+    },
+    mermaidOmitted: true,
+    diagramOmitted: true,
+    estimatedBytes,
+    warnings: uniqueStrings([
+      ...response.warnings,
+      `ER diagram metadata is ${estimatedBytes} bytes; Mermaid and JSON details were omitted to stay within OB_MAX_RESULT_BYTES. Use CLI ER export for the full artifact.`
+    ])
+  };
+}
+
+function buildErExportCommand(response: ErDiagramToolResponse, format: string): string {
+  const args = ["ob-mcp", "export-er"];
+  if (response.schema) {
+    args.push("--schema", shellArg(response.schema));
+  }
+  if (response.rootTable) {
+    args.push("--table", shellArg(response.rootTable));
+  }
+  if (response.businessTerm) {
+    args.push("--business-term", shellArg(response.businessTerm));
+  }
+  args.push("--relationship-mode", response.relationshipMode);
+  args.push("--max-tables", String(response.maxTables));
+  args.push("--max-relationships", String(response.maxRelationships));
+  args.push("--format", format.replace(/^html-/, ""));
+  args.push("--out", shellArg("er-output.html"));
+  return args.join(" ");
+}
+
+function shellArg(value: string): string {
+  return /^[A-Za-z0-9_./:-]+$/.test(value) ? value : `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 function entityRelationshipEvidence(relation: TableRelationship) {

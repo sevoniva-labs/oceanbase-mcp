@@ -35,11 +35,18 @@ test("parseExportErArgs parses ER export options", () => {
     title: "Order ER",
     output: "er/order.html",
     includeInferred: false,
+    relationshipMode: "foreign_key",
     overwrite: true,
     dryRun: true
   });
+  assert.deepEqual(parseExportErArgs(["--relationship-mode", "inferred", "--max-relationships", "40"]), {
+    relationshipMode: "inferred",
+    includeInferred: true,
+    maxRelationships: 40
+  });
   assert.throws(() => parseExportErArgs(["--format", "svg"]), /--format/);
   assert.throws(() => parseExportErArgs(["--depth", "9"]), /--depth/);
+  assert.throws(() => parseExportErArgs(["--relationship-mode", "wide"]), /--relationship-mode/);
 });
 
 test("resolveErOutputPath uses safe default names", () => {

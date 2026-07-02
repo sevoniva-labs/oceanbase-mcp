@@ -41,12 +41,15 @@ test("ob_generate_er_diagram supports business term scope and relationship filte
     assert.equal(diagram.businessTerm, "订单");
     assert.equal(diagram.tableCount, 2);
     assert.equal(diagram.relationshipCount, 1);
-    assert.equal(diagram.filteredRelationshipCount, 1);
+    assert.equal(diagram.relationshipMode, "foreign_key");
+    assert.equal(diagram.includeInferred, false);
+    assert.equal(diagram.filteredRelationshipCount, 0);
+    assert.equal(diagram.stats.relationships, 1);
     assert(diagram.scope.find((item) => item.table === "orders").sources.includes("business_term"));
     assert.match(diagram.mermaid, /biz_test_users \|\|--o\{ biz_test_orders : "fk_orders_user"/);
     assert.doesNotMatch(result.content[0].text, /secret_token/);
     assert.equal(diagram.diagram.relationships[0].relationType, "foreign_key");
-    assert(diagram.warnings.some((warning) => /relationship\(s\) were hidden/i.test(warning)));
+    assert(diagram.warnings.some((warning) => /Name-inferred relationships are disabled/i.test(warning)));
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

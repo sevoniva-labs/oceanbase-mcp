@@ -16,7 +16,9 @@ export interface ExportErOptions {
   businessTerm?: string;
   depth?: number;
   maxTables?: number;
+  maxRelationships?: number;
   minConfidence?: number;
+  relationshipMode?: "none" | "foreign_key" | "inferred";
   includeInferred?: boolean;
   format?: ExportErFormat;
   title?: string;
@@ -95,10 +97,12 @@ export function parseExportErArgs(args: string[]): ExportErOptions {
     }
     if (arg === "--no-include-inferred") {
       options.includeInferred = false;
+      options.relationshipMode = "foreign_key";
       continue;
     }
     if (arg === "--include-inferred") {
       options.includeInferred = true;
+      options.relationshipMode = "inferred";
       continue;
     }
     const [name, inlineValue] = arg.includes("=") ? arg.split(/=(.*)/s, 2) : [arg, undefined];
@@ -132,10 +136,17 @@ export function parseExportErArgs(args: string[]): ExportErOptions {
         options.depth = parsePositiveInt(value, name, 3);
         break;
       case "--max-tables":
-        options.maxTables = parsePositiveInt(value, name, 50);
+        options.maxTables = parsePositiveInt(value, name, 200);
+        break;
+      case "--max-relationships":
+        options.maxRelationships = parsePositiveInt(value, name, 1000);
         break;
       case "--min-confidence":
         options.minConfidence = parseConfidence(value, name);
+        break;
+      case "--relationship-mode":
+        options.relationshipMode = parseRelationshipMode(value);
+        options.includeInferred = options.relationshipMode === "inferred";
         break;
       case "--format":
         options.format = parseExportErFormat(value);
@@ -183,8 +194,10 @@ function erToolArgs(options: ExportErOptions): Record<string, unknown> {
     businessTerm: options.businessTerm,
     depth: options.depth,
     maxTables: options.maxTables,
+    maxRelationships: options.maxRelationships,
     minConfidence: options.minConfidence,
-    includeInferred: options.includeInferred ?? true,
+    relationshipMode: options.relationshipMode ?? (options.includeInferred ? "inferred" : "foreign_key"),
+    includeInferred: options.includeInferred ?? false,
     format: options.format ?? "html-static",
     title: options.title
   };
@@ -239,6 +252,14 @@ function parseExportErFormat(value: string): ExportErFormat {
     return normalized;
   }
   throw new Error("--format must be static, interactive, compact, or detailed.");
+}
+
+function parseRelationshipMode(value: string): "none" | "foreign_key" | "inferred" {
+  const normalized = value.trim().replace(/-/g, "_");
+  if (normalized === "none" || normalized === "foreign_key" || normalized === "inferred") {
+    return normalized;
+  }
+  throw new Error("--relationship-mode must be none, foreign_key, or inferred.");
 }
 
 function safeFileName(value: string): string {

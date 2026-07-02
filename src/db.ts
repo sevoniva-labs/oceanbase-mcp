@@ -506,7 +506,8 @@ export async function findRelatedTables(
   schema: string | undefined,
   depth: number,
   limit: number,
-  timeoutMs: number
+  timeoutMs: number,
+  includeInferred = true
 ): Promise<RelatedTablesResult> {
   const resolvedSchema =
     mode === "oracle"
@@ -535,7 +536,16 @@ export async function findRelatedTables(
       continue;
     }
     visited.add(visitKey);
-    const discovered = await discoverRelationshipsForTable(pool, mode, current.schema, current.table, current.depth + 1, maxRelations, timeoutMs);
+    const discovered = await discoverRelationshipsForTable(
+      pool,
+      mode,
+      current.schema,
+      current.table,
+      current.depth + 1,
+      maxRelations,
+      timeoutMs,
+      includeInferred
+    );
 
     for (const relation of discovered) {
       const key = relationshipKey(mode, relation);
@@ -1868,10 +1878,14 @@ async function discoverRelationshipsForTable(
   table: string,
   depth: number,
   limit: number,
-  timeoutMs: number
+  timeoutMs: number,
+  includeInferred: boolean
 ): Promise<TableRelationship[]> {
   const direct = await queryForeignKeyRelationships(pool, mode, schema, table, "outbound", depth, timeoutMs);
   const inbound = await queryForeignKeyRelationships(pool, mode, schema, table, "inbound", depth, timeoutMs);
+  if (!includeInferred) {
+    return [...direct, ...inbound].slice(0, limit);
+  }
   const inferredOutbound = await inferOutboundNamingRelationships(pool, mode, schema, table, depth, limit, timeoutMs);
   const inferredInbound = await inferInboundNamingRelationships(pool, mode, schema, table, depth, limit, timeoutMs);
   const output: TableRelationship[] = [];
