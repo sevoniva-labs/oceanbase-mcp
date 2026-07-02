@@ -27,10 +27,13 @@ v1.1.2 is a stability hotfix for local OpenCode query workflows. It focuses on r
 - MySQL and Oracle repeated-query stress tests
 - Local HTTP repeated-call stress test
 - JSONL logging and redaction unit test
+- Local MySQL and Oracle million-row table `ob_describe_table` stress tests
+- Regression tests that ensure `ob_describe_table` reads catalog metadata instead of scanning target table data
 
 ## Notes
 
 - The MCP server still rejects write, DDL, DCL, procedure calls, sequence `NEXTVAL`, multi-statement SQL, and unsafe SQL patterns.
 - For local crash diagnosis, set `OB_MCP_LOG_FILE=/var/log/ob-mcp/ob-mcp.jsonl` and review `process_*`, `slow_tool_call`, `http_rate_limited`, and `json_body_error` events.
+- `ob_describe_table` is metadata-only. Large row counts in the target table should not affect it; table context, profiling, and sample tools remain separately bounded by row, timeout, and output-size limits.
 - New generated SQL should prefer `?` placeholders. Oracle `:name` support is for compatibility with common assistant output.
 - If a shared HTTP deployment needs a higher limit, set `OB_MCP_RATE_LIMIT_MAX` explicitly and keep authentication and IP allowlists enabled.
