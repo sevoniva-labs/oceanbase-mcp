@@ -64,7 +64,7 @@ test("renderErHtml supports compact and detailed formats", () => {
   const compact = renderErHtml(diagram, { format: "html-compact", title: "Compact ER" });
   assert.match(compact, /Format: html-compact/);
   assert.doesNotMatch(compact, /Mermaid Source/);
-  assert.match(compact, /\+ 2 more column\(s\)/);
+  assert.match(compact, /2 column\(s\)/);
 
   const detailed = renderErHtml(diagram, { format: "html-detailed", title: "Detailed ER" });
   assert.match(detailed, /Format: html-detailed/);

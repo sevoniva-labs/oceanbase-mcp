@@ -21,11 +21,13 @@ All outputs are controlled by permission, table-count, column-count, and respons
 | Format | Use case |
 | --- | --- |
 | `html-static` | Single-file HTML with tables, columns, and relationship lists. |
-| `html-interactive` | Single-file interactive diagram with search, zoom, drag, and relationship highlighting. |
+| `html-interactive` | Single-file interactive diagram with table search, zoom, drag, auto-fit, table details, and relationship highlighting. |
 | `html-compact` | Shows only tables and primary relationships for larger schemas. |
 | `html-detailed` | Shows columns, primary keys, foreign keys, indexes, and comments. |
 
 For larger diagrams, export a local file with the CLI and open it in a browser.
+
+The interactive HTML format is intended for daily development work. The left panel lists tables, the center canvas shows the ER model, and the right panel shows columns, primary keys, indexes, and direct relationships for the selected table. The relationship table keeps the foreign-key or inference evidence visible. Selecting a table or diagram node focuses upstream and downstream relationships without treating low-confidence inference as a real foreign key.
 
 ## CLI Export
 
