@@ -123,11 +123,13 @@ Common options:
 | `--no-include-inferred` | Keep only high-confidence relationships such as real foreign keys. |
 | `--format <format>` | `static`, `interactive`, `compact`, or `detailed`. |
 | `--out <file>` | Output file. A safe default name is used when omitted. |
-| `--out-dir <dir>` | Write `index.html`, `overview.html`, `chunks/`, `tables/`, and `metadata/`. |
-| `--chunk-size <n>` | Table count per chunk, up to 100. |
+| `--out-dir <dir>` | Write `index.html`, `overview.html`, `clusters/`, `tables/`, and `metadata/`. |
+| `--chunk-size <n>` | Table count per cluster, up to 100. |
 | `--overwrite` | Replace an existing output file. Existing files are not overwritten by default. |
 
-Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only local ER artifacts and never modifies the database. Chunked export bypasses the MCP inline HTML cap, but each chunk is still controlled by `OB_MAX_RESULT_BYTES`; for large schemas, reduce `--chunk-size` or raise `OB_MAX_RESULT_BYTES` deliberately.
+Export still goes through MCP read-only policy, schema/table/column permissions, output size limits, and error redaction. The command writes only local ER artifacts and never modifies the database. Directory export bypasses the MCP inline HTML cap, but each cluster is still controlled by `OB_MAX_RESULT_BYTES`; for large schemas, reduce `--chunk-size` or raise `OB_MAX_RESULT_BYTES` deliberately.
+
+Directory exports include `metadata/relationships.json` for cross-cluster relationship evidence, `metadata/graph.json` for generated graph payloads, and `metadata/diagnostics.json` for grouped export diagnostics.
 
 Use `connected-components` when real foreign keys connect the model, `table-prefix` when tables are grouped by naming convention, `business-term` when a glossary term defines the scope, `manual` for an explicit table list, and `window` as the sorted paging fallback.
 

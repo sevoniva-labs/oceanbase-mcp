@@ -47,6 +47,7 @@ This table lists release themes only. Per-tool versioning is in the `Tools / 工
 | v1.1.4 | 减少 ER 默认关系发现的重复元数据读取，并对大范围 inline ER HTML 提前降级。 | Reduced duplicate ER metadata reads and early fallback for large inline ER HTML. |
 | v1.1.5 | 增加 npmjs 分发，包名为 `@sevoniva/oceanbase-mcp`，CLI 命令继续保持 `ob-mcp`。 | npmjs distribution under `@sevoniva/oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
 | v1.1.6 | 修正 npmjs 启动示例，补充 Apache-2.0 包许可元数据和 Trusted Publishing 发布流程，并验证公开 npm 安装。 | Correct npmjs startup examples, add Apache-2.0 package license metadata, document Trusted Publishing, and verify public npm installation. |
+| v1.2.0 | 重构 ER 元数据地图：稳定图 ID、交互式 graph 画布、cluster 目录导出、跨 cluster 关系索引、诊断元数据和响应大小日志。 | Rebuilt ER metadata maps with stable graph IDs, interactive graph canvas, cluster directory export, cross-cluster relationship index, diagnostic metadata, and response-size logging. |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -203,7 +204,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | 对比两份元数据快照，返回基于证据的结构变化。 | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | 从静态 SQL 使用索引中查找表、字段或业务词引用。 | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | 基于 diff 和影响分析生成 Markdown 或简版 HTML 变更报告。 | Generate Markdown or simple HTML change reports from diff and impact evidence. |
-| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 ER HTML 分片导出命令。 | Estimate large-schema ER size and plan chunked local ER HTML export commands. |
+| v1.1.1 | `ob_plan_er_export` | 轻量估算大 schema 表、字段和关系规模，并规划本地 cluster ER 导出命令。 | Estimate large-schema ER size and plan local cluster ER export commands. |
 
 ## Metadata Change Workflow / 元数据变更流程
 

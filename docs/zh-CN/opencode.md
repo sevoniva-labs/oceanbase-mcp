@@ -143,12 +143,12 @@ OB_MCP_ALLOWED_IPS=203.0.113.10,10.0.0.0/8
 4. 执行前用 `ob_lint_sql` 或 `ob_query_preview` 检查策略和风险。
 5. 使用查询会话和分页工具查看数据。
 6. 需要理解字段分布时，使用表画像、字段画像或值分布工具。
-7. 需要 ER 图时，schema 级请求先用 `ob_plan_er_export` 规划；小范围才使用 inline ER，大 schema 使用 CLI 分片导出。
+7. 需要 ER 图时，schema 级请求先用 `ob_plan_er_export` 规划；小范围才使用 inline ER，大 schema 使用 CLI cluster 导出。
 8. 汇总 SQL、行数、分页、脱敏、截断和假设。
 
 不要让 agent 猜表名、字段名或关系。信息不足时，应先补充业务词、schema 或表名。
 
-大 schema 不要要求 agent 直接生成全量 inline ER。应先调用 `ob_plan_er_export`，查看 warnings、stats 和建议策略，再用 `ob-mcp export-er --out-dir` 本地分片导出。
+大 schema 不要要求 agent 直接生成全量 inline ER。应先调用 `ob_plan_er_export`，查看 warnings、stats 和建议策略，再用 `ob-mcp export-er --out-dir` 导出本地 cluster 目录。
 
 迭代元数据评审使用这个流程：
 

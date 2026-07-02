@@ -64,7 +64,7 @@ ob-mcp export-er --schema biz_test --table orders --format interactive --out doc
 ob-mcp export-er --schema biz_test --format interactive --relationship-mode foreign_key --strategy table-prefix --out-dir docs/er --chunk-size 25
 ```
 
-OpenCode 中应先让 assistant 调用 `ob_plan_er_export`。规划结果较小时才生成 inline ER；大 schema 使用 CLI 分片导出。
+OpenCode 中应先让 assistant 调用 `ob_plan_er_export`。规划结果较小时才生成 inline ER；大 schema 使用 CLI cluster 导出。
 
 ## SQL 扫描
 

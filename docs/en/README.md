@@ -38,6 +38,7 @@ This table lists release themes only. Per-tool versioning is in the Tools table 
 | v1.1.4 | Reduced duplicate ER metadata reads and early fallback for large inline ER HTML. |
 | v1.1.5 | npmjs distribution under `@sevoniva/oceanbase-mcp`, while CLI commands remain `ob-mcp`. |
 | v1.1.6 | Correct npmjs startup examples, add Apache-2.0 package license metadata, document Trusted Publishing, and verify public npm installation. |
+| v1.2.0 | Rebuilt ER metadata maps with stable graph IDs, interactive graph canvas, cluster directory export, cross-cluster relationship index, diagnostic metadata, and response-size logging. |
 
 All data-access tools are governed by profile permissions, schema/table/column policy, read-only SQL policy, row caps, response-size caps, timeouts, concurrency limits, audit logging, and error redaction.
 
@@ -228,7 +229,7 @@ Sorted by Since version in ascending order; tools with the same version are sort
 | v1.1.0 | `ob_compare_metadata_snapshots` | Compare metadata snapshots and return evidence-based structural changes. |
 | v1.1.0 | `ob_find_sql_usages` | Find table, column, or business-term references from a static SQL usage index. |
 | v1.1.0 | `ob_generate_metadata_change_report` | Generate Markdown or simple HTML change reports from diff and impact evidence. |
-| v1.1.1 | `ob_plan_er_export` | Estimate large-schema ER size and plan chunked local ER HTML export commands. |
+| v1.1.1 | `ob_plan_er_export` | Estimate large-schema ER size and plan local cluster ER export commands. |
 
 ## Metadata Change Workflow
 

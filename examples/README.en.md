@@ -64,7 +64,7 @@ For larger schemas:
 ob-mcp export-er --schema biz_test --format interactive --relationship-mode foreign_key --strategy table-prefix --out-dir docs/er --chunk-size 25
 ```
 
-In OpenCode, ask the assistant to run `ob_plan_er_export` first. Generate inline ER only when the planned scope is small; use chunked CLI export for larger schemas.
+In OpenCode, ask the assistant to run `ob_plan_er_export` first. Generate inline ER only when the planned scope is small; use cluster CLI export for larger schemas.
 
 ## SQL Scan
 

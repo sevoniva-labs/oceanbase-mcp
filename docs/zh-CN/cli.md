@@ -123,11 +123,13 @@ ob-mcp export-er --schema biz_test --format interactive --strategy table-prefix 
 | `--no-include-inferred` | 只保留真实外键等高可信关系。 |
 | `--format <format>` | `static`、`interactive`、`compact` 或 `detailed`。 |
 | `--out <file>` | 输出文件。未指定时使用安全默认文件名。 |
-| `--out-dir <dir>` | 写出 `index.html`、`overview.html`、`chunks/`、`tables/` 和 `metadata/`。 |
-| `--chunk-size <n>` | 每个分片的表数量，最大 100。 |
+| `--out-dir <dir>` | 写出 `index.html`、`overview.html`、`clusters/`、`tables/` 和 `metadata/`。 |
+| `--chunk-size <n>` | 每个 cluster 的表数量，最大 100。 |
 | `--overwrite` | 覆盖已有输出文件。默认不覆盖。 |
 
-导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 ER 文件，不修改数据库。分片导出会绕开 MCP inline HTML 上限，但单个分片仍受 `OB_MAX_RESULT_BYTES` 控制；大库可以调小 `--chunk-size` 或适当调高 `OB_MAX_RESULT_BYTES`。
+导出过程仍走 MCP 的只读策略、schema/table/column 权限、输出大小限制和错误脱敏。命令只写本地 ER 文件，不修改数据库。目录导出会绕开 MCP inline HTML 上限，但单个 cluster 仍受 `OB_MAX_RESULT_BYTES` 控制；大库可以调小 `--chunk-size` 或适当调高 `OB_MAX_RESULT_BYTES`。
+
+目录导出会包含 `metadata/relationships.json`、`metadata/graph.json` 和 `metadata/diagnostics.json`，分别用于查看跨 cluster 关系证据、已生成图数据和汇总诊断。
 
 真实外键较完整时使用 `connected-components`；表名有清晰前缀时使用 `table-prefix`；业务字典能定义范围时使用 `business-term`；明确表清单时使用 `manual`；其他场景用 `window` 按排序分页兜底。
 

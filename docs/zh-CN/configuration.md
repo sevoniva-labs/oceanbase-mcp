@@ -94,7 +94,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_ER_MAX_TABLES` | `50` | ER 表数量上限。默认保守，可按本地机器资源调高，工具输入最大 500。 |
 | `OB_ER_MAX_COLUMNS_PER_TABLE` | `12` | 每张表在 ER 图中返回的最大字段数。 |
 | `OB_ER_MAX_RELATIONSHIPS` | `100` | ER 关系数量上限。 |
-| `OB_ER_INLINE_HTML_MAX_BYTES` | `262144` | MCP inline HTML 返回大小上限。大图建议使用 `ob-mcp export-er --out-dir` 分片导出。 |
+| `OB_ER_INLINE_HTML_MAX_BYTES` | `262144` | MCP inline HTML 返回大小上限。大图建议使用 `ob-mcp export-er --out-dir` 导出 cluster 目录。 |
 
 脱敏优先级：
 
