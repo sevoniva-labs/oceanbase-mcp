@@ -82,6 +82,22 @@ interface ErDirectorySummary {
   generatedAt: string;
 }
 
+interface ErExportGraphPayload {
+  nodes?: unknown[];
+  edges?: unknown[];
+  summary?: Record<string, unknown>;
+  status?: string;
+  diagnostics?: unknown[];
+}
+
+interface ErDirectoryGraphChunk {
+  index: number;
+  file: string;
+  tableCount: number;
+  relationshipCount?: number;
+  graph?: ErExportGraphPayload;
+}
+
 export async function runExportErCommand(args: string[], cwd = process.cwd()): Promise<number> {
   let runtime: ReturnType<typeof createGatewayRuntime> | undefined;
   let server: ToolExecutorServer | undefined;
@@ -284,7 +300,7 @@ function erToolArgs(options: ExportErOptions): Record<string, unknown> {
     minConfidence: options.minConfidence,
     relationshipMode: options.relationshipMode ?? (options.includeInferred ? "inferred" : "foreign_key"),
     includeInferred: options.includeInferred ?? false,
-    format: options.format ?? "html-static",
+    format: options.format ?? (options.outputDir ? "html-interactive" : "html-static"),
     title: options.title
   };
 }
@@ -319,6 +335,8 @@ async function runExportErDirectory(
   const metadataFiles = [
     resolve(outputRoot, "index.html"),
     resolve(outputRoot, "overview.html"),
+    resolve(outputRoot, "metadata/graph.json"),
+    resolve(outputRoot, "metadata/diagnostics.json"),
     resolve(outputRoot, "metadata/er-summary.json"),
     resolve(outputRoot, "metadata/relationships.json"),
     resolve(outputRoot, "metadata/warnings.json")
@@ -336,6 +354,7 @@ async function runExportErDirectory(
   }
 
   const written: ErDirectoryChunk[] = [];
+  const graphChunks: ErDirectoryGraphChunk[] = [];
   for (const chunk of plan.chunks) {
     const file = resolve(cwd, chunk.file);
     const result = await server.executeToolHandler(htmlTool, {
@@ -347,12 +366,20 @@ async function runExportErDirectory(
     }, {});
     const payload = parseHtmlPayload(result);
     writeErArtifact(file, payload.html, { overwrite: options.overwrite });
+    const graph = extractEmbeddedErGraph(payload.html);
     written.push({
       index: chunk.index,
       file,
       tableCount: payload.tableCount ?? chunk.tableCount,
       relationshipCount: payload.relationshipCount,
       tables: chunk.tables
+    });
+    graphChunks.push({
+      index: chunk.index,
+      file,
+      tableCount: payload.tableCount ?? chunk.tableCount,
+      relationshipCount: payload.relationshipCount,
+      graph
     });
   }
   const visibleRelationshipCount = sumVisibleRelationships(written);
@@ -390,8 +417,14 @@ async function runExportErDirectory(
     warnings,
     generatedAt: new Date().toISOString()
   };
+  const relativeGraphChunks = graphChunks.map((chunk) => ({
+    ...chunk,
+    file: toPosixPath(relative(outputRoot, chunk.file))
+  }));
   writeErArtifact(resolve(outputRoot, "index.html"), renderErExportIndexHtml(summary), { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "overview.html"), renderErExportOverviewHtml(summary), { overwrite: options.overwrite });
+  writeErArtifact(resolve(outputRoot, "metadata/graph.json"), `${JSON.stringify(buildErExportGraphMetadata(summary, relativeGraphChunks), null, 2)}\n`, { overwrite: options.overwrite });
+  writeErArtifact(resolve(outputRoot, "metadata/diagnostics.json"), `${JSON.stringify(buildErExportDiagnosticsMetadata(summary, relativeGraphChunks), null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/er-summary.json"), `${JSON.stringify(summary, null, 2)}\n`, { overwrite: options.overwrite });
   writeErArtifact(resolve(outputRoot, "metadata/relationships.json"), `${JSON.stringify({
     relationshipCount: summary.relationshipCount,
@@ -427,6 +460,18 @@ async function runExportErDirectory(
     files: written
   }, null, 2));
   return 0;
+}
+
+export function extractEmbeddedErGraph(html: string): ErExportGraphPayload | undefined {
+  const match = html.match(/<script\s+type="application\/json"\s+id="er-graph-data">([\s\S]*?)<\/script>/i);
+  if (!match) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(match[1]) as ErExportGraphPayload;
+  } catch {
+    return undefined;
+  }
 }
 
 function parseHtmlPayload(result: { content?: Array<{ text?: string }> }): {
@@ -550,6 +595,8 @@ export function renderErExportIndexHtml(summary: ErDirectorySummary): string {
       <h2>Files</h2>
       <ul>
         <li><a href="overview.html">overview.html</a></li>
+        <li><a href="metadata/graph.json">metadata/graph.json</a></li>
+        <li><a href="metadata/diagnostics.json">metadata/diagnostics.json</a></li>
         <li><a href="metadata/er-summary.json">metadata/er-summary.json</a></li>
         <li><a href="metadata/relationships.json">metadata/relationships.json</a></li>
         <li><a href="metadata/warnings.json">metadata/warnings.json</a></li>
@@ -563,6 +610,78 @@ export function renderErExportIndexHtml(summary: ErDirectorySummary): string {
       <h2>Tables</h2>
       <table><thead><tr><th>Table</th><th>Page</th><th>Chunk</th></tr></thead><tbody>${tableRows}</tbody></table>
     </section>`);
+}
+
+function buildErExportGraphMetadata(summary: ErDirectorySummary, chunks: ErDirectoryGraphChunk[]): Record<string, unknown> {
+  return {
+    generatedAt: summary.generatedAt,
+    mode: summary.mode,
+    schema: summary.schema,
+    rootTable: summary.rootTable,
+    businessTerm: summary.businessTerm,
+    tableCount: summary.tableCount,
+    relationshipCount: summary.relationshipCount,
+    plannedRelationshipCount: summary.plannedRelationshipCount,
+    chunkCount: summary.chunkCount,
+    chunks: chunks.map((chunk) => ({
+      index: chunk.index,
+      file: chunk.file,
+      tableCount: chunk.tableCount,
+      relationshipCount: chunk.relationshipCount,
+      status: chunk.graph?.status,
+      summary: chunk.graph?.summary,
+      nodes: chunk.graph?.nodes ?? [],
+      edges: chunk.graph?.edges ?? []
+    })),
+    note: "Graph metadata is collected from local chunk HTML artifacts. It is metadata-only and does not include table data."
+  };
+}
+
+function buildErExportDiagnosticsMetadata(summary: ErDirectorySummary, chunks: ErDirectoryGraphChunk[]): Record<string, unknown> {
+  const diagnostics = [
+    ...summary.warnings.map((warning) => ({
+      level: "warning",
+      code: "er_export_warning",
+      message: warning
+    })),
+    ...chunks.flatMap((chunk) => {
+      const graphDiagnostics = Array.isArray(chunk.graph?.diagnostics) ? chunk.graph.diagnostics : [];
+      if (!chunk.graph) {
+        return [{
+          level: "warning",
+          code: "er_graph_metadata_missing",
+          message: `Graph metadata was not found in ${chunk.file}.`,
+          action: "Use html-interactive format when graph metadata is required.",
+          chunk: chunk.index,
+          file: chunk.file
+        }];
+      }
+      return graphDiagnostics.map((diagnostic) => ({
+        ...(typeof diagnostic === "object" && diagnostic !== null ? diagnostic as Record<string, unknown> : { message: String(diagnostic) }),
+        chunk: chunk.index,
+        file: chunk.file
+      }));
+    })
+  ];
+  return {
+    generatedAt: summary.generatedAt,
+    status: erExportStatus(diagnostics),
+    diagnosticCount: diagnostics.length,
+    diagnostics,
+    chunks: chunks.map((chunk) => ({
+      index: chunk.index,
+      file: chunk.file,
+      status: chunk.graph?.status ?? "Unknown",
+      diagnosticCount: Array.isArray(chunk.graph?.diagnostics) ? chunk.graph.diagnostics.length : chunk.graph ? 0 : 1
+    }))
+  };
+}
+
+function erExportStatus(diagnostics: Array<Record<string, unknown>>): "OK" | "Partial" | "Needs Scope" {
+  if (diagnostics.length === 0) {
+    return "OK";
+  }
+  return diagnostics.some((diagnostic) => diagnostic.level === "warning") ? "Needs Scope" : "Partial";
 }
 
 export function renderErExportOverviewHtml(summary: ErDirectorySummary): string {

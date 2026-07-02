@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 
 import {
+  extractEmbeddedErGraph,
   parseExportErArgs,
   renderErExportIndexHtml,
   renderErExportOverviewHtml,
@@ -89,6 +90,18 @@ test("writeErArtifact refuses to overwrite by default", () => {
   }
 });
 
+test("extractEmbeddedErGraph reads interactive ER graph metadata", () => {
+  const html = `<html><body><script type="application/json" id="er-graph-data">{"nodes":[{"label":"orders\\u003citems"}],"edges":[],"status":"OK","diagnostics":[],"summary":{"tableCount":1}}</script></body></html>`;
+  assert.deepEqual(extractEmbeddedErGraph(html), {
+    nodes: [{ label: "orders<items" }],
+    edges: [],
+    status: "OK",
+    diagnostics: [],
+    summary: { tableCount: 1 }
+  });
+  assert.equal(extractEmbeddedErGraph("<html></html>"), undefined);
+});
+
 test("ER export directory pages link chunks tables and metadata", () => {
   const summary = {
     mode: "mysql",
@@ -120,6 +133,8 @@ test("ER export directory pages link chunks tables and metadata", () => {
   };
 
   const index = renderErExportIndexHtml(summary);
+  assert.match(index, /metadata\/graph\.json/);
+  assert.match(index, /metadata\/diagnostics\.json/);
   assert.match(index, /metadata\/er-summary\.json/);
   assert.match(index, /chunks\/er-part-001\.html/);
   assert.match(index, /tables\/biz_test\.orders\.html/);
