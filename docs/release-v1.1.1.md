@@ -9,14 +9,16 @@ v1.1.1 is a stability release for large-schema ER generation. It keeps the read-
 - `ob_plan_er_export`：为大 schema 输出分片计划、chunk 命令、stats 和 warnings，不返回超大 inline HTML。
 - CLI 分片导出：`ob-mcp export-er --out-dir` 写出 `index.html`、`overview.html`、`chunks/`、`tables/` 和 `metadata/`。
 - ER HTML 浏览器：大图使用多列概览布局、关键字段优先、表筛选计数、schema 概览和选中表定位。
+- ER HTML 可读性：warnings 区域限制高度并可滚动，避免大库警告把主图挤出首屏。
+- 分片统计：目录导出区分实际渲染关系数和规划阶段关系上限，避免大库摘要误读。
 - OpenCode Agent/Skill：大库先规划再分片；默认使用真实 FK/约束关系，不直接生成全库 inline ER。
 
 ## 验证结果
 
-- MySQL 模式：本地 OceanBase 220 张复杂表验证通过；ER 生成 220 张表、219 条关系，批量查询 8 次，CLI 分片导出 5 个 chunk。
-- Oracle 模式：本地 OceanBase 220 张复杂表验证通过；ER 生成 220 张表、164 条关系，批量查询 8 次，CLI 分片导出 5 个 chunk。
+- MySQL 模式：本地 OceanBase 220 张复杂表验证通过；ER 生成 220 张表、219 条关系，批量查询 8 次，CLI 目录导出 220 张表、5 个 chunk。
+- Oracle 模式：本地 OceanBase 220 张复杂测试表验证通过；CLI 目录导出 320 张可见表，其中包含 220 张 `OB_MCP_LG_*` 测试表，生成 7 个 chunk。
 - MySQL stdio smoke、Oracle stdio smoke、MySQL HTTP smoke、Oracle HTTP smoke 通过。
-- ER HTML 已用 5、50、220 表样本生成并截图检查，大图默认进入多列概览。
+- ER HTML 已用 5、50、220+ 表样本生成并截图检查，大图默认进入多列概览，warnings 不再遮挡主图。
 
 ## 内网编译
 

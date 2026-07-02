@@ -54,6 +54,8 @@ ob-mcp export-er --schema biz_test --format interactive --out-dir docs/er --chun
 - `metadata/relationships.json`
 - `metadata/warnings.json`
 
+分片导出时，`metadata/relationships.json` 中的 `relationshipCount` 表示已经渲染到 chunk HTML 里的关系数；`plannedRelationshipCount` 表示规划阶段的估算值或关系上限。需要在同一张图里检查跨 chunk 关系时，建议手动缩小表范围重新导出。
+
 ## 使用建议
 
 - 先缩小 schema、table 或业务词范围。

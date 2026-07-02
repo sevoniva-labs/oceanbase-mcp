@@ -242,6 +242,8 @@ jobs:
           - `ob_plan_er_export`：为大 schema 返回分片导出计划、chunk 命令、stats 和 warnings，不返回超大 inline HTML。
           - CLI 分片导出：`ob-mcp export-er --out-dir` 写出 `index.html`、`overview.html`、`chunks/`、`tables/` 和 `metadata/`。
           - ER HTML 浏览器：大图使用多列概览布局、关键字段优先、表筛选计数、schema 概览和选中表定位。
+          - ER HTML 可读性：warnings 区域限制高度并可滚动，避免大库警告把主图挤出首屏。
+          - 分片统计：目录导出区分实际渲染关系数和规划阶段关系上限。
           - OpenCode 工作流：大库先规划，再分片；默认 `relationshipMode=foreign_key`，不直接请求全库 inline ER。
 
           ## Delivery Assets
@@ -270,7 +272,7 @@ jobs:
 
           - OceanBase MySQL 模式 smoke test 覆盖 ER plan、默认 FK 关系、HTML 降级和分片导出。
           - OceanBase Oracle 模式 smoke test 覆盖 ER plan、默认 FK 关系、HTML 降级和分片导出。
-          - 本地 MySQL 220 表和 Oracle 220 表大 schema 验证通过。
+          - 本地 MySQL 220 表和 Oracle 220 张复杂测试表大 schema 验证通过。
           - `npm test`、`npm run docs:check`、`npm audit --omit=dev --audit-level=moderate`、`npm pack --dry-run`、Docker build 通过。
 
           ## 生产注意事项

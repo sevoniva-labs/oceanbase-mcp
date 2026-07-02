@@ -54,6 +54,8 @@ Existing files are not overwritten by default. Pass `--overwrite` explicitly whe
 - `metadata/relationships.json`
 - `metadata/warnings.json`
 
+For chunked exports, `relationshipCount` in `metadata/relationships.json` is the number of relationships rendered inside chunk HTML files. `plannedRelationshipCount` records the planning-stage estimate or configured relationship limit. Cross-chunk relationships may need a smaller manual scope when they must be inspected in one diagram.
+
 ## Usage Notes
 
 - Start with a narrow schema, table, or business-term scope.
