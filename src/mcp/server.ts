@@ -74,7 +74,6 @@ import { generateQueryTemplates, type QueryTemplateScenario } from "../query-gen
 import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "../runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "../sql.js";
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "../sql-scan.js";
-import { findSqlUsages } from "../sql-usage.js";
 import {
   gatewayLimitConfig,
   publicProfiles,
@@ -114,7 +113,6 @@ import {
   profileInput,
   queryScenarioSchema,
   sqlParamSchema,
-  sqlUsageIndexInputSchema,
   tableDocumentFormatSchema,
   type BuildSelectFilter,
   type BuildSelectOrderBy
@@ -150,6 +148,7 @@ import { registerObjectMetadataTools } from "./tools/object-metadata.js";
 import { registerQueryBuildTools } from "./tools/query-build.js";
 import { registerQueryPlanTools } from "./tools/query-plan.js";
 import { registerQueryTemplateTools } from "./tools/query-templates.js";
+import { registerSqlUsageTools } from "./tools/sql-usages.js";
 import {
   buildSchemaMapTableSummary,
   cachedDescribeTable,
@@ -692,6 +691,7 @@ export function createObMcpServer(
   registerQueryPlanTools(registerTool, runtime, context);
   registerQueryBuildTools(registerTool, runtime, context);
   registerQueryTemplateTools(registerTool, runtime, context);
+  registerSqlUsageTools(registerTool, runtime, context);
 
   registerTool(
     "ob_search_catalog",
@@ -1947,34 +1947,6 @@ export function createObMcpServer(
         },
         selected.config
       );
-    }
-  );
-
-  registerTool(
-    "ob_find_sql_usages",
-    {
-      title: "Find SQL Usages",
-      description: "Find project SQL usages from a static SQL usage index without executing SQL or reading project files.",
-      inputSchema: {
-        ...profileInput,
-        sqlIndex: sqlUsageIndexInputSchema,
-        schema: z.string().optional(),
-        table: z.string().optional(),
-        column: z.string().optional(),
-        businessTerm: z.string().optional(),
-        maxResults: z.number().int().positive().max(200).optional()
-      }
-    },
-    async ({ profile, sqlIndex, schema, table, column, businessTerm, maxResults }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const result = findSqlUsages(sqlIndex, {
-        schema: metadataSchema(selected.config, schema),
-        table,
-        column,
-        businessTerm,
-        maxResults
-      });
-      return toLimitedResult(result, selected.config);
     }
   );
 
