@@ -59,7 +59,6 @@ import {
 } from "./query-builder.js";
 import { registerMcpResources } from "./resources.js";
 import {
-  entityDiagramOutputFormatSchema,
   erHtmlFormatSchema,
   erRelationshipModeSchema,
   profileInput,
@@ -76,11 +75,11 @@ import {
   shouldSkipSchemaInlineErHtmlRender
 } from "./tools/er-response.js";
 import { registerErDocumentTools } from "./tools/er-document.js";
+import { registerErEntityDiagramTools } from "./tools/er-entity-diagram.js";
 import { registerErExportPlanTools } from "./tools/er-export-plan-tool.js";
 import { registerErExplainRelationshipTools } from "./tools/er-explain-relationship.js";
 import {
   dedupeRelationships,
-  entityRelationshipEvidence,
   erRelationshipKey,
   isErRelationshipVisible,
   parseErInputTableRef,
@@ -214,6 +213,7 @@ export function createObMcpServer(
   registerDocumentationTools(registerTool, runtime, context);
   registerErExplainRelationshipTools(registerTool, runtime, context);
   registerErDocumentTools(registerTool, runtime, context, buildErDiagramResult);
+  registerErEntityDiagramTools(registerTool, runtime, context, buildErDiagramResult);
   registerErExportPlanTools(registerTool, runtime, context, buildErExportPlanResult);
 
   registerTool(
@@ -387,76 +387,6 @@ export function createObMcpServer(
         },
         selected.config
       );
-    }
-  );
-
-  registerTool(
-    "ob_generate_entity_diagram",
-    {
-      title: "Generate Entity Diagram",
-      description: "Generate a local entity-focused ER diagram from a business term or table, with Mermaid, JSON, and optional HTML.",
-      inputSchema: {
-        ...profileInput,
-        schema: z.string().optional(),
-        table: z.string().optional(),
-        businessTerm: z.string().min(1).optional(),
-        depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(500).optional(),
-        maxRelationships: z.number().int().positive().max(1000).optional(),
-        minConfidence: z.number().min(0).max(1).optional(),
-        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
-        includeInferred: z.boolean().optional().default(false),
-        formats: z.array(entityDiagramOutputFormatSchema).min(1).max(3).optional(),
-        htmlFormat: erHtmlFormatSchema.optional().default("html-compact"),
-        title: z.string().min(1).max(120).optional()
-      }
-    },
-    async ({ profile, schema, table, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, formats, htmlFormat = "html-compact", title }) => {
-      if (!table && !businessTerm) {
-        throw new Error("Pass table or businessTerm when generating an entity diagram.");
-      }
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const outputFormats = uniqueStrings(formats ?? ["mermaid", "json", "html"]) as Array<"mermaid" | "json" | "html">;
-      const result = await buildErDiagramResult(selected, {
-        schema,
-        table,
-        businessTerm,
-        depth: depth ?? 1,
-        maxTables: maxTables ?? 12,
-        maxRelationships,
-        minConfidence,
-        relationshipMode,
-        includeInferred
-      });
-      const response: Record<string, unknown> = {
-        mode: result.response.mode,
-        schema: result.response.schema,
-        table: table ?? null,
-        businessTerm: businessTerm ?? null,
-        formats: outputFormats,
-        tableCount: result.response.tableCount,
-        relationshipCount: result.response.relationshipCount,
-        relationshipEvidence: result.diagram.relationships.map(entityRelationshipEvidence),
-        stats: result.response.stats,
-        warnings: result.response.warnings
-      };
-      if (outputFormats.includes("mermaid")) {
-        response.mermaid = result.response.mermaid;
-      }
-      if (outputFormats.includes("json")) {
-        response.diagram = result.response.diagram;
-        response.scope = result.response.scope;
-      }
-      if (outputFormats.includes("html")) {
-        response.html = renderErHtml(result.diagram, {
-          title: title ?? defaultErHtmlTitle(result.response),
-          warnings: result.response.warnings,
-          format: htmlFormat
-        });
-        response.htmlFormat = htmlFormat;
-        response.contentType = "text/html";
-      }
-      return toLimitedResult(response, selected.config);
     }
   );
 
