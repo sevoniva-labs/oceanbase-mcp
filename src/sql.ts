@@ -16,6 +16,8 @@ const DANGEROUS_READ_PATTERNS = [
   /\bsleep\s*\(/i,
   /\bbenchmark\s*\(/i,
   /\bnextval\b/i,
+  /\b(?:dbms_|utl_)[A-Za-z0-9_$]*\s*\./i,
+  /\b[A-Za-z_][\w$]*\s*\.\s*[A-Za-z_][\w$]*\s*\(/i,
   /@[\w$]+\s*:=/i
 ];
 

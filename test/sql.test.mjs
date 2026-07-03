@@ -15,6 +15,7 @@ test("assertReadOnlySql allows common read-only statements", () => {
   assert.doesNotThrow(() => assertReadOnlySql("WITH c AS (SELECT 1) SELECT * FROM c"));
   assert.doesNotThrow(() => assertReadOnlySql("EXPLAIN SELECT 1"));
   assert.doesNotThrow(() => assertReadOnlySql("EXPLAIN FORMAT=JSON SELECT 1"));
+  assert.doesNotThrow(() => assertReadOnlySql("SELECT COUNT(*), TO_DATE('2026-07-03', 'YYYY-MM-DD') FROM dual"));
 });
 
 test("assertReadOnlySql rejects multi-statement and write SQL", () => {
@@ -36,6 +37,9 @@ test("assertReadOnlySql rejects side-effect patterns", () => {
   assert.throws(() => assertReadOnlySql("SELECT LOAD_FILE('/etc/passwd')"), /blocked side-effect/);
   assert.throws(() => assertReadOnlySql("SELECT SLEEP(10)"), /blocked side-effect/);
   assert.throws(() => assertReadOnlySql("SELECT seq.NEXTVAL FROM DUAL"), /blocked side-effect/);
+  assert.throws(() => assertReadOnlySql("SELECT APP.RECALCULATE_BALANCE(id) FROM APP.ACCOUNTS"), /blocked side-effect/);
+  assert.throws(() => assertReadOnlySql("SELECT DBMS_LOCK.SLEEP(1) FROM DUAL"), /blocked side-effect/);
+  assert.throws(() => assertReadOnlySql("SELECT UTL_HTTP.REQUEST('https://example.com') FROM DUAL"), /blocked side-effect/);
   assert.throws(() => assertReadOnlySql("SELECT id INTO @captured FROM biz_test.orders"), /blocked side-effect/);
   assert.throws(() => assertReadOnlySql("SELECT id INTO captured_id FROM biz_test.orders"), /blocked side-effect/);
 });
