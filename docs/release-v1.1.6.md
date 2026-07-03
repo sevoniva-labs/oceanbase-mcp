@@ -32,7 +32,7 @@ ob-mcp --help
 npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
 ```
 
-Private registries can mirror npmjs and install the same pinned package version.
+Registry mirrors can mirror npmjs and install the same pinned package version.
 
 ## Offline Source Build
 
@@ -44,7 +44,7 @@ npm run build
 npm run start
 ```
 
-The source archive does not include `node_modules` or `dist`. The private npm registry must provide the dependencies locked in `package-lock.json`.
+The source archive does not include `node_modules` or `dist`. The npm registry mirror must provide the dependencies locked in `package-lock.json`.
 
 ## Assets
 
@@ -90,7 +90,7 @@ ob-mcp --help
 npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.1.6 ob-mcp --help
 ```
 
-私有制品库可以同步 npmjs，并安装相同的固定版本。
+npm registry 镜像可以同步 npmjs，并安装相同的固定版本。
 
 ### 离线源码构建
 

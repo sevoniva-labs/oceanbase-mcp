@@ -34,6 +34,11 @@ for (const root of roots) {
 const failures = [];
 const markdownLink = /!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const toolHeadings = new Set(["## Tools / 工具", "## Tools", "## 工具列表"]);
+const bannedPublicPhrases = [
+  { phrase: "内网", reason: "use a neutral public deployment term" },
+  { phrase: "私有制品库", reason: "use npm registry mirror wording" },
+  { phrase: "私有网络", reason: "use trusted network wording" }
+];
 
 for (const file of markdownFiles) {
   const content = fs.readFileSync(file, "utf8");
@@ -61,6 +66,7 @@ for (const file of markdownFiles) {
     }
   }
   checkToolTableOrder(file, content, failures);
+  checkPublicPhrases(file, content, failures);
 }
 
 if (failures.length > 0) {
@@ -120,6 +126,14 @@ function checkToolTableOrder(file, content, failures) {
         failures.push(`${file}: tools table order moves from ${previous.raw} ${previous.toolName} to ${rawVersion} ${toolName}`);
       }
       previous = { raw: rawVersion, version, toolName };
+    }
+  }
+}
+
+function checkPublicPhrases(file, content, failures) {
+  for (const banned of bannedPublicPhrases) {
+    if (content.includes(banned.phrase)) {
+      failures.push(`${file}: public docs contain "${banned.phrase}"; ${banned.reason}`);
     }
   }
 }

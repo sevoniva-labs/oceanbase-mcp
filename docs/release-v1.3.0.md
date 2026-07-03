@@ -37,7 +37,7 @@ ob-mcp --help
 npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.3.0 ob-mcp --help
 ```
 
-Private registries can mirror npmjs and install the same pinned package version.
+Registry mirrors can mirror npmjs and install the same pinned package version.
 
 ## Offline Source Build
 

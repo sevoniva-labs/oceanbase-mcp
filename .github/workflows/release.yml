@@ -287,13 +287,13 @@ jobs:
 
           ## 新增与修复
 
-          - npm 包名改为 `@sevoniva/oceanbase-mcp`，方便公开 npmjs 分发和私有制品库同步。
+          - npm 包名改为 `@sevoniva/oceanbase-mcp`，方便通过 npmjs 和 npm registry 镜像分发。
           - CLI 命令继续保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
           - 支持全局 npm 安装，也支持在开发终端通过 `npx --package` 调用 `ob-mcp`。
           - Release workflow 使用 npm Trusted Publishing；npmjs 需要绑定 GitHub repository 和 `release.yml` workflow。
           - npmjs 已存在相同版本时，Release workflow 会跳过 npm 发布并继续创建 Release 资产。
           - Release 附件包含 scoped npm tarball 和 `oceanbase-mcp-${{ needs.metadata.outputs.version }}-source.tar.gz`。
-          - README、部署文档、OpenCode 文档和 release 文档补充 npmjs 安装与私有制品库同步说明。
+          - README、部署文档、OpenCode 文档和 release 文档补充 npmjs 安装与 registry mirror 说明。
           - 只读策略、profile 权限、行数限制、输出大小限制、超时、审计日志和错误脱敏保持不变。
 
           ## Delivery Assets
@@ -318,7 +318,7 @@ jobs:
           npm run start
           ```
 
-          源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。
+          源码归档不包含 `node_modules` 和 `dist`。npm registry 镜像需要能提供 `package-lock.json` 中锁定的依赖。
 
           ## 验证结果
 

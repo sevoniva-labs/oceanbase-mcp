@@ -229,7 +229,7 @@ To enable GitHub Actions publishing through npm Trusted Publishing:
 
 The workflow grants `id-token: write` and publishes with `npm publish --provenance`. After Trusted Publishing is configured, `NPM_TOKEN` is not required for Release workflow publishing. A short-lived automation token can still be used for the first manual publish.
 
-Consumers can install from npmjs or a private registry that mirrors npmjs:
+Consumers can install from npmjs or an npm registry mirror:
 
 ```bash
 npm install -g @sevoniva/oceanbase-mcp@1.4.0
@@ -262,4 +262,4 @@ npm run build
 npm run start
 ```
 
-The source archive does not include `node_modules` or `dist`. The private npm registry must provide the dependencies locked in `package-lock.json`. After the build, run `npm prune --omit=dev` if the production directory needs to be reduced.
+The source archive does not include `node_modules` or `dist`. The npm registry mirror must provide the dependencies locked in `package-lock.json`. After the build, run `npm prune --omit=dev` if the production directory needs to be reduced.

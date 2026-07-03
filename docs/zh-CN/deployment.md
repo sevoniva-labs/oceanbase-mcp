@@ -89,7 +89,7 @@ docker compose ps
 curl -f http://127.0.0.1:3000/healthz
 ```
 
-示例 compose 将宿主机端口绑定到 `127.0.0.1`。除非前面有 TLS 反向代理或私有网络边界，否则不要改成公网监听。
+示例 compose 将宿主机端口绑定到 `127.0.0.1`。除非前面有 TLS 反向代理或受信任网络边界，否则不要改成公网监听。
 
 ## Kubernetes
 
@@ -229,7 +229,7 @@ Release workflow 产物：
 
 workflow 已配置 `id-token: write`，并使用 `npm publish --provenance` 发布。配置 Trusted Publishing 后，Release workflow 发布不再需要 `NPM_TOKEN`。短期 automation token 仍可用于首次手动发布。
 
-使用方可以从 npmjs 安装，也可以从同步 npmjs 的私有 registry 安装：
+使用方可以从 npmjs 安装，也可以从同步 npmjs 的 npm registry 镜像安装：
 
 ```bash
 npm install -g @sevoniva/oceanbase-mcp@1.4.0
@@ -262,4 +262,4 @@ npm run build
 npm run start
 ```
 
-源码归档不包含 `node_modules` 和 `dist`。私有 npm 制品库需要能提供 `package-lock.json` 中锁定的依赖。构建完成后如需精简生产目录，可执行 `npm prune --omit=dev`。
+源码归档不包含 `node_modules` 和 `dist`。npm registry 镜像需要能提供 `package-lock.json` 中锁定的依赖。构建完成后如需精简生产目录，可执行 `npm prune --omit=dev`。

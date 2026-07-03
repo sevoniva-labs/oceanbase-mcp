@@ -37,7 +37,7 @@ npm run build
 npm run start
 ```
 
-The source archive does not include `node_modules` or `dist`. The private npm repository must provide the dependencies locked in `package-lock.json`.
+The source archive does not include `node_modules` or `dist`. The npm registry mirror must provide the dependencies locked in `package-lock.json`.
 
 ## Assets
 
