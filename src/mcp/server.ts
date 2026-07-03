@@ -21,7 +21,6 @@ import {
   listConstraints,
   listIndexes,
   listPartitions,
-  listSchemas,
   listTables,
   profileColumns,
   renderStructuredTableDdl,
@@ -44,7 +43,6 @@ import {
   assertTableAccess,
   explainSqlPolicy,
   filterColumnMetadata,
-  filterSchemas,
   filterTables,
   isSchemaAllowed,
   isDeniedColumn
@@ -104,7 +102,6 @@ import {
   catalogSearchResult,
   dedupeSearchResults,
   glossarySearchResults,
-  schemaSearchResult,
   textMatchEvidence,
   type SearchEverythingResult
 } from "./search-results.js";
@@ -702,71 +699,6 @@ export function createObMcpServer(
   registerQueryTemplateTools(registerTool, runtime, context);
   registerSearchCatalogTools(registerTool, runtime, context);
   registerSqlUsageTools(registerTool, runtime, context);
-
-  registerTool(
-    "ob_search_everything",
-    {
-      title: "Search OceanBase Metadata",
-      description: "Search visible schemas, tables, columns, comments, and business glossary entries with confidence and evidence.",
-      inputSchema: {
-        ...profileInput,
-        query: z.string().min(1),
-        schema: z.string().optional(),
-        limit: z.number().int().positive().max(500).optional(),
-        includeGlossary: z.boolean().optional().default(true)
-      }
-    },
-    async ({ profile, query, schema, limit, includeGlossary = true }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      if (schema) {
-        assertTableAccess(schema, "*", policyContext(selected.config));
-      }
-      const maxResults = Math.min(limit ?? 30, 500);
-      const schemaRows = filterSchemas(
-        await withQuerySlot(selected, () =>
-          listSchemas(selected.pool, selected.config.compatibility, selected.config.queryTimeoutMs)
-        ),
-        selected.config.policy
-      );
-      const catalogRows = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          searchCatalog(
-            selected.pool,
-            selected.config.compatibility,
-            query,
-            schema,
-            maxResults,
-            selected.config.queryTimeoutMs
-          )
-        ),
-        selected.config.policy
-      );
-      const glossary = includeGlossary
-        ? searchBusinessGlossary(selected.config, query, maxResults, schema)
-        : { configured: Boolean(selected.config.businessGlossary), matches: [], policyFiltered: false, warnings: [] };
-      const results = dedupeSearchResults([
-        ...schemaRows.flatMap((row) => schemaSearchResult(row, query, selected.config, schema)),
-        ...catalogRows.flatMap((row) => catalogSearchResult(row, query, selected.config)),
-        ...glossary.matches.flatMap((match) => glossarySearchResults(match, query))
-      ])
-        .sort((left, right) => right.confidence - left.confidence || left.type.localeCompare(right.type))
-        .slice(0, maxResults);
-
-      return toLimitedResult(
-        {
-          query,
-          schema: schema ?? null,
-          count: results.length,
-          truncated: results.length >= maxResults,
-          glossaryConfigured: glossary.configured,
-          policyFiltered: glossary.policyFiltered,
-          results,
-          warnings: glossary.warnings
-        },
-        selected.config
-      );
-    }
-  );
 
   registerTool(
     "ob_find_tables_by_business_term",
