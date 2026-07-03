@@ -1,8 +1,8 @@
-import mysql, { type FieldPacket, type QueryResult } from "mysql2/promise";
+import type { QueryResult } from "mysql2/promise";
 
-import type { CompatibilityMode, ObConfig } from "./config.js";
-import { oracleTimeoutHint, timeoutMicros } from "./db/dialect/oracle.js";
-import { normalizeSqlForDriver } from "./db/sql-driver.js";
+import type { CompatibilityMode } from "./config.js";
+import { oracleTimeoutHint } from "./db/dialect/oracle.js";
+import { runQuery } from "./db/query.js";
 import type {
   ColumnProfile,
   ColumnProfileRequest,
@@ -26,7 +26,7 @@ import type {
   TableRelationship,
   TableStats
 } from "./db/types.js";
-import { rowsToOutput, type QueryOutput } from "./format.js";
+import type { QueryOutput } from "./format.js";
 
 export type {
   ColumnProfile,
@@ -53,7 +53,9 @@ export type {
   TableRelationshipEvidence,
   TableStats
 } from "./db/types.js";
+export { createObPool, ping } from "./db/pool.js";
 export { verifyReadOnlyPermissions } from "./db/permissions.js";
+export { runQuery, runReadOnlyQuery } from "./db/query.js";
 
 const ORACLE_OBJECT_TYPES: OracleObjectType[] = [
   "VIEW",
@@ -67,108 +69,6 @@ const ORACLE_OBJECT_TYPES: OracleObjectType[] = [
 const ORACLE_SOURCE_MAX_LINES = 200;
 const ORACLE_SOURCE_MAX_CHARS = 20_000;
 const DEFAULT_TABLE_DDL_METADATA_ITEM_LIMIT = 1_000;
-
-export function createObPool(config: ObConfig): ObPool {
-  return mysql.createPool({
-    host: config.host,
-    port: config.port,
-    user: config.user,
-    password: config.password,
-    database: config.database,
-    waitForConnections: true,
-    connectionLimit: config.connectionLimit,
-    connectTimeout: config.connectTimeoutMs,
-    multipleStatements: false,
-    namedPlaceholders: false,
-    supportBigNumbers: true,
-    bigNumberStrings: true,
-    dateStrings: true,
-    timezone: "Z",
-    ssl: config.ssl
-  }) as ObPool;
-}
-
-export async function ping(pool: ObPool, config: ObConfig): Promise<Record<string, unknown>> {
-  const sql = config.compatibility === "oracle" ? `SELECT ${oracleTimeoutHint(config.queryTimeoutMs)} 1 AS ok FROM DUAL` : "SELECT 1 AS ok";
-  const [rows] = await pool.query({ sql, timeout: config.queryTimeoutMs });
-  const versionSql =
-    config.compatibility === "oracle"
-      ? `SELECT ${oracleTimeoutHint(config.queryTimeoutMs)} banner AS version_text FROM v$version WHERE ROWNUM = 1`
-      : "SELECT VERSION() AS version_text";
-  const [versionRows] = await pool.query({ sql: versionSql, timeout: config.queryTimeoutMs });
-
-  return {
-    ok: true,
-    ping: rows,
-    version: versionRows,
-    host: config.host,
-    port: config.port,
-    user: config.user,
-    database: config.database ?? null,
-    compatibility: config.compatibility
-  };
-}
-
-export async function runQuery(
-  pool: ObPool,
-  sql: string,
-  params: SqlParam[],
-  maxRows: number,
-  timeoutMs: number,
-  maxOutputBytes = Number.POSITIVE_INFINITY
-): Promise<QueryOutput> {
-  const [result, fields] = await pool.query({ sql, values: params, timeout: timeoutMs });
-  return rowsToOutput(result as QueryResult, fields as FieldPacket[] | undefined, maxRows, maxOutputBytes);
-}
-
-export async function runReadOnlyQuery(
-  pool: ObPool,
-  mode: CompatibilityMode,
-  sql: string,
-  params: SqlParam[],
-  maxRows: number,
-  timeoutMs: number,
-  enforceReadOnlyTransaction: boolean,
-  maxOutputBytes = Number.POSITIVE_INFINITY
-): Promise<QueryOutput> {
-  const driverSql = normalizeSqlForDriver(mode, sql, params);
-  if (!enforceReadOnlyTransaction) {
-    return runQuery(pool, driverSql, params, maxRows, timeoutMs, maxOutputBytes);
-  }
-
-  const connection = await pool.getConnection();
-  let transactionStarted = false;
-  try {
-    await setOceanBaseQueryTimeout(connection, timeoutMs);
-    const readOnlySql = mode === "oracle" ? "SET TRANSACTION READ ONLY" : "START TRANSACTION READ ONLY";
-    await connection.query({ sql: readOnlySql, timeout: timeoutMs });
-    transactionStarted = true;
-    const [result, fields] = await connection.query({ sql: driverSql, values: params, timeout: timeoutMs });
-    await connection.query({ sql: "ROLLBACK", timeout: timeoutMs });
-    transactionStarted = false;
-    return rowsToOutput(result as QueryResult, fields as FieldPacket[] | undefined, maxRows, maxOutputBytes);
-  } finally {
-    if (transactionStarted) {
-      try {
-        await connection.query({ sql: "ROLLBACK", timeout: timeoutMs });
-      } catch {
-        // The original query error is more useful than a rollback failure here.
-      }
-    }
-    connection.release();
-  }
-}
-
-async function setOceanBaseQueryTimeout(connection: ObConnection, timeoutMs: number): Promise<void> {
-  try {
-    await connection.query({
-      sql: `SET ob_query_timeout = ${timeoutMicros(timeoutMs)}`,
-      timeout: timeoutMs
-    });
-  } catch {
-    // Older or non-OceanBase endpoints may not support this variable.
-  }
-}
 
 export async function listSchemas(pool: ObPool, mode: CompatibilityMode, timeoutMs: number): Promise<unknown[]> {
   if (mode === "oracle") {
