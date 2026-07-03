@@ -109,6 +109,14 @@ test("registered MCP tools all have a manifest entry", () => {
   assert.deepEqual(registeredTools, manifestTools);
 });
 
+test("registered MCP resources remain available", () => {
+  const config = loadConfig({ OB_ALLOWED_SCHEMAS: "biz_test" });
+  const server = createObMcpServer(runtime(config));
+
+  assert.deepEqual(Object.keys(server._registeredResources).sort(), ["ob://connection", "ob://profiles"]);
+  assert.deepEqual(Object.keys(server._registeredResourceTemplates).sort(), ["table-schema"]);
+});
+
 function runtime(config) {
   return {
     defaultProfile: "default",

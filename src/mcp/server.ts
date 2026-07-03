@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, statSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
-import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 
 import {
@@ -12,7 +12,6 @@ import {
   TOOL_CAPABILITIES
 } from "../capabilities.js";
 import type { HttpConfig, ObConfig } from "../config.js";
-import { publicConfig } from "../config.js";
 import {
   describeTable,
   estimateErExportPlanStats,
@@ -46,7 +45,7 @@ import { diagnoseGateway } from "../diagnostics.js";
 import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "../er.js";
 import type { ErGraph, ErGraphDiagnostic, ErGraphStatus } from "../er-graph.js";
 import { logAudit } from "../errors.js";
-import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "../format.js";
+import { assertJsonByteLimit, jsonByteLength, type QueryOutput } from "../format.js";
 import { captureMetadataSnapshot } from "../metadata-capture.js";
 import { analyzeChangeSqlImpact, analyzeMetadataImpact } from "../metadata-impact.js";
 import { compareMetadataSnapshots } from "../metadata-change.js";
@@ -105,6 +104,8 @@ import {
   visibleDefaultProfile
 } from "./access.js";
 import type { McpRequestContext } from "./context.js";
+import { policyContext } from "./policy-context.js";
+import { registerMcpResources } from "./resources.js";
 import {
   buildSelectFilterSchema,
   buildSelectOrderBySchema,
@@ -181,55 +182,7 @@ export function createObMcpServer(
     version: SERVER_VERSION
   });
   const registerTool = createToolRegistrar(server, runtime, context);
-
-  server.registerResource(
-    "connection",
-    "ob://connection",
-    {
-      title: "Default OceanBase Connection",
-      description: "Default OceanBase MCP connection settings, excluding password and SSL material.",
-      mimeType: "application/json"
-    },
-    async (uri) => {
-      const selected = selectAuthorizedProfile(runtime, undefined, context);
-      return resourceResult(uri.href, publicConfig(selected.config), selected.config);
-    }
-  );
-
-  server.registerResource(
-    "profiles",
-    "ob://profiles",
-    {
-      title: "OceanBase MCP Profiles",
-      description: "Configured OceanBase profiles with redacted connection settings.",
-      mimeType: "application/json"
-    },
-    async (uri) =>
-      resourceResult(uri.href, {
-        defaultProfile: visibleDefaultProfile(runtime, context),
-        profiles: publicProfiles(runtime, context)
-      }, gatewayLimitConfig(runtime, context))
-  );
-
-  server.registerResource(
-    "table-schema",
-    new ResourceTemplate("ob://profile/{profile}/schema/{schema}/table/{table}", { list: undefined }),
-    {
-      title: "OceanBase Table Schema",
-      description: "Policy-filtered table schema for one profile/schema/table.",
-      mimeType: "application/json"
-    },
-    async (uri, variables) => {
-      const selected = selectAuthorizedProfile(runtime, stringVariable(variables.profile), context);
-      const schema = stringVariable(variables.schema);
-      const table = stringVariable(variables.table);
-      assertTableAccess(schema, table, policyContext(selected.config));
-      const rows = await withQuerySlot(selected, () =>
-        describeTable(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
-      );
-      return resourceResult(uri.href, filterColumnMetadata(rows, selected.config.policy), selected.config);
-    }
-  );
+  registerMcpResources(server, runtime, context);
 
   registerTool(
     "ob_list_profiles",
@@ -4163,14 +4116,6 @@ export function createObMcpServer(
   );
 
   return server;
-}
-
-function policyContext(config: ObConfig) {
-  return {
-    compatibility: config.compatibility,
-    defaultSchema: config.database,
-    policy: config.policy
-  };
 }
 
 function filterSchemaMapTables(rows: SchemaMapTable[], config: ObConfig): SchemaMapTable[] {
@@ -10864,28 +10809,6 @@ function deniedColumnTokens(pattern: string): string[] {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function stringVariable(value: string | string[] | undefined): string {
-  if (Array.isArray(value)) {
-    return value[0] ?? "";
-  }
-  return value ?? "";
-}
-
-function resourceResult(uri: string, data: unknown, config?: ObConfig) {
-  if (config) {
-    assertJsonByteLimit(data, config.maxResultBytes);
-  }
-  return {
-    contents: [
-      {
-        uri,
-        mimeType: "application/json",
-        text: jsonText(data)
-      }
-    ]
-  };
 }
 
 function runExplainCheck(name: string, check: () => void) {
