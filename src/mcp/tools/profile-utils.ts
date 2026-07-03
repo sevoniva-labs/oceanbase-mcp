@@ -259,6 +259,169 @@ export function profileWarnings(
   return [...warnings];
 }
 
+export function selectTableProfileColumns(
+  columns: Array<{ name: string; type?: string; nullable?: boolean; roles: string[]; masked: boolean }>,
+  primaryKeys: string[],
+  maxColumns: number
+): Array<{ name: string; type?: string; nullable?: boolean; roles: string[]; masked: boolean }> {
+  const cappedMax = Math.max(1, Math.min(maxColumns, 50));
+  const primaryKeySet = new Set(primaryKeys.map((column) => column.toLowerCase()));
+  return columns
+    .map((column, index) => ({
+      column,
+      index,
+      score: tableProfileColumnScore(column, primaryKeySet)
+    }))
+    .sort((left, right) => right.score - left.score || left.index - right.index)
+    .slice(0, cappedMax)
+    .map((item) => item.column);
+}
+
+export function tableProfileMaskedColumns(
+  result: { schema?: string; table: string; columns: unknown[] },
+  metadataColumns: Array<{ name: string; type?: string; nullable?: boolean; comment?: string; roles: string[] }>,
+  config: ObConfig,
+  schema: string | undefined,
+  table: string
+): Array<Record<string, unknown>> {
+  const metadata = new Map(metadataColumns.map((column) => [normalizeTableName(config.compatibility, column.name), column]));
+  const enriched = {
+    ...result,
+    columns: result.columns.map((profileResult) => {
+      const record = profileResult && typeof profileResult === "object" && !Array.isArray(profileResult)
+        ? profileResult as Record<string, unknown>
+        : {};
+      const columnName = stringRecordValue(record, "column", "COLUMN") ?? "";
+      const column = metadata.get(normalizeTableName(config.compatibility, columnName));
+      return enrichColumnProfile(
+        record,
+        column
+          ? {
+              name: column.name,
+              dataType: column.type,
+              nullable: column.nullable,
+              comment: column.comment,
+              roles: column.roles
+            }
+          : undefined,
+        config,
+        schema,
+        table
+      );
+    })
+  };
+  const masked = maskColumnProfileResult(enriched, config, schema, table);
+  return (masked.columns ?? [])
+    .filter((column) => Boolean(column && typeof column === "object" && !Array.isArray(column)))
+    .map((column) => column as Record<string, unknown>);
+}
+
+export function tableProfileWarnings(
+  metadataWarnings: string[],
+  columnWarnings: string[],
+  rowEstimate: number | undefined,
+  rowLimit: number,
+  visibleColumnCount: number,
+  selectedColumnCount: number,
+  includeColumnProfiles: boolean
+): string[] {
+  const warnings = new Set<string>([
+    ...metadataWarnings,
+    ...columnWarnings,
+    "Table profile combines metadata with bounded column samples; row estimates and sampled values are not full-table exact values."
+  ]);
+  if (!includeColumnProfiles) {
+    warnings.add("Column profiling was disabled, so null overview, time ranges, and value distributions are metadata-only.");
+  } else {
+    for (const warning of profileWarnings([], rowEstimate, rowLimit, selectedColumnCount, visibleColumnCount)) {
+      warnings.add(warning);
+    }
+  }
+  return [...warnings];
+}
+
+export function tableProfileNullOverview(profiles: Array<Record<string, unknown>>) {
+  return profiles
+    .map((profile) => {
+      const nulls = profile.nulls && typeof profile.nulls === "object" && !Array.isArray(profile.nulls)
+        ? profile.nulls as Record<string, unknown>
+        : {};
+      return {
+        column: stringRecordValue(profile, "column", "COLUMN") ?? "",
+        nullable: Boolean(profile.nullable),
+        masked: Boolean(profile.masked),
+        sampledRows: numberRecordValue(profile, "sampledRows", "sampled_rows") ?? 0,
+        nullCount: numberRecordValue(nulls, "count") ?? 0,
+        nullRatio: numberRecordValue(nulls, "ratio") ?? 0,
+        source: stringRecordValue(nulls, "source")
+      };
+    })
+    .filter((item) => item.column)
+    .sort((left, right) => right.nullRatio - left.nullRatio || right.nullCount - left.nullCount || left.column.localeCompare(right.column))
+    .slice(0, 20);
+}
+
+export function tableProfileTimeFields(timeFields: string[], profiles: Array<Record<string, unknown>>) {
+  return timeFields.map((column) => {
+    const profile = profileByColumn(profiles, column);
+    const timeRange = profile?.timeRange && typeof profile.timeRange === "object" && !Array.isArray(profile.timeRange)
+      ? profile.timeRange as Record<string, unknown>
+      : undefined;
+    return {
+      column,
+      confidence: 0.72,
+      evidence: ["Column name or metadata role suggests a time field."],
+      sampledRows: profile ? numberRecordValue(profile, "sampledRows", "sampled_rows") ?? 0 : undefined,
+      min: timeRange?.min,
+      max: timeRange?.max,
+      masked: profile ? Boolean(profile.masked) : undefined
+    };
+  });
+}
+
+export function tableProfileStatusFields(statusFields: string[], profiles: Array<Record<string, unknown>>) {
+  return statusFields.map((column) => {
+    const profile = profileByColumn(profiles, column);
+    const distinct = profile?.distinct && typeof profile.distinct === "object" && !Array.isArray(profile.distinct)
+      ? profile.distinct as Record<string, unknown>
+      : undefined;
+    return {
+      column,
+      confidence: 0.72,
+      evidence: ["Column name or metadata role suggests a status or dimension field."],
+      sampledRows: profile ? numberRecordValue(profile, "sampledRows", "sampled_rows") ?? 0 : undefined,
+      distinct: distinct ? { value: numberRecordValue(distinct, "value"), exact: false } : undefined,
+      topValues: Array.isArray(profile?.topValues) ? profile?.topValues : undefined,
+      masked: profile ? Boolean(profile.masked) : undefined
+    };
+  });
+}
+
+export function tableProfileIndexSummary(indexes: unknown[]) {
+  const grouped = new Map<string, { name: string; unique?: boolean; type?: string; columns: string[] }>();
+  for (const row of indexes) {
+    const record = row && typeof row === "object" && !Array.isArray(row) ? row as Record<string, unknown> : {};
+    const name = stringRecordValue(record, "index_name", "INDEX_NAME");
+    const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
+    if (!name) {
+      continue;
+    }
+    const nonUnique = record.non_unique ?? record.NON_UNIQUE;
+    const uniqueness = stringRecordValue(record, "uniqueness", "UNIQUENESS");
+    const existing = grouped.get(name) ?? {
+      name,
+      unique: uniqueness ? uniqueness.toUpperCase() === "UNIQUE" : nonUnique == null ? undefined : String(nonUnique) === "0",
+      type: stringRecordValue(record, "index_type", "INDEX_TYPE"),
+      columns: []
+    };
+    if (column) {
+      existing.columns = uniqueStrings([...existing.columns, column]);
+    }
+    grouped.set(name, existing);
+  }
+  return [...grouped.values()].slice(0, 20);
+}
+
 export function maskColumnProfileResult<T extends { columns?: unknown[] }>(
   result: T,
   config: ObConfig,
@@ -314,4 +477,41 @@ function maskColumnProfile(
 
 function maskProfileValue(value: unknown): unknown {
   return value == null ? value : "***MASKED***";
+}
+
+function tableProfileColumnScore(
+  column: { name: string; type?: string; nullable?: boolean; roles: string[] },
+  primaryKeySet: Set<string>
+): number {
+  let score = 0;
+  if (primaryKeySet.has(column.name.toLowerCase()) || column.roles.includes("primary_key")) {
+    score += 100;
+  }
+  if (column.roles.includes("time")) {
+    score += 90;
+  }
+  if (column.roles.includes("status")) {
+    score += 85;
+  }
+  if (column.nullable) {
+    score += 55;
+  }
+  if (column.roles.includes("identifier")) {
+    score += 35;
+  }
+  if (/(int|number|decimal|numeric|float|double|date|time|timestamp|char|text)/i.test(column.type ?? "")) {
+    score += 20;
+  }
+  return score;
+}
+
+function profileByColumn(profiles: Array<Record<string, unknown>>, column: string): Record<string, unknown> | undefined {
+  return profiles.find((profile) => {
+    const name = stringRecordValue(profile, "column", "COLUMN");
+    return Boolean(name && name.toLowerCase() === column.toLowerCase());
+  });
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
 }
