@@ -1,6 +1,9 @@
 import type { ObConfig } from "../config.js";
+import type { TableRelationship } from "../db.js";
+import { assertTableAccess } from "../policy.js";
 import { shouldMaskColumnValue } from "../query/output.js";
 import { normalizeGlossaryText } from "./business-glossary.js";
+import { policyContext } from "./policy-context.js";
 
 export interface SearchEverythingResult {
   type: "schema" | "table" | "column" | "business_glossary";
@@ -14,6 +17,25 @@ export interface SearchEverythingResult {
   matchedField: string;
   confidence: number;
   evidence: Array<{ field: string; value: string; reason: string }>;
+}
+
+export interface BusinessTableCandidate {
+  schema?: string;
+  table: string;
+  confidence: number;
+  sources: string[];
+  matchedColumns: string[];
+  terms: string[];
+  evidence: Array<{ source: string; type: string; field: string; value: string; reason: string }>;
+  relatedTables?: Array<{
+    schema?: string;
+    table: string;
+    relationType: string;
+    direction: string;
+    confidence: number;
+    columns: string[];
+    evidence: string[];
+  }>;
 }
 
 export function schemaSearchResult(
@@ -168,8 +190,113 @@ export function dedupeSearchResults(results: SearchEverythingResult[]): SearchEv
   return [...best.values()];
 }
 
+export function tableCandidatesFromSearchResults(
+  results: SearchEverythingResult[],
+  config: ObConfig,
+  limit: number
+): BusinessTableCandidate[] {
+  const candidates = new Map<string, BusinessTableCandidate>();
+  for (const result of results) {
+    if (!result.table) {
+      continue;
+    }
+    try {
+      assertTableAccess(result.schema, result.table, policyContext(config));
+    } catch {
+      continue;
+    }
+    const key = tableRefKey(config.compatibility, result.schema, result.table);
+    const current = candidates.get(key) ?? {
+      schema: result.schema,
+      table: result.table,
+      confidence: 0,
+      sources: [],
+      matchedColumns: [],
+      terms: [],
+      evidence: []
+    };
+    current.confidence = Math.max(current.confidence, tableCandidateConfidence(result));
+    current.sources = uniqueStrings([...current.sources, result.source]);
+    if (result.column) {
+      current.matchedColumns = uniqueStrings([...current.matchedColumns, result.column]);
+    }
+    if (result.term) {
+      current.terms = uniqueStrings([...current.terms, result.term]);
+    }
+    current.evidence = [
+      ...current.evidence,
+      ...result.evidence.map((item) => ({
+        source: result.source,
+        type: result.type,
+        field: item.field,
+        value: item.value,
+        reason: item.reason
+      }))
+    ].slice(0, 20);
+    candidates.set(key, current);
+  }
+  return [...candidates.values()]
+    .sort((left, right) => right.confidence - left.confidence || left.table.localeCompare(right.table))
+    .slice(0, limit);
+}
+
+export function relatedTableEvidence(
+  candidate: BusinessTableCandidate,
+  relation: TableRelationship,
+  mode: ObConfig["compatibility"]
+): NonNullable<BusinessTableCandidate["relatedTables"]>[number] | undefined {
+  const sourceMatches =
+    normalizeTableName(mode, relation.sourceTable) === normalizeTableName(mode, candidate.table) &&
+    normalizeTableName(mode, relation.sourceSchema ?? "") === normalizeTableName(mode, candidate.schema ?? "");
+  const schema = sourceMatches ? relation.targetSchema : relation.sourceSchema;
+  const table = sourceMatches ? relation.targetTable : relation.sourceTable;
+  const columns = sourceMatches ? relation.sourceColumns : relation.targetColumns;
+  if (!table || normalizeTableName(mode, table) === normalizeTableName(mode, candidate.table)) {
+    return undefined;
+  }
+  return {
+    schema,
+    table,
+    relationType: relation.relationType,
+    direction: sourceMatches ? "outbound" : "inbound",
+    confidence: relation.confidence,
+    columns,
+    evidence: relation.evidence.map((item) => item.detail).slice(0, 5)
+  };
+}
+
+function tableCandidateConfidence(result: SearchEverythingResult): number {
+  if (result.source === "business_glossary") {
+    return Math.max(result.confidence, 0.9);
+  }
+  if (result.type === "table") {
+    return result.confidence;
+  }
+  if (result.type === "column") {
+    return Math.min(result.confidence, 0.82);
+  }
+  return Math.min(result.confidence, 0.7);
+}
+
+function tableRefKey(mode: ObConfig["compatibility"], schema: string | undefined, table: string): string {
+  return `${schema ? normalizeTableName(mode, schema) : ""}.${normalizeTableName(mode, table)}`;
+}
+
 function normalizeTableName(mode: ObConfig["compatibility"], value: string): string {
   return mode === "oracle" ? value.trim().toUpperCase() : value.trim().toLowerCase();
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!value || seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    output.push(value);
+  }
+  return output;
 }
 
 function stringRecordValue(record: Record<string, unknown>, ...keys: string[]): string | undefined {
