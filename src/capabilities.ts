@@ -1,4 +1,4 @@
-import type { CompatibilityMode } from "./config.js";
+import type { CompatibilityMode, ObConfig } from "./config.js";
 
 export const SERVER_VERSION = "1.2.0";
 
@@ -17,6 +17,16 @@ export interface ToolBudgetManifest {
 export interface ToolSmokeManifest {
   mysql: boolean;
   oracle: boolean;
+}
+
+export interface ResolvedToolBudget {
+  maxRows: number | null;
+  maxBytes: number;
+  maxTables: number | null;
+  maxColumns: number | null;
+  maxRelationships: number | null;
+  maxDbCalls: number | null;
+  timeoutMs: number;
 }
 
 export interface ToolCapability {
@@ -157,6 +167,19 @@ export function assertToolManifest(name: string): ToolCapability {
     throw new Error(`Tool "${name}" touches data or metadata and must require profile policy checks.`);
   }
   return manifest;
+}
+
+export function resolveToolBudget(tool: ToolCapability | string, config: ObConfig): ResolvedToolBudget {
+  const manifest = typeof tool === "string" ? assertToolManifest(tool) : assertToolManifest(tool.name);
+  return {
+    maxRows: manifest.budget.maxRows === "profile.maxRows" ? config.maxRows : null,
+    maxBytes: config.maxResultBytes,
+    maxTables: manifest.budget.maxTables === "profile.erMaxTables" ? config.erMaxTables : null,
+    maxColumns: manifest.budget.maxColumns === "profile.erMaxColumnsPerTable" ? config.erMaxColumnsPerTable : null,
+    maxRelationships: manifest.group === "diagram" || manifest.name === "ob_plan_er_export" ? config.erMaxRelationships : null,
+    maxDbCalls: null,
+    timeoutMs: manifest.budget.timeoutMs === "profile.erTotalTimeoutMs" ? config.erTotalTimeoutMs : config.queryTimeoutMs
+  };
 }
 
 function assertBudgetManifest(name: string, budget: ToolBudgetManifest) {

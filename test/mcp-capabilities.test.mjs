@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { assertToolManifest, TOOL_CAPABILITIES } from "../dist/capabilities.js";
+import { assertToolManifest, resolveToolBudget, TOOL_CAPABILITIES } from "../dist/capabilities.js";
 import { loadConfig } from "../dist/config.js";
 import { createObMcpServer } from "../dist/mcp.js";
 
@@ -98,6 +98,40 @@ test("tool manifests declare read-only safety and execution budgets", () => {
       assert.equal(manifest.requiresProfilePolicy, true, `${manifest.name} must require profile policy`);
     }
   }
+});
+
+test("tool manifest budgets resolve to active profile limits", () => {
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "biz_test",
+    OB_MAX_ROWS: "37",
+    OB_MAX_RESULT_BYTES: "123456",
+    OB_QUERY_TIMEOUT_MS: "7000",
+    OB_ER_TOTAL_TIMEOUT_MS: "11000",
+    OB_ER_MAX_TABLES: "42",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "9",
+    OB_ER_MAX_RELATIONSHIPS: "88"
+  });
+  const queryBudget = resolveToolBudget("ob_query", config);
+  const erBudget = resolveToolBudget("ob_generate_er_html", config);
+
+  assert.deepEqual(queryBudget, {
+    maxRows: 37,
+    maxBytes: 123456,
+    maxTables: null,
+    maxColumns: null,
+    maxRelationships: null,
+    maxDbCalls: null,
+    timeoutMs: 7000
+  });
+  assert.deepEqual(erBudget, {
+    maxRows: null,
+    maxBytes: 123456,
+    maxTables: 42,
+    maxColumns: 9,
+    maxRelationships: 88,
+    maxDbCalls: null,
+    timeoutMs: 11000
+  });
 });
 
 test("registered MCP tools all have a manifest entry", () => {

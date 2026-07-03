@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { getToolCapability } from "../capabilities.js";
+import { getToolCapability, resolveToolBudget } from "../capabilities.js";
 import type { ObConfig } from "../config.js";
 import { logAudit, logError, logSlowOperation, recordCrashBreadcrumb, serializeError } from "../errors.js";
 import { assertJsonByteLimit, jsonText } from "../format.js";
@@ -61,6 +61,9 @@ export function safeTool<Args>(
     const finish = metrics.startToolCall();
     const requestId = context.requestId ?? randomUUID();
     const toolCapability = getToolCapability(name);
+    const resolvedBudget = toolCapability
+      ? resolveToolBudget(toolCapability, gatewayLimitConfig(runtime, context))
+      : undefined;
     const executionDiagnostics = createExecutionDiagnostics();
     let timeoutMs: number | undefined;
     recordCrashBreadcrumb("tool_start", {
@@ -70,6 +73,7 @@ export function safeTool<Args>(
       transport: context.transport ?? "stdio",
       requestId,
       phase: "start",
+      budget: resolvedBudget,
       clientId: context.clientId,
       principal: context.principal?.name,
       ...auditArgs(args)
@@ -95,6 +99,7 @@ export function safeTool<Args>(
         timeoutMs,
         requestId,
         phase: "finish",
+        budget: resolvedBudget,
         dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics
       });
@@ -106,6 +111,7 @@ export function safeTool<Args>(
         transport: context.transport ?? "stdio",
         requestId,
         phase: "finish",
+        budget: resolvedBudget,
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
@@ -123,6 +129,7 @@ export function safeTool<Args>(
         transport: context.transport ?? "stdio",
         requestId,
         phase: "finish",
+        budget: resolvedBudget,
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
@@ -151,6 +158,7 @@ export function safeTool<Args>(
         timeoutMs,
         requestId,
         phase: "finish",
+        budget: resolvedBudget,
         errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
         sanitizedError,
         dbCalls: executionDiagnostics.dbCalls,
@@ -164,6 +172,7 @@ export function safeTool<Args>(
         transport: context.transport ?? "stdio",
         requestId,
         phase: "finish",
+        budget: resolvedBudget,
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
@@ -184,6 +193,7 @@ export function safeTool<Args>(
         transport: context.transport ?? "stdio",
         requestId,
         phase: "finish",
+        budget: resolvedBudget,
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
@@ -246,10 +256,7 @@ export function errorHints(error: unknown, args: unknown): string[] {
 
 function toolWallTimeoutMs(name: string, runtime: GatewayRuntime, context: McpRequestContext): number {
   const config = gatewayLimitConfig(runtime, context);
-  const budget = getToolCapability(name)?.budget.timeoutMs;
-  const configuredTimeout = budget === "profile.erTotalTimeoutMs"
-    ? config.erTotalTimeoutMs
-    : config.queryTimeoutMs;
+  const configuredTimeout = resolveToolBudget(name, config).timeoutMs;
   return Math.max(1, configuredTimeout + TOOL_TIMEOUT_GRACE_MS);
 }
 
