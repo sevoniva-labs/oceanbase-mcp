@@ -25,3 +25,26 @@ test("execution diagnostics enforce DB call budget before running the next opera
   assert.equal(diagnostics.dbCalls, 2);
   assert.equal(selected.limiter.active, 0);
 });
+
+test("execution diagnostics stop DB calls after the tool deadline", async () => {
+  const selected = {
+    profile: "default",
+    limiter: { active: 0, limit: 5 }
+  };
+  const diagnostics = createExecutionDiagnostics(null, "ob_test_tool", Date.now() - 1);
+  let started = false;
+
+  await withExecutionDiagnostics(diagnostics, async () => {
+    await assert.rejects(
+      () => withQuerySlot(selected, async () => {
+        started = true;
+        return "should-not-run";
+      }),
+      /exceeded configured timeout budget before starting another database operation/
+    );
+  });
+
+  assert.equal(started, false);
+  assert.equal(diagnostics.dbCalls, 0);
+  assert.equal(selected.limiter.active, 0);
+});

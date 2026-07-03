@@ -81,6 +81,7 @@ export function safeTool<Args>(
     try {
       assertToolAllowed(name, context.principal);
       timeoutMs = toolWallTimeoutMs(name, runtime, context);
+      executionDiagnostics.deadlineMs = started + timeoutMs;
       const result = await withToolTimeout(
         withExecutionDiagnostics(executionDiagnostics, () => Promise.resolve().then(() => handler(args))),
         timeoutMs,

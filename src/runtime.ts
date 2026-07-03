@@ -27,6 +27,7 @@ export interface ExecutionDiagnostics {
   dbCalls: number;
   maxDbCalls: number | null;
   toolName?: string;
+  deadlineMs?: number;
 }
 
 interface MetadataCacheEntry {
@@ -86,13 +87,19 @@ export async function withQuerySlot<T>(
   selected: ReturnType<typeof selectRuntimeProfile>,
   operation: () => Promise<T>
 ): Promise<T> {
+  const diagnostics = executionDiagnosticsStore.getStore();
+  if (diagnostics?.deadlineMs != null && Date.now() > diagnostics.deadlineMs) {
+    throw new Error(
+      `Tool "${diagnostics.toolName ?? "unknown"}" exceeded configured timeout budget before starting another database operation. Narrow schema, table scope, page size, or ER export window before retrying.`
+    );
+  }
+
   if (selected.limiter.active >= selected.limiter.limit) {
     throw new Error(
       `Profile "${selected.profile}" has reached OB_MAX_CONCURRENT_QUERIES=${selected.limiter.limit}.`
     );
   }
 
-  const diagnostics = executionDiagnosticsStore.getStore();
   if (diagnostics) {
     diagnostics.dbCalls += 1;
     if (diagnostics.maxDbCalls != null && diagnostics.dbCalls > diagnostics.maxDbCalls) {
@@ -109,11 +116,16 @@ export async function withQuerySlot<T>(
   }
 }
 
-export function createExecutionDiagnostics(maxDbCalls: number | null = null, toolName?: string): ExecutionDiagnostics {
+export function createExecutionDiagnostics(
+  maxDbCalls: number | null = null,
+  toolName?: string,
+  deadlineMs?: number
+): ExecutionDiagnostics {
   return {
     dbCalls: 0,
     maxDbCalls,
-    toolName
+    toolName,
+    deadlineMs
   };
 }
 
