@@ -227,6 +227,18 @@ export async function cachedSchemaMapTables(
   );
 }
 
+export async function findSchemaMapTableInfo(
+  selected: ReturnType<typeof selectRuntimeProfile>,
+  schema: string | undefined,
+  table: string
+): Promise<SchemaMapTable | undefined> {
+  const rows = filterSchemaMapTables(
+    await cachedSchemaMapTables(selected, schema, table, 20),
+    selected.config
+  );
+  return rows.find((row) => normalizeTableName(selected.config.compatibility, row.table) === normalizeTableName(selected.config.compatibility, table));
+}
+
 export async function cachedDescribeTable(
   selected: ReturnType<typeof selectRuntimeProfile>,
   schema: string | undefined,

@@ -28,7 +28,6 @@ import {
   runReadOnlyQuery,
   sampleRows,
   searchCatalog,
-  type SchemaMapTable,
   type TableRef,
   type TableRelationship,
   type SqlParam
@@ -153,6 +152,7 @@ import {
   cachedSchemaMapTables,
   compactSchemaColumns,
   filterSchemaMapTables,
+  findSchemaMapTableInfo,
   groupSchemaMapTables,
   importantSchemaMapFields,
   isRelationshipAllowed,
@@ -3749,22 +3749,6 @@ function formatQueryEntryFields(fields: unknown): string {
     }
     return String(field);
   }).filter(Boolean).join(", ");
-}
-
-async function findSchemaMapTableInfo(
-  selected: ReturnType<typeof selectRuntimeProfile>,
-  schema: string | undefined,
-  table: string
-): Promise<SchemaMapTable | undefined> {
-  const rows = filterSchemaMapTables(
-    await cachedSchemaMapTables(selected, schema, table, 20),
-    selected.config
-  );
-  return rows.find((row) => sameTableName(selected.config.compatibility, row.table, table));
-}
-
-function sameTableName(mode: ObConfig["compatibility"], left: string, right: string): boolean {
-  return normalizeTableName(mode, left) === normalizeTableName(mode, right);
 }
 
 interface ErScopeTable {
