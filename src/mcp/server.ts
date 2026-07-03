@@ -148,6 +148,7 @@ import { registerDocumentationTools } from "./tools/documentation.js";
 import { registerMetadataChangeTools } from "./tools/metadata-change.js";
 import { registerMetadataCompareTools } from "./tools/metadata-compare.js";
 import { registerObjectMetadataTools } from "./tools/object-metadata.js";
+import { registerQueryBuildTools } from "./tools/query-build.js";
 import { registerQueryPlanTools } from "./tools/query-plan.js";
 import {
   buildSchemaMapTableSummary,
@@ -689,6 +690,7 @@ export function createObMcpServer(
   registerMetadataCompareTools(registerTool, runtime, context);
 
   registerQueryPlanTools(registerTool, runtime, context);
+  registerQueryBuildTools(registerTool, runtime, context);
 
   registerTool(
     "ob_search_catalog",
@@ -2088,60 +2090,6 @@ export function createObMcpServer(
             ...(source.source.warnings ?? []),
             "Candidates are based on visible metadata only."
           ])
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
-    "ob_build_select",
-    {
-      title: "Build SELECT",
-      description: "Build a parameterized read-only SELECT from validated table, columns, filters, ordering, and pagination without executing it.",
-      inputSchema: {
-        ...profileInput,
-        schema: z.string().optional(),
-        table: z.string().min(1),
-        columns: z.array(z.string().min(1)).min(1).max(100).optional(),
-        filters: z.array(buildSelectFilterSchema).max(50).optional(),
-        orderBy: z.array(buildSelectOrderBySchema).max(20).optional(),
-        pageSize: z.number().int().positive().max(10_000).optional(),
-        page: z.number().int().positive().max(100_000).optional()
-      }
-    },
-    async ({ profile, schema, table, columns, filters, orderBy, pageSize, page }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      const normalizedTable = selected.config.compatibility === "oracle" ? table.trim().toUpperCase() : table.trim();
-      assertTableAccess(effectiveSchema, normalizedTable, policyContext(selected.config));
-      const rows = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          describeTable(selected.pool, selected.config.compatibility, normalizedTable, effectiveSchema, selected.config.queryTimeoutMs)
-        ),
-        selected.config.policy
-      );
-      const built = buildStructuredSelect(
-        selected.config,
-        effectiveSchema,
-        normalizedTable,
-        rows,
-        {
-          columns,
-          filters: filters ?? [],
-          orderBy: orderBy ?? [],
-          pageSize,
-          page
-        }
-      );
-
-      return toLimitedResult(
-        {
-          mode: selected.config.compatibility,
-          schema: effectiveSchema ?? null,
-          table: normalizedTable,
-          ...built,
-          executed: false
         },
         selected.config
       );
