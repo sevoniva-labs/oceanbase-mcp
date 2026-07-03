@@ -31,7 +31,7 @@ OceanBase MCP 是面向 OceanBase 的严格只读 MCP server。它用于 OpenCod
 需要 Node.js 20 或更高版本。
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp init --mode mysql --schema app_schema
 ob-mcp doctor
 ```
@@ -39,7 +39,7 @@ ob-mcp doctor
 不想全局安装时，可以直接用 `npx`：
 
 ```bash
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.5.0 ob-mcp --help
 ```
 
 从源码构建：
@@ -133,13 +133,14 @@ opencode run "Use the oceanbase MCP server to run SELECT 1 AS ok and return only
 | v1.2.0 | 重构 ER 元数据地图：稳定图 ID、交互式 graph 画布、cluster 目录导出、跨 cluster 关系索引、诊断元数据和响应大小日志。 |
 | v1.3.0 | 强化稳定性和可维护性：DB 调用预算、工具截止时间、结构化日志、崩溃回归测试、DB 运行时模块拆分和大库验证记录。 |
 | v1.4.0 | 精简 npm 包内容，移除运行时不需要的历史 release 文档和 smoke 脚本，保留源码归档用于完整构建。 |
+| v1.5.0 | 重整公开文档入口、拆分工具清单、清理发布文案，并增加公开文档措辞检查。 |
 
 ## 分发
 
 公开 npm 包名为 `@sevoniva/oceanbase-mcp`，CLI 命令为 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp --help
 ```
 
@@ -147,12 +148,12 @@ Release 附件包括：
 
 | 资产 | 用途 |
 | --- | --- |
-| `sevoniva-oceanbase-mcp-1.4.0.tgz` | npm 包。 |
-| `oceanbase-mcp-1.4.0-source.tar.gz` | 源码归档，用于源码构建。 |
+| `sevoniva-oceanbase-mcp-1.5.0.tgz` | npm 包。 |
+| `oceanbase-mcp-1.5.0-source.tar.gz` | 源码归档，用于源码构建。 |
 | `sbom.cdx.json` | CycloneDX SBOM。 |
-| `oceanbase-mcp-1.4.0-amd64.tar.gz` | amd64 离线镜像。 |
-| `oceanbase-mcp-1.4.0-arm64.tar.gz` | arm64 离线镜像。 |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.4.0` | GHCR 镜像 tag。 |
+| `oceanbase-mcp-1.5.0-amd64.tar.gz` | amd64 离线镜像。 |
+| `oceanbase-mcp-1.5.0-arm64.tar.gz` | arm64 离线镜像。 |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.5.0` | GHCR 镜像 tag。 |
 
 源码归档不包含 `node_modules` 和 `dist`。npm registry 镜像需要能提供 `package-lock.json` 中锁定的依赖。
 

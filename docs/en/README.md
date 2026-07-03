@@ -31,7 +31,7 @@ Even if `OB_USER` is a read-write database account, the MCP surface remains read
 Node.js 20 or newer is required.
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp init --mode mysql --schema app_schema
 ob-mcp doctor
 ```
@@ -39,7 +39,7 @@ ob-mcp doctor
 Use `npx` when you do not want a global install:
 
 ```bash
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.5.0 ob-mcp --help
 ```
 
 Build from source:
@@ -133,13 +133,14 @@ See [OpenCode setup](opencode.md) for local, `npx`, and HTTP examples.
 | v1.2.0 | Rebuilt ER metadata maps with stable graph IDs, interactive graph canvas, cluster directory export, cross-cluster relationship index, diagnostic metadata, and response-size logging. |
 | v1.3.0 | Stability and maintainability: DB call budgets, tool deadlines, structured logs, crash regression coverage, DB runtime module split, and large-schema validation records. |
 | v1.4.0 | Trimmed npm package contents by excluding release-note history and smoke scripts that are not needed at runtime; source archives remain complete for source builds. |
+| v1.5.0 | Public documentation refresh, separate tool list, cleaner release wording, and public documentation wording checks. |
 
 ## Distribution
 
 The public npm package is `@sevoniva/oceanbase-mcp`, and the CLI commands are `ob-mcp`, `ob-mcp-http`, and `ob-mcp-doctor`.
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp --help
 ```
 
@@ -147,12 +148,12 @@ Release assets include:
 
 | Asset | Purpose |
 | --- | --- |
-| `sevoniva-oceanbase-mcp-1.4.0.tgz` | npm package. |
-| `oceanbase-mcp-1.4.0-source.tar.gz` | Source archive for source builds. |
+| `sevoniva-oceanbase-mcp-1.5.0.tgz` | npm package. |
+| `oceanbase-mcp-1.5.0-source.tar.gz` | Source archive for source builds. |
 | `sbom.cdx.json` | CycloneDX SBOM. |
-| `oceanbase-mcp-1.4.0-amd64.tar.gz` | amd64 offline image. |
-| `oceanbase-mcp-1.4.0-arm64.tar.gz` | arm64 offline image. |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.4.0` | GHCR image tag. |
+| `oceanbase-mcp-1.5.0-amd64.tar.gz` | amd64 offline image. |
+| `oceanbase-mcp-1.5.0-arm64.tar.gz` | arm64 offline image. |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.5.0` | GHCR image tag. |
 
 The source archive excludes `node_modules` and `dist`. Your npm registry mirror must provide the dependencies locked by `package-lock.json`.
 

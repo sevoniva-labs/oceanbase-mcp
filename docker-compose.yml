@@ -1,7 +1,7 @@
 services:
   ob-mcp:
     build: .
-    image: oceanbase-mcp:1.4.0
+    image: oceanbase-mcp:1.5.0
     init: true
     read_only: true
     restart: unless-stopped

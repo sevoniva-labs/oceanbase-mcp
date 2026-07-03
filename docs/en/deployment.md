@@ -232,31 +232,31 @@ The workflow grants `id-token: write` and publishes with `npm publish --provenan
 Consumers can install from npmjs or an npm registry mirror:
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.5.0 ob-mcp --help
 ```
 
 Manual release:
 
 1. Open GitHub Actions.
 2. Run `Release`.
-3. Enter a version such as `v1.3.0`.
+3. Enter a version such as `v1.5.0`.
 4. The workflow creates the tag, publishes the npm package when Trusted Publishing is configured, publishes images, and attaches release assets.
 
 Load an offline image:
 
 ```bash
-gunzip oceanbase-mcp-1.4.0-amd64.tar.gz
-docker load -i oceanbase-mcp-1.4.0-amd64.tar
-docker run --rm oceanbase-mcp:1.4.0-amd64
+gunzip oceanbase-mcp-1.5.0-amd64.tar.gz
+docker load -i oceanbase-mcp-1.5.0-amd64.tar
+docker run --rm oceanbase-mcp:1.5.0-amd64
 ```
 
 Build from the source archive in an offline environment:
 
 ```bash
-tar -xzf oceanbase-mcp-1.4.0-source.tar.gz
-cd oceanbase-mcp-1.4.0
+tar -xzf oceanbase-mcp-1.5.0-source.tar.gz
+cd oceanbase-mcp-1.5.0
 npm ci
 npm run build
 npm run start

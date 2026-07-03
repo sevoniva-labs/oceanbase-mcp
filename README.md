@@ -54,7 +54,7 @@ Node.js 20 or newer is required.
 需要 Node.js 20 或更高版本。
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp init --mode mysql --schema app_schema
 ob-mcp doctor
 ```
@@ -64,7 +64,7 @@ Use `npx` when you do not want a global install:
 不想全局安装时，可以直接用 `npx`：
 
 ```bash
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.5.0 ob-mcp --help
 ```
 
 Build from source:
@@ -104,7 +104,7 @@ An `npx`-based OpenCode entry looks like this:
       "command": "npx",
       "args": [
         "--yes",
-        "--package=@sevoniva/oceanbase-mcp@1.4.0",
+        "--package=@sevoniva/oceanbase-mcp@1.5.0",
         "ob-mcp"
       ],
       "enabled": true,
@@ -170,6 +170,7 @@ For the recommended OpenCode query workflow, see:
 | v1.2.0 | 重构 ER 元数据地图：稳定图 ID、交互式 graph 画布、cluster 目录导出、跨 cluster 关系索引、诊断元数据和响应大小日志。 | Rebuilt ER metadata maps with stable graph IDs, interactive graph canvas, cluster directory export, cross-cluster relationship index, diagnostic metadata, and response-size logging. |
 | v1.3.0 | 强化稳定性和可维护性：DB 调用预算、工具截止时间、结构化日志、崩溃回归测试、DB 运行时模块拆分和大库验证记录。 | Stability and maintainability: DB call budgets, tool deadlines, structured logs, crash regression coverage, DB runtime module split, and large-schema validation records. |
 | v1.4.0 | 精简 npm 包内容，移除运行时不需要的历史 release 文档和 smoke 脚本，保留源码归档用于完整构建。 | Trimmed npm package contents by excluding release-note history and smoke scripts that are not needed at runtime; source archives remain complete for source builds. |
+| v1.5.0 | 重整公开文档入口、拆分工具清单、清理发布文案，并增加公开文档措辞检查。 | Public documentation refresh, separate tool list, cleaner release wording, and public documentation wording checks. |
 
 ## Distribution / 分发
 
@@ -178,7 +179,7 @@ The public npm package is `@sevoniva/oceanbase-mcp`, and the CLI commands are `o
 公开 npm 包名为 `@sevoniva/oceanbase-mcp`，CLI 命令为 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。Release 附件同时提供源码归档、CycloneDX SBOM，以及 amd64/arm64 离线镜像归档。
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.4.0
+npm install -g @sevoniva/oceanbase-mcp@1.5.0
 ob-mcp --help
 ```
 
@@ -187,8 +188,8 @@ Source archive build:
 源码归档构建：
 
 ```bash
-tar -xzf oceanbase-mcp-1.4.0-source.tar.gz
-cd oceanbase-mcp-1.4.0
+tar -xzf oceanbase-mcp-1.5.0-source.tar.gz
+cd oceanbase-mcp-1.5.0
 npm ci
 npm run build
 npm run start
