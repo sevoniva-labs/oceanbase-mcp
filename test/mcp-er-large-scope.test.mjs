@@ -100,12 +100,17 @@ test("ob_generate_er_html skips schema-level inline rendering for large scopes",
   assert.equal(payload.inline, false);
   assert.equal(payload.htmlOmitted, true);
   assert.equal(payload.renderSkipped, true);
+  assert.equal(payload.stats.loadedTables, 30);
+  assert.equal(payload.stats.loadedColumns, 0);
   assert.equal(payload.warnings.filter((warning) => /Columns for /i.test(warning)).length, 0);
-  assert.equal(payload.warnings.filter((warning) => /Columns were limited to OB_ER_MAX_COLUMNS_PER_TABLE=4/i.test(warning)).length, 1);
+  assert.equal(payload.warnings.filter((warning) => /Columns were limited to OB_ER_MAX_COLUMNS_PER_TABLE=4/i.test(warning)).length, 0);
   assert.equal("html" in payload, false);
   assert.match(payload.exportCommand, /ob-mcp export-er/);
   assert(payload.warnings.some((warning) => /Schema-level ER HTML rendering was skipped/.test(warning)));
   assert(payload.warnings.some((warning) => /cluster export/.test(warning)));
+  assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name, column_type/i.test(entry.sql)).length, 0);
+  assert.equal(queryLog.filter((entry) => /FROM information_schema\.statistics/i.test(entry.sql)).length, 0);
+  assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 0);
 });
 
 test("ob_plan_er_export returns cluster local export commands", async () => {

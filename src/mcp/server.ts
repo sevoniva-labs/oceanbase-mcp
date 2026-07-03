@@ -3674,6 +3674,52 @@ export function createObMcpServer(
     },
     async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, format = "html-static", title }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
+      const broadSchemaScope = !table && (!tables || tables.length === 0) && !businessTerm;
+      const configuredMaxTables = Math.max(1, selected.config.erMaxTables);
+      const requestedTableLimit = Math.min(maxTables ?? configuredMaxTables, configuredMaxTables, 500);
+      if (broadSchemaScope && requestedTableLimit > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT) {
+        const plan = await buildErExportPlanResult(selected, {
+          schema,
+          table,
+          tables,
+          businessTerm,
+          depth,
+          maxTables,
+          maxRelationships,
+          minConfidence,
+          relationshipMode,
+          includeInferred,
+          format
+        });
+        if (plan.tableCount > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT) {
+          return toLimitedResult(
+            {
+              mode: plan.mode,
+              schema: plan.schema,
+              rootTable: plan.rootTable,
+              businessTerm: plan.businessTerm,
+              tableCount: plan.tableCount,
+              relationshipCount: plan.relationshipCount,
+              contentType: "text/html",
+              format,
+              inline: false,
+              htmlOmitted: true,
+              renderSkipped: true,
+              inlineLimitBytes: selected.config.erInlineHtmlMaxBytes,
+              exportCommand: plan.singleFileCommand,
+              suggestedStrategy: plan.suggestedStrategy,
+              chunkCount: plan.chunkCount,
+              recommendedNextTools: plan.recommendedNextTools,
+              stats: plan.stats,
+              warnings: uniqueStrings([
+                ...plan.warnings,
+                `Schema-level ER HTML rendering was skipped because tableCount=${plan.tableCount} exceeds ${SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT}. Use ob_plan_er_export and CLI cluster export for large diagrams.`
+              ])
+            },
+            selected.config
+          );
+        }
+      }
       const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
       if (shouldSkipSchemaInlineErHtmlRender(result.response, { table, tables, businessTerm })) {
         return toLimitedResult(
