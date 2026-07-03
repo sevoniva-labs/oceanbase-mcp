@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { loadConfig } from "../dist/config.js";
 import { createObMcpServer } from "../dist/mcp.js";
+import { metadataCacheKeyMatches, refreshMetadataCache } from "../dist/mcp/metadata-cache.js";
 
 test("metadata cache reuses schema documentation metadata within TTL", async () => {
   const config = loadConfig({
@@ -109,6 +110,35 @@ test("ob_get_cache_status returns counters without cached content", async () => 
   assert(status.entries >= 3);
   assert(status.namespaces.some((item) => item.namespace === "schema_map_tables"));
   assert(!JSON.stringify(status.namespaces).includes("orders"));
+});
+
+test("metadata cache refresh matches Oracle scoped entries case-insensitively", () => {
+  const config = loadConfig({
+    OB_COMPATIBILITY: "oracle",
+    OB_ALLOWED_SCHEMAS: "APP",
+    OB_METADATA_CACHE_TTL_MS: "60000"
+  });
+  const cacheKey = JSON.stringify(["describe_table", "oracle", "APP", "ORDERS"]);
+  const selected = {
+    profile: "default",
+    config,
+    metadataCache: {
+      entries: new Map([
+        [cacheKey, { value: [], createdAt: Date.now(), expiresAt: Date.now() + 60_000 }]
+      ]),
+      hits: 1,
+      misses: 2,
+      evictions: 0
+    }
+  };
+
+  assert.equal(metadataCacheKeyMatches("oracle", cacheKey, "app", "orders"), true);
+  const refreshed = refreshMetadataCache(selected, "app", "orders");
+
+  assert.equal(refreshed.mode, "oracle");
+  assert.equal(refreshed.removedEntries, 1);
+  assert.equal(refreshed.afterEntries, 0);
+  assert.equal(refreshed.stats.hits, 1);
 });
 
 function runtime(config, pool) {
