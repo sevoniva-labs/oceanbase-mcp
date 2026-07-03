@@ -16,7 +16,8 @@ test("ob_describe_table reads MySQL catalog metadata without scanning target dat
       queries.push({ sql, values });
       assert.doesNotMatch(sql, new RegExp(`FROM\\\\s+.*${table}`, "i"));
       assert.match(sql, /FROM information_schema\.columns/i);
-      assert.deepEqual(values, [table, "biz_test"]);
+      assert.match(sql, /LIMIT \?/i);
+      assert.deepEqual(values, [table, "biz_test", 1001]);
       return [[
         { table_schema: "biz_test", table_name: table, column_name: "id", column_type: "bigint", data_type: "bigint", is_nullable: "NO", column_key: "PRI", ordinal_position: 1 },
         { table_schema: "biz_test", table_name: table, column_name: "payload", column_type: "varchar(64)", data_type: "varchar", is_nullable: "YES", ordinal_position: 2 },
@@ -51,7 +52,8 @@ test("ob_describe_table reads Oracle catalog metadata without scanning target da
         return [[{ SCHEMA_NAME: "OB_USER" }], []];
       }
       assert.match(sql, /FROM user_tab_columns c/i);
-      assert.deepEqual(values, ["OB_USER", table]);
+      assert.match(sql, /ROWNUM <= \?/i);
+      assert.deepEqual(values, ["OB_USER", table, 1001]);
       return [[
         { owner: "OB_USER", table_name: table, column_name: "ID", data_type: "NUMBER", nullable: "N", column_id: 1 },
         { owner: "OB_USER", table_name: table, column_name: "PAYLOAD", data_type: "VARCHAR2", nullable: "Y", column_id: 2 },
@@ -80,7 +82,8 @@ test("ob_describe_table caps very wide MySQL metadata by output byte budget", as
     async query({ sql, values }) {
       assert.doesNotMatch(sql, new RegExp(`FROM\\\\s+.*${table}`, "i"));
       assert.match(sql, /FROM information_schema\.columns/i);
-      assert.deepEqual(values, [table, "biz_test"]);
+      assert.match(sql, /LIMIT \?/i);
+      assert.deepEqual(values, [table, "biz_test", 1001]);
       return [wideMysqlColumns("biz_test", table, 120), []];
     }
   };
@@ -97,6 +100,35 @@ test("ob_describe_table caps very wide MySQL metadata by output byte budget", as
   assert(payload.warnings.some((warning) => /OB_MAX_RESULT_BYTES/.test(warning)));
 });
 
+test("ob_describe_table applies a default MySQL catalog column limit", async () => {
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "biz_test",
+    OB_MAX_RESULT_BYTES: "2000000"
+  });
+  const table = "ob_mcp_ultra_wide_describe";
+  const pool = {
+    async query({ sql, values }) {
+      assert.doesNotMatch(sql, new RegExp(`FROM\\\\s+.*${table}`, "i"));
+      assert.match(sql, /FROM information_schema\.columns/i);
+      assert.match(sql, /LIMIT \?/i);
+      assert.deepEqual(values, [table, "biz_test", 1001]);
+      return [wideMysqlColumns("biz_test", table, Number(values.at(-1))), []];
+    }
+  };
+  const server = createObMcpServer(runtime(config, pool));
+  const result = await server.executeToolHandler(server._registeredTools.ob_describe_table, {
+    schema: "biz_test",
+    table
+  }, {});
+  const payload = JSON.parse(result.content[0].text);
+
+  assert.equal(payload.columnCount, 1001);
+  assert.equal(payload.columnCountLowerBound, true);
+  assert.equal(payload.returnedColumns, 1000);
+  assert.equal(payload.truncated, true);
+  assert(payload.warnings.some((warning) => /At least 1001 visible columns match/.test(warning)));
+});
+
 test("ob_describe_table caps Oracle metadata by maxColumns without scanning target data", async () => {
   const config = loadConfig({
     OB_COMPATIBILITY: "oracle",
@@ -111,8 +143,9 @@ test("ob_describe_table caps Oracle metadata by maxColumns without scanning targ
         return [[{ SCHEMA_NAME: "OB_USER" }], []];
       }
       assert.match(sql, /FROM user_tab_columns c/i);
-      assert.deepEqual(values, ["OB_USER", table]);
-      return [wideOracleColumns("OB_USER", table, 25), []];
+      assert.match(sql, /ROWNUM <= \?/i);
+      assert.deepEqual(values, ["OB_USER", table, 6]);
+      return [wideOracleColumns("OB_USER", table, Number(values.at(-1))), []];
     }
   };
   const server = createObMcpServer(runtime(config, pool));
@@ -123,10 +156,11 @@ test("ob_describe_table caps Oracle metadata by maxColumns without scanning targ
   }, {});
   const payload = JSON.parse(result.content[0].text);
 
-  assert.equal(payload.columnCount, 25);
+  assert.equal(payload.columnCount, 6);
+  assert.equal(payload.columnCountLowerBound, true);
   assert.equal(payload.returnedColumns, 5);
   assert.equal(payload.truncated, true);
-  assert(payload.warnings.some((warning) => /Only 5 of 25/.test(warning)));
+  assert(payload.warnings.some((warning) => /At least 6 visible columns match/.test(warning)));
 });
 
 function runtime(config, pool) {

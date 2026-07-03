@@ -715,15 +715,32 @@ export async function describeTable(
   mode: CompatibilityMode,
   table: string,
   schema: string | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  maxColumns?: number
 ): Promise<unknown[]> {
+  const columnLimit = maxColumns ? Math.max(1, Math.floor(maxColumns)) : undefined;
   if (mode === "oracle") {
     const tableName = table.trim().toUpperCase();
     const owner = schema?.trim().toUpperCase();
     if (await isCurrentOracleSchema(pool, owner, timeoutMs)) {
       const resolvedOwner = owner ?? (await currentOracleSchema(pool, timeoutMs)) ?? "";
       const [rows] = await pool.query({
-        sql: `
+        sql: columnLimit
+          ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, c.table_name, c.column_name, c.data_type, c.data_length, c.data_precision,
+                 c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
+            FROM user_tab_columns c
+            LEFT JOIN user_col_comments cc
+              ON cc.table_name = c.table_name
+             AND cc.column_name = c.column_name
+            WHERE c.table_name = ?
+            ORDER BY c.table_name, c.column_id
+        )
+        WHERE ROWNUM <= ?
+        `
+          : `
         SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, c.table_name, c.column_name, c.data_type, c.data_length, c.data_precision,
                  c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
           FROM user_tab_columns c
@@ -733,14 +750,31 @@ export async function describeTable(
           WHERE c.table_name = ?
           ORDER BY c.table_name, c.column_id
         `,
-        values: [resolvedOwner, tableName],
+        values: columnLimit ? [resolvedOwner, tableName, columnLimit] : [resolvedOwner, tableName],
         timeout: timeoutMs
       });
       return rows as unknown[];
     }
 
     const [rows] = await pool.query({
-      sql: `
+      sql: columnLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} c.owner, c.table_name, c.column_name, c.data_type, c.data_length, c.data_precision,
+                 c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
+          FROM all_tab_columns c
+          LEFT JOIN all_col_comments cc
+            ON cc.owner = c.owner
+           AND cc.table_name = c.table_name
+           AND cc.column_name = c.column_name
+          WHERE c.table_name = ?
+            AND (? IS NULL OR c.owner = ?)
+          ORDER BY c.owner, c.table_name, c.column_id
+        )
+        WHERE ROWNUM <= ?
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} c.owner, c.table_name, c.column_name, c.data_type, c.data_length, c.data_precision,
                c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
         FROM all_tab_columns c
@@ -752,7 +786,7 @@ export async function describeTable(
           AND (? IS NULL OR c.owner = ?)
         ORDER BY c.owner, c.table_name, c.column_id
       `,
-      values: [tableName, owner ?? null, owner ?? null],
+      values: columnLimit ? [tableName, owner ?? null, owner ?? null, columnLimit] : [tableName, owner ?? null, owner ?? null],
       timeout: timeoutMs
     });
     return rows as unknown[];
@@ -771,8 +805,9 @@ export async function describeTable(
       WHERE table_name = ?
         AND table_schema = ?
       ORDER BY table_schema, table_name, ordinal_position
+      ${columnLimit ? "LIMIT ?" : ""}
     `,
-    values: [table, resolvedSchema],
+    values: columnLimit ? [table, resolvedSchema, columnLimit] : [table, resolvedSchema],
     timeout: timeoutMs
   });
   return rows as unknown[];

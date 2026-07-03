@@ -156,6 +156,7 @@ export { isToolAllowed } from "./access.js";
 export type { McpRequestContext } from "./context.js";
 
 const LARGE_TABLE_CONTEXT_SAMPLE_ROW_THRESHOLD = 100_000;
+const DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT = 1_000;
 const QUERY_TERM_STOPWORDS = new Set([
   "show",
   "list",
@@ -1026,11 +1027,17 @@ export function createObMcpServer(
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const columnLimit = Math.min(maxColumns ?? DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT, 10_000);
       const rows = await withQuerySlot(selected, () =>
-        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs, columnLimit + 1)
       );
+      const visibleRows = filterColumnMetadata(rows, selected.config.policy);
+      const limitReached = visibleRows.length > columnLimit;
       return toLimitedResult(
-        describeTablePayload(filterColumnMetadata(rows, selected.config.policy), selected.config, maxColumns),
+        describeTablePayload(visibleRows, selected.config, maxColumns, {
+          columnLimit,
+          columnCountLowerBound: limitReached
+        }),
         selected.config
       );
     }
@@ -4184,20 +4191,29 @@ function filterSchemaMapTables(rows: SchemaMapTable[], config: ObConfig): Schema
   });
 }
 
-function describeTablePayload(rows: unknown[], config: ObConfig, maxColumns: number | undefined): unknown {
-  const columnLimit = Math.min(maxColumns ?? rows.length, 10_000);
+function describeTablePayload(
+  rows: unknown[],
+  config: ObConfig,
+  maxColumns: number | undefined,
+  options: { columnLimit?: number; columnCountLowerBound?: boolean } = {}
+): unknown {
+  const columnLimit = Math.min(maxColumns ?? options.columnLimit ?? rows.length, 10_000);
   const limitedRows = rows.slice(0, columnLimit);
-  const explicitlyTruncated = limitedRows.length < rows.length;
-  if (!maxColumns && !explicitlyTruncated && jsonByteLength(limitedRows) <= config.maxResultBytes) {
+  const lowerBoundCount = options.columnCountLowerBound === true;
+  const explicitlyTruncated = limitedRows.length < rows.length || lowerBoundCount;
+  if (!maxColumns && !lowerBoundCount && !explicitlyTruncated && jsonByteLength(limitedRows) <= config.maxResultBytes) {
     return limitedRows;
   }
 
-  const baseWarnings = explicitlyTruncated
-    ? [`Only ${limitedRows.length} of ${rows.length} visible columns are returned. Pass maxColumns to adjust the scope.`]
+  const baseWarnings = lowerBoundCount
+    ? [`At least ${rows.length} visible columns match; only ${limitedRows.length} are returned. Pass maxColumns to adjust the scope.`]
+    : explicitlyTruncated
+      ? [`Only ${limitedRows.length} of ${rows.length} visible columns are returned. Pass maxColumns to adjust the scope.`]
     : [];
   const buildPayload = (columns: unknown[], byteTruncated: boolean) => ({
     columns,
     columnCount: rows.length,
+    columnCountLowerBound: lowerBoundCount || undefined,
     returnedColumns: columns.length,
     truncated: explicitlyTruncated || byteTruncated,
     warnings: byteTruncated
