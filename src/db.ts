@@ -103,6 +103,9 @@ export interface ErMetadataBatch {
   constraints: unknown[];
   relationships: TableRelationship[];
   queryCount: number;
+  truncated: boolean;
+  truncatedColumnTables: string[];
+  truncatedColumns: number;
   warnings: string[];
 }
 
@@ -992,24 +995,44 @@ export async function loadErMetadataBatch(
   options: {
     relationshipMode: "none" | "foreign_key" | "inferred";
     maxRelationships: number;
+    maxColumnsPerTable?: number;
+    maxIndexRowsPerTable?: number;
+    maxConstraintRowsPerTable?: number;
     timeoutMs: number;
   }
 ): Promise<ErMetadataBatch> {
   const normalizedRefs = uniqueTableRefs(mode, refs);
   if (normalizedRefs.length === 0) {
-    return { columns: [], indexes: [], constraints: [], relationships: [], queryCount: 0, warnings: [] };
+    return {
+      columns: [],
+      indexes: [],
+      constraints: [],
+      relationships: [],
+      queryCount: 0,
+      truncated: false,
+      truncatedColumnTables: [],
+      truncatedColumns: 0,
+      warnings: []
+    };
   }
   const queryCount = { value: 0 };
   const warnings: string[] = [];
-  const columns = await queryBatchColumns(pool, mode, normalizedRefs, options.timeoutMs, queryCount);
-  const indexes = await queryBatchIndexes(pool, mode, normalizedRefs, options.timeoutMs, queryCount);
-  const constraints = await queryBatchConstraints(pool, mode, normalizedRefs, options.timeoutMs, queryCount);
+  const columnLimit = options.maxColumnsPerTable == null ? undefined : safeLimit(options.maxColumnsPerTable);
+  const indexLimit = options.maxIndexRowsPerTable == null ? undefined : safeLimit(options.maxIndexRowsPerTable);
+  const constraintLimit = options.maxConstraintRowsPerTable == null ? undefined : safeLimit(options.maxConstraintRowsPerTable);
+  const rawColumns = await queryBatchColumns(pool, mode, normalizedRefs, options.timeoutMs, queryCount, columnLimit ? columnLimit + 1 : undefined);
+  const rawIndexes = await queryBatchIndexes(pool, mode, normalizedRefs, options.timeoutMs, queryCount, indexLimit ? indexLimit + 1 : undefined);
+  const rawConstraints = await queryBatchConstraints(pool, mode, normalizedRefs, options.timeoutMs, queryCount, constraintLimit ? constraintLimit + 1 : undefined);
+  const limitedColumns = limitErMetadataRows(mode, rawColumns, columnLimit, "Column metadata");
+  const limitedIndexes = limitErMetadataRows(mode, rawIndexes, indexLimit, "Index metadata");
+  const limitedConstraints = limitErMetadataRows(mode, rawConstraints, constraintLimit, "Constraint metadata");
+  warnings.push(...limitedIndexes.warnings, ...limitedConstraints.warnings);
   let relationships: TableRelationship[] = [];
   if (options.relationshipMode !== "none") {
     const foreignKeys = await queryBatchForeignKeys(pool, mode, normalizedRefs, options.timeoutMs, queryCount);
     relationships.push(...foreignKeys);
     if (options.relationshipMode === "inferred" && relationships.length < options.maxRelationships) {
-      relationships.push(...inferScopedNamingRelationships(mode, normalizedRefs, columns, indexes, constraints, options.maxRelationships - relationships.length));
+      relationships.push(...inferScopedNamingRelationships(mode, normalizedRefs, limitedColumns.rows, limitedIndexes.rows, limitedConstraints.rows, options.maxRelationships - relationships.length));
     }
     relationships = dedupeTableRelationships(mode, relationships).slice(0, options.maxRelationships);
     if (foreignKeys.length > options.maxRelationships) {
@@ -1017,11 +1040,14 @@ export async function loadErMetadataBatch(
     }
   }
   return {
-    columns,
-    indexes,
-    constraints,
+    columns: limitedColumns.rows,
+    indexes: limitedIndexes.rows,
+    constraints: limitedConstraints.rows,
     relationships,
     queryCount: queryCount.value,
+    truncated: limitedColumns.truncated || limitedIndexes.truncated || limitedConstraints.truncated,
+    truncatedColumnTables: limitedColumns.truncatedTables,
+    truncatedColumns: limitedColumns.omittedRows,
     warnings
   };
 }
@@ -1050,13 +1076,32 @@ async function queryBatchColumns(
   mode: CompatibilityMode,
   refs: TableRef[],
   timeoutMs: number,
-  queryCount: { value: number }
+  queryCount: { value: number },
+  maxRowsPerTable?: number
 ): Promise<unknown[]> {
+  const rowLimit = maxRowsPerTable == null ? undefined : safeLimit(maxRowsPerTable);
   const condition = tableRefCondition(mode, refs, mode === "oracle" ? "c.owner" : "table_schema", mode === "oracle" ? "c.table_name" : "table_name");
   queryCount.value += 1;
   if (mode === "oracle") {
     const [rows] = await pool.query({
-      sql: `
+      sql: rowLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} c.owner, c.table_name, c.column_name, c.data_type, c.data_length,
+                 c.data_precision, c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments,
+                 ROW_NUMBER() OVER (PARTITION BY c.owner, c.table_name ORDER BY c.column_id) AS ob_mcp_row_num
+          FROM all_tab_columns c
+          LEFT JOIN all_col_comments cc
+            ON cc.owner = c.owner
+           AND cc.table_name = c.table_name
+           AND cc.column_name = c.column_name
+          WHERE ${condition.sql}
+        )
+        WHERE ob_mcp_row_num <= ?
+        ORDER BY owner, table_name, column_id
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} c.owner, c.table_name, c.column_name, c.data_type, c.data_length,
                c.data_precision, c.data_scale, c.data_default, c.nullable, c.column_id, cc.comments
         FROM all_tab_columns c
@@ -1067,20 +1112,33 @@ async function queryBatchColumns(
         WHERE ${condition.sql}
         ORDER BY c.owner, c.table_name, c.column_id
       `,
-      values: condition.values,
+      values: rowLimit ? [...condition.values, rowLimit] : condition.values,
       timeout: timeoutMs
     });
     return rows as unknown[];
   }
   const [rows] = await pool.query({
-    sql: `
+    sql: rowLimit
+      ? `
+      SELECT *
+      FROM (
+        SELECT table_schema, table_name, column_name, column_type, data_type,
+               is_nullable, column_default, column_key, extra, ordinal_position, column_comment,
+               ROW_NUMBER() OVER (PARTITION BY table_schema, table_name ORDER BY ordinal_position) AS ob_mcp_row_num
+        FROM information_schema.columns
+        WHERE ${condition.sql}
+      ) AS er_columns
+      WHERE ob_mcp_row_num <= ?
+      ORDER BY table_schema, table_name, ordinal_position
+    `
+      : `
       SELECT table_schema, table_name, column_name, column_type, data_type,
              is_nullable, column_default, column_key, extra, ordinal_position, column_comment
       FROM information_schema.columns
       WHERE ${condition.sql}
       ORDER BY table_schema, table_name, ordinal_position
     `,
-    values: condition.values,
+    values: rowLimit ? [...condition.values, rowLimit] : condition.values,
     timeout: timeoutMs
   });
   return rows as unknown[];
@@ -1091,13 +1149,32 @@ async function queryBatchIndexes(
   mode: CompatibilityMode,
   refs: TableRef[],
   timeoutMs: number,
-  queryCount: { value: number }
+  queryCount: { value: number },
+  maxRowsPerTable?: number
 ): Promise<unknown[]> {
+  const rowLimit = maxRowsPerTable == null ? undefined : safeLimit(maxRowsPerTable);
   const condition = tableRefCondition(mode, refs, mode === "oracle" ? "i.owner" : "table_schema", mode === "oracle" ? "i.table_name" : "table_name");
   queryCount.value += 1;
   if (mode === "oracle") {
     const [rows] = await pool.query({
-      sql: `
+      sql: rowLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} i.owner, i.table_name, i.index_name, i.uniqueness, c.column_name, c.column_position,
+                 ROW_NUMBER() OVER (PARTITION BY i.owner, i.table_name ORDER BY i.index_name, c.column_position) AS ob_mcp_row_num
+          FROM all_indexes i
+          JOIN all_ind_columns c
+            ON c.index_owner = i.owner
+           AND c.index_name = i.index_name
+           AND c.table_owner = i.owner
+           AND c.table_name = i.table_name
+          WHERE ${condition.sql}
+        )
+        WHERE ob_mcp_row_num <= ?
+        ORDER BY owner, table_name, index_name, column_position
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} i.owner, i.table_name, i.index_name, i.uniqueness, c.column_name, c.column_position
         FROM all_indexes i
         JOIN all_ind_columns c
@@ -1108,19 +1185,31 @@ async function queryBatchIndexes(
         WHERE ${condition.sql}
         ORDER BY i.owner, i.table_name, i.index_name, c.column_position
       `,
-      values: condition.values,
+      values: rowLimit ? [...condition.values, rowLimit] : condition.values,
       timeout: timeoutMs
     });
     return rows as unknown[];
   }
   const [rows] = await pool.query({
-    sql: `
+    sql: rowLimit
+      ? `
+      SELECT *
+      FROM (
+        SELECT table_schema, table_name, index_name, non_unique, seq_in_index, column_name, index_type,
+               ROW_NUMBER() OVER (PARTITION BY table_schema, table_name ORDER BY index_name, seq_in_index) AS ob_mcp_row_num
+        FROM information_schema.statistics
+        WHERE ${condition.sql}
+      ) AS er_indexes
+      WHERE ob_mcp_row_num <= ?
+      ORDER BY table_schema, table_name, index_name, seq_in_index
+    `
+      : `
       SELECT table_schema, table_name, index_name, non_unique, seq_in_index, column_name, index_type
       FROM information_schema.statistics
       WHERE ${condition.sql}
       ORDER BY table_schema, table_name, index_name, seq_in_index
     `,
-    values: condition.values,
+    values: rowLimit ? [...condition.values, rowLimit] : condition.values,
     timeout: timeoutMs
   });
   return rows as unknown[];
@@ -1131,14 +1220,41 @@ async function queryBatchConstraints(
   mode: CompatibilityMode,
   refs: TableRef[],
   timeoutMs: number,
-  queryCount: { value: number }
+  queryCount: { value: number },
+  maxRowsPerTable?: number
 ): Promise<unknown[]> {
+  const rowLimit = maxRowsPerTable == null ? undefined : safeLimit(maxRowsPerTable);
   queryCount.value += 1;
   if (mode === "oracle") {
     const constraintsCondition = tableRefCondition(mode, refs, "c.owner", "c.table_name");
     const notNullCondition = tableRefCondition(mode, refs, "owner", "table_name");
     const [rows] = await pool.query({
-      sql: `
+      sql: rowLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT constraint_rows.*,
+                 ROW_NUMBER() OVER (PARTITION BY owner, table_name ORDER BY constraint_name, position) AS ob_mcp_row_num
+          FROM (
+            SELECT ${oracleTimeoutHint(timeoutMs)} c.owner, c.table_name, c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.search_condition
+            FROM all_constraints c
+            LEFT JOIN all_cons_columns cc
+              ON cc.owner = c.owner
+             AND cc.constraint_name = c.constraint_name
+             AND cc.table_name = c.table_name
+            WHERE ${constraintsCondition.sql}
+            UNION ALL
+            SELECT owner, table_name, 'NOT_NULL_' || column_name AS constraint_name, 'NOT_NULL' AS constraint_type,
+                   column_name, column_id AS position, NULL AS search_condition
+            FROM all_tab_columns
+            WHERE nullable = 'N'
+              AND ${notNullCondition.sql}
+          ) constraint_rows
+        )
+        WHERE ob_mcp_row_num <= ?
+        ORDER BY owner, table_name, constraint_name, position
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, constraint_name, constraint_type, column_name, position, search_condition
         FROM (
           SELECT c.owner, c.table_name, c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.search_condition
@@ -1157,7 +1273,7 @@ async function queryBatchConstraints(
         )
         ORDER BY owner, table_name, constraint_name, position
       `,
-      values: [...constraintsCondition.values, ...notNullCondition.values],
+      values: rowLimit ? [...constraintsCondition.values, ...notNullCondition.values, rowLimit] : [...constraintsCondition.values, ...notNullCondition.values],
       timeout: timeoutMs
     });
     return rows as unknown[];
@@ -1165,7 +1281,36 @@ async function queryBatchConstraints(
   const constraintsCondition = tableRefCondition(mode, refs, "tc.table_schema", "tc.table_name");
   const notNullCondition = tableRefCondition(mode, refs, "table_schema", "table_name");
   const [rows] = await pool.query({
-    sql: `
+    sql: rowLimit
+      ? `
+      SELECT *
+      FROM (
+        SELECT constraints_with_not_null.*,
+               ROW_NUMBER() OVER (PARTITION BY table_schema, table_name ORDER BY constraint_name, ordinal_position) AS ob_mcp_row_num
+        FROM (
+          SELECT tc.table_schema, tc.table_name, tc.constraint_name, tc.constraint_type,
+                 kcu.column_name, kcu.ordinal_position, kcu.referenced_table_schema,
+                 kcu.referenced_table_name, kcu.referenced_column_name
+          FROM information_schema.table_constraints tc
+          LEFT JOIN information_schema.key_column_usage kcu
+            ON kcu.constraint_schema = tc.constraint_schema
+           AND kcu.constraint_name = tc.constraint_name
+           AND kcu.table_schema = tc.table_schema
+           AND kcu.table_name = tc.table_name
+          WHERE ${constraintsCondition.sql}
+          UNION ALL
+          SELECT table_schema, table_name, CONCAT('NOT_NULL_', column_name) AS constraint_name,
+                 'NOT_NULL' AS constraint_type, column_name, ordinal_position,
+                 NULL AS referenced_table_schema, NULL AS referenced_table_name, NULL AS referenced_column_name
+          FROM information_schema.columns
+          WHERE is_nullable = 'NO'
+            AND ${notNullCondition.sql}
+        ) AS constraints_with_not_null
+      ) AS er_constraints
+      WHERE ob_mcp_row_num <= ?
+      ORDER BY table_schema, table_name, constraint_name, ordinal_position
+    `
+      : `
       SELECT table_schema, table_name, constraint_name, constraint_type,
              column_name, ordinal_position, referenced_table_schema,
              referenced_table_name, referenced_column_name
@@ -1190,10 +1335,56 @@ async function queryBatchConstraints(
       ) AS constraints_with_not_null
       ORDER BY table_schema, table_name, constraint_name, ordinal_position
     `,
-    values: [...constraintsCondition.values, ...notNullCondition.values],
+    values: rowLimit ? [...constraintsCondition.values, ...notNullCondition.values, rowLimit] : [...constraintsCondition.values, ...notNullCondition.values],
     timeout: timeoutMs
   });
   return rows as unknown[];
+}
+
+function limitErMetadataRows(
+  mode: CompatibilityMode,
+  rows: unknown[],
+  maxRowsPerTable: number | undefined,
+  label: string
+): { rows: unknown[]; truncated: boolean; truncatedTables: string[]; omittedRows: number; warnings: string[] } {
+  if (maxRowsPerTable == null) {
+    return { rows, truncated: false, truncatedTables: [], omittedRows: 0, warnings: [] };
+  }
+
+  const limit = safeLimit(maxRowsPerTable);
+  const counts = new Map<string, number>();
+  const labels = new Map<string, string>();
+  const truncatedTables = new Set<string>();
+  const output: unknown[] = [];
+  let omittedRows = 0;
+
+  for (const row of rows) {
+    const record = rowRecord(row);
+    const schema = stringField(record, "table_schema", "TABLE_SCHEMA", "owner", "OWNER", "table_owner", "TABLE_OWNER");
+    const table = stringField(record, "table_name", "TABLE_NAME");
+    const key = tableKey(mode, schema, table ?? "");
+    const seen = counts.get(key) ?? 0;
+    counts.set(key, seen + 1);
+    labels.set(key, schema ? `${schema}.${table ?? ""}` : table ?? "");
+    if (seen < limit) {
+      output.push(row);
+      continue;
+    }
+    omittedRows += 1;
+    truncatedTables.add(key);
+  }
+
+  const tableLabels = [...truncatedTables].map((key) => labels.get(key) ?? key).filter(Boolean);
+  const warnings = tableLabels.length > 0 && label !== "Column metadata"
+    ? [`${label} was limited to ${limit} row(s) per table for ${tableLabels.length} table(s); at least ${omittedRows} row(s) were omitted.`]
+    : [];
+  return {
+    rows: output,
+    truncated: tableLabels.length > 0,
+    truncatedTables: tableLabels,
+    omittedRows,
+    warnings
+  };
 }
 
 async function queryBatchForeignKeys(

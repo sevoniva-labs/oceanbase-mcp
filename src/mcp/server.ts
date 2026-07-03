@@ -5396,6 +5396,9 @@ async function buildErDiagramResult(
             loadErMetadataBatch(selected.pool, selected.config.compatibility, batchRefs, {
               relationshipMode,
               maxRelationships: Math.max(1, maxRelationships - relationships.length),
+              maxColumnsPerTable: selected.config.erMaxColumnsPerTable,
+              maxIndexRowsPerTable: selected.config.erMaxColumnsPerTable * 4,
+              maxConstraintRowsPerTable: selected.config.erMaxColumnsPerTable * 4,
               timeoutMs: erTimeoutMs
             })
           );
@@ -5470,11 +5473,19 @@ async function buildErDiagramResult(
         loadErMetadataBatch(selected.pool, selected.config.compatibility, finalRefs, {
           relationshipMode: "none",
           maxRelationships: 1,
+          maxColumnsPerTable: selected.config.erMaxColumnsPerTable,
+          maxIndexRowsPerTable: selected.config.erMaxColumnsPerTable * 4,
+          maxConstraintRowsPerTable: selected.config.erMaxColumnsPerTable * 4,
           timeoutMs: erTimeoutMs
         })
       );
       queryCount += batch.queryCount;
       warnings.push(...batch.warnings);
+      if (batch.truncated) {
+        truncated = true;
+        truncatedColumnTables.push(...batch.truncatedColumnTables);
+        truncatedColumns += batch.truncatedColumns;
+      }
       columnsByTable = groupErMetadataRows(selected.config.compatibility, filterColumnMetadata(batch.columns, selected.config.policy));
       constraintsByTable = groupErMetadataRows(selected.config.compatibility, filterColumnMetadata(batch.constraints, selected.config.policy));
       indexesByTable = groupErMetadataRows(selected.config.compatibility, filterColumnMetadata(batch.indexes, selected.config.policy));
