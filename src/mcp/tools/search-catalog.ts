@@ -131,6 +131,30 @@ export function registerSearchCatalogTools(
       );
     }
   );
+
+  registerTool(
+    "ob_search_business_glossary",
+    {
+      title: "Search Business Glossary",
+      description: "Search optional business terms mapped to allowed OceanBase schemas, tables, and columns.",
+      inputSchema: {
+        ...profileInput,
+        query: z.string().min(1),
+        schema: z.string().optional(),
+        limit: z.number().int().positive().max(500).optional()
+      }
+    },
+    async ({ profile, query, schema, limit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      if (schema) {
+        assertTableAccess(schema, "*", policyContext(selected.config));
+      }
+      return toLimitedResult(
+        searchBusinessGlossary(selected.config, query, Math.min(limit ?? 20, 500), schema),
+        selected.config
+      );
+    }
+  );
 }
 
 function glossaryCatalogRow(match: {
