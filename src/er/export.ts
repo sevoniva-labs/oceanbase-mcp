@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 
 import { loadGatewayConfig, type GatewayConfig } from "../config.js";
-import { serializeError } from "../errors.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "../runtime.js";
 import { createObMcpServer } from "../mcp.js";
 
@@ -175,10 +174,12 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
       relationshipCount: payload.relationshipCount
     }, null, 2));
     return 0;
-  } catch (error) {
+  } catch {
     console.error(JSON.stringify({
       ok: false,
-      error: serializeError(error, { includeSqlMessage: false })
+      error: {
+        message: "ER export failed. Review the command arguments and configuration."
+      }
     }, null, 2));
     return 1;
   } finally {

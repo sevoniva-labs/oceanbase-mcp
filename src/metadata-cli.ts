@@ -2,7 +2,6 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
 import { loadGatewayConfig } from "./config.js";
-import { serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonText } from "./format.js";
 import { captureMetadataSnapshot, type CaptureMetadataSnapshotInput } from "./metadata-capture.js";
 import { compareMetadataSnapshots, renderMetadataComparisonMarkdown } from "./metadata-change.js";
@@ -61,10 +60,12 @@ export async function runMetadataCommand(args: string[], cwd = process.cwd()): P
       return 0;
     }
     throw new Error(`Unknown metadata command: ${command}`);
-  } catch (error) {
+  } catch {
     console.error(JSON.stringify({
       ok: false,
-      error: serializeError(error, { includeSqlMessage: false })
+      error: {
+        message: "Metadata command failed. Review the command arguments and configuration."
+      }
     }, null, 2));
     return 1;
   }

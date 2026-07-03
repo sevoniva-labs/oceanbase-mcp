@@ -69,8 +69,8 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(restrictSourceIp);
 app.use(httpRateLimiter);
+app.use(restrictSourceIp);
 
 app.get("/healthz", endpointAuth(httpConfig.healthAuthRequired), (_req, res) => {
   const diagnostics = diagnoseGateway(gatewayConfig, httpConfig);
