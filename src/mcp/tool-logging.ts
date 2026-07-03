@@ -50,11 +50,15 @@ function payloadTruncated(payload: unknown): boolean {
     return false;
   }
   const record = payload as Record<string, unknown>;
+  const nestedContainers = ["resultState", "stats", "executionSummary"];
   return Boolean(
     record.truncated ||
     record.columnsTruncated ||
     record.tablesTruncated ||
-    (record.resultState && typeof record.resultState === "object" && (record.resultState as Record<string, unknown>).truncated)
+    nestedContainers.some((key) => {
+      const value = record[key];
+      return Boolean(value && typeof value === "object" && (value as Record<string, unknown>).truncated);
+    })
   );
 }
 

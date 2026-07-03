@@ -9,6 +9,7 @@ import test from "node:test";
 import { loadConfig } from "../dist/config.js";
 import { logAudit, logError, logSlowOperation } from "../dist/errors.js";
 import { createObMcpServer } from "../dist/mcp.js";
+import { resultDiagnostics } from "../dist/mcp/tool-logging.js";
 
 test("json logs can be written to a file with sensitive values redacted", () => {
   const dir = mkdtempSync(join(tmpdir(), "ob-mcp-log-"));
@@ -142,6 +143,23 @@ test("tool audit logs include bounded response size", async () => {
     restoreEnv("OB_MCP_LOG_STDERR", previousStderr);
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("tool result diagnostics detect nested truncation state", () => {
+  const diagnostics = resultDiagnostics({
+    content: [{
+      text: JSON.stringify({
+        warnings: ["columns were limited"],
+        stats: {
+          truncated: true,
+          loadedTables: 220
+        }
+      })
+    }]
+  });
+
+  assert.equal(diagnostics.truncated, true);
+  assert.equal(diagnostics.warningCount, 1);
 });
 
 test("tool audit logs include sanitized error metadata", async () => {
