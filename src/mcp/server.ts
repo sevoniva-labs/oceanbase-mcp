@@ -106,6 +106,7 @@ import {
 import type { McpRequestContext } from "./context.js";
 import { policyContext } from "./policy-context.js";
 import { registerMcpResources } from "./resources.js";
+import { explainGeneratedQuery, runExplainCheck } from "./sql-policy-explain.js";
 import {
   buildSelectFilterSchema,
   buildSelectOrderBySchema,
@@ -10809,27 +10810,4 @@ function deniedColumnTokens(pattern: string): string[] {
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function runExplainCheck(name: string, check: () => void) {
-  try {
-    check();
-    return { name, ok: true, message: "Allowed." };
-  } catch (error) {
-    return { name, ok: false, message: (error as Error).message };
-  }
-}
-
-function explainGeneratedQuery(sql: string, paramCount: number, config: ObConfig) {
-  const params = Array.from({ length: paramCount }, () => null);
-  const sqlChecks = [
-    runExplainCheck("input_limits", () => assertSqlInputLimits(sql, params, config)),
-    runExplainCheck("read_only_sql", () => assertReadOnlySql(sql))
-  ];
-  const policy = explainSqlPolicy(sql, policyContext(config));
-  return {
-    allowed: sqlChecks.every((check) => check.ok) && policy.allowed,
-    checks: [...sqlChecks, ...policy.checks],
-    tableRefs: policy.tableRefs
-  };
 }
