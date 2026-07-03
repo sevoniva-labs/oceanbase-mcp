@@ -14,6 +14,7 @@ export interface ToolSpec {
 }
 
 export type ToolHandler<Args = any> = (args: Args) => Promise<ToolResult>;
+export type ToolRegistrar = ReturnType<typeof createToolRegistrar>;
 
 export function createToolRegistrar(server: McpServer, runtime: GatewayRuntime, context: McpRequestContext) {
   return <Args = any>(name: string, spec: ToolSpec, handler: ToolHandler<Args>): void => {
