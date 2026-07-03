@@ -148,6 +148,7 @@ import { registerObjectMetadataTools } from "./tools/object-metadata.js";
 import { registerQueryBuildTools } from "./tools/query-build.js";
 import { registerQueryPlanTools } from "./tools/query-plan.js";
 import { registerQueryTemplateTools } from "./tools/query-templates.js";
+import { registerSearchCatalogTools } from "./tools/search-catalog.js";
 import { registerSqlUsageTools } from "./tools/sql-usages.js";
 import {
   buildSchemaMapTableSummary,
@@ -691,44 +692,8 @@ export function createObMcpServer(
   registerQueryPlanTools(registerTool, runtime, context);
   registerQueryBuildTools(registerTool, runtime, context);
   registerQueryTemplateTools(registerTool, runtime, context);
+  registerSearchCatalogTools(registerTool, runtime, context);
   registerSqlUsageTools(registerTool, runtime, context);
-
-  registerTool(
-    "ob_search_catalog",
-    {
-      title: "Search Catalog",
-      description: "Search schemas, tables, columns, and comments, filtered by access policy.",
-      inputSchema: {
-        ...profileInput,
-        query: z.string().min(1),
-        schema: z.string().optional(),
-        limit: z.number().int().positive().max(1000).optional()
-      }
-    },
-    async ({ profile, query, schema, limit }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      if (schema) {
-        assertTableAccess(schema, "*", policyContext(selected.config));
-      }
-      const maxResults = effectiveRowLimit(limit, selected.config);
-      const rows = await withQuerySlot(selected, () =>
-        searchCatalog(
-          selected.pool,
-          selected.config.compatibility,
-          query,
-          schema,
-          maxResults,
-          selected.config.queryTimeoutMs
-        )
-      );
-      const catalogRows = filterColumnMetadata(rows, selected.config.policy);
-      const glossary = searchBusinessGlossary(selected.config, query, maxResults, schema);
-      return toLimitedResult(
-        [...glossary.matches.map(glossaryCatalogRow), ...catalogRows].slice(0, maxResults),
-        selected.config
-      );
-    }
-  );
 
   registerTool(
     "ob_search_everything",
@@ -4347,24 +4312,6 @@ function maskColumnProfile(
 
 function maskProfileValue(value: unknown): unknown {
   return value == null ? value : "***MASKED***";
-}
-
-function glossaryCatalogRow(match: {
-  term: string;
-  aliases: string[];
-  description?: string;
-  targets: unknown[];
-  evidence: string[];
-}) {
-  return {
-    match_type: "business_glossary",
-    source: "business_glossary",
-    term: match.term,
-    aliases: match.aliases,
-    description: match.description,
-    targets: match.targets,
-    evidence: match.evidence
-  };
 }
 
 interface SearchEverythingResult {
