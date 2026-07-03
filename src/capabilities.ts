@@ -1,6 +1,6 @@
 import type { CompatibilityMode, ObConfig } from "./config.js";
 
-export const SERVER_VERSION = "1.2.0";
+export const SERVER_VERSION = "1.3.0";
 
 export type ToolOperationType = "metadata" | "read_data" | "analysis" | "local_export";
 export type ToolDataTouch = "none" | "metadata" | "query_rows" | "sampled_rows" | "local_artifact";

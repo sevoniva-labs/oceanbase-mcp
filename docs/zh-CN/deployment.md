@@ -232,31 +232,31 @@ workflow 已配置 `id-token: write`，并使用 `npm publish --provenance` 发�
 使用方可以从 npmjs 安装，也可以从同步 npmjs 的私有 registry 安装：
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.2.0
+npm install -g @sevoniva/oceanbase-mcp@1.3.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.2.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.3.0 ob-mcp --help
 ```
 
 手动发布：
 
 1. 打开 GitHub Actions。
 2. 运行 `Release`。
-3. 输入版本号，例如 `v1.2.0`。
+3. 输入版本号，例如 `v1.3.0`。
 4. workflow 会创建 tag；配置 Trusted Publishing 后发布 npm 包；随后发布镜像并上传 Release 附件。
 
 加载离线镜像：
 
 ```bash
-gunzip oceanbase-mcp-1.2.0-amd64.tar.gz
-docker load -i oceanbase-mcp-1.2.0-amd64.tar
-docker run --rm oceanbase-mcp:1.2.0-amd64
+gunzip oceanbase-mcp-1.3.0-amd64.tar.gz
+docker load -i oceanbase-mcp-1.3.0-amd64.tar
+docker run --rm oceanbase-mcp:1.3.0-amd64
 ```
 
 离线源码构建：
 
 ```bash
-tar -xzf oceanbase-mcp-1.2.0-source.tar.gz
-cd oceanbase-mcp-1.2.0
+tar -xzf oceanbase-mcp-1.3.0-source.tar.gz
+cd oceanbase-mcp-1.3.0
 npm ci
 npm run build
 npm run start

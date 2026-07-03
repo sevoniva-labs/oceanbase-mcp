@@ -23,7 +23,7 @@ Use the published package:
         "npx",
         "--registry=https://registry.npmjs.org/",
         "--yes",
-        "--package=@sevoniva/oceanbase-mcp@1.2.0",
+        "--package=@sevoniva/oceanbase-mcp@1.3.0",
         "ob-mcp"
       ],
       "enabled": true,
