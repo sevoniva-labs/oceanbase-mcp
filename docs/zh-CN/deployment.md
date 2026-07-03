@@ -232,9 +232,9 @@ workflow 已配置 `id-token: write`，并使用 `npm publish --provenance` 发�
 使用方可以从 npmjs 安装，也可以从同步 npmjs 的私有 registry 安装：
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.3.0
+npm install -g @sevoniva/oceanbase-mcp@1.4.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.3.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
 ```
 
 手动发布：
@@ -247,16 +247,16 @@ npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-m
 加载离线镜像：
 
 ```bash
-gunzip oceanbase-mcp-1.3.0-amd64.tar.gz
-docker load -i oceanbase-mcp-1.3.0-amd64.tar
-docker run --rm oceanbase-mcp:1.3.0-amd64
+gunzip oceanbase-mcp-1.4.0-amd64.tar.gz
+docker load -i oceanbase-mcp-1.4.0-amd64.tar
+docker run --rm oceanbase-mcp:1.4.0-amd64
 ```
 
 离线源码构建：
 
 ```bash
-tar -xzf oceanbase-mcp-1.3.0-source.tar.gz
-cd oceanbase-mcp-1.3.0
+tar -xzf oceanbase-mcp-1.4.0-source.tar.gz
+cd oceanbase-mcp-1.4.0
 npm ci
 npm run build
 npm run start

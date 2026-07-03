@@ -40,6 +40,7 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 | v1.1.6 | 修正 npmjs 启动示例，补充 Apache-2.0 包许可元数据和 Trusted Publishing 发布流程，并验证公开 npm 安装。 |
 | v1.2.0 | 重构 ER 元数据地图：稳定图 ID、交互式 graph 画布、cluster 目录导出、跨 cluster 关系索引、诊断元数据和响应大小日志。 |
 | v1.3.0 | 强化稳定性和可维护性：DB 调用预算、工具截止时间、结构化日志、崩溃回归测试、DB 运行时模块拆分和大库验证记录。 |
+| v1.4.0 | 精简 npm 包内容，移除运行时不需要的历史 release 文档和 smoke 脚本，保留源码归档用于完整构建。 |
 
 所有数据访问能力都受 profile 权限、schema/table/column 策略、只读 SQL 策略、行数限制、输出大小限制、超时、并发限制、审计日志和错误脱敏约束。
 
@@ -61,9 +62,9 @@ OceanBase MCP 是一个面向 OceanBase 的只读 MCP 网关。它用于 OpenCod
 通过 npmjs 或私有 npm 制品库安装 Node.js CLI/runtime 包：
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.3.0
+npm install -g @sevoniva/oceanbase-mcp@1.4.0
 ob-mcp doctor
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.3.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
 ```
 
 从源码构建：
@@ -251,16 +252,16 @@ ob-mcp metadata report --before snapshots/before.json --after snapshots/after.js
 公开 npm 包名为 `@sevoniva/oceanbase-mcp`，CLI 命令名保持 `ob-mcp`、`ob-mcp-http` 和 `ob-mcp-doctor`。这是 Node.js CLI/runtime 分发包，可以全局安装，也可以通过 `npx --package` 在其他终端直接拉取并启动。私有制品库可以同步 npmjs 包，业务环境再从私有 registry 固定版本安装。
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.3.0
+npm install -g @sevoniva/oceanbase-mcp@1.4.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.3.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
 ```
 
 Release 仍附带源码归档，适合离线源码构建：
 
 ```bash
-tar -xzf oceanbase-mcp-1.3.0-source.tar.gz
-cd oceanbase-mcp-1.3.0
+tar -xzf oceanbase-mcp-1.4.0-source.tar.gz
+cd oceanbase-mcp-1.4.0
 npm ci
 npm run build
 npm run start
@@ -272,12 +273,12 @@ npm run start
 
 | 资产 | 用途 |
 | --- | --- |
-| `sevoniva-oceanbase-mcp-1.3.0.tgz` | npm 包。 |
-| `oceanbase-mcp-1.3.0-source.tar.gz` | 源码归档，用于离线构建。 |
+| `sevoniva-oceanbase-mcp-1.4.0.tgz` | npm 包。 |
+| `oceanbase-mcp-1.4.0-source.tar.gz` | 源码归档，用于离线构建。 |
 | `sbom.cdx.json` | CycloneDX SBOM。 |
-| `oceanbase-mcp-1.3.0-amd64.tar.gz` | amd64 离线镜像。 |
-| `oceanbase-mcp-1.3.0-arm64.tar.gz` | arm64 离线镜像。 |
-| `ghcr.io/sevoniva/oceanbase-mcp:v1.3.0` | GHCR 镜像 tag。 |
+| `oceanbase-mcp-1.4.0-amd64.tar.gz` | amd64 离线镜像。 |
+| `oceanbase-mcp-1.4.0-arm64.tar.gz` | arm64 离线镜像。 |
+| `ghcr.io/sevoniva/oceanbase-mcp:v1.4.0` | GHCR 镜像 tag。 |
 
 ## 资源
 

@@ -232,9 +232,9 @@ The workflow grants `id-token: write` and publishes with `npm publish --provenan
 Consumers can install from npmjs or a private registry that mirrors npmjs:
 
 ```bash
-npm install -g @sevoniva/oceanbase-mcp@1.3.0
+npm install -g @sevoniva/oceanbase-mcp@1.4.0
 ob-mcp --help
-npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.3.0 ob-mcp --help
+npx --registry=https://registry.npmjs.org/ --yes --package=@sevoniva/oceanbase-mcp@1.4.0 ob-mcp --help
 ```
 
 Manual release:
@@ -247,16 +247,16 @@ Manual release:
 Load an offline image:
 
 ```bash
-gunzip oceanbase-mcp-1.3.0-amd64.tar.gz
-docker load -i oceanbase-mcp-1.3.0-amd64.tar
-docker run --rm oceanbase-mcp:1.3.0-amd64
+gunzip oceanbase-mcp-1.4.0-amd64.tar.gz
+docker load -i oceanbase-mcp-1.4.0-amd64.tar
+docker run --rm oceanbase-mcp:1.4.0-amd64
 ```
 
 Build from the source archive in an offline environment:
 
 ```bash
-tar -xzf oceanbase-mcp-1.3.0-source.tar.gz
-cd oceanbase-mcp-1.3.0
+tar -xzf oceanbase-mcp-1.4.0-source.tar.gz
+cd oceanbase-mcp-1.4.0
 npm ci
 npm run build
 npm run start
