@@ -100,10 +100,12 @@ import {
 import { registerMcpResources } from "./resources.js";
 import {
   catalogSearchResult,
+  columnSearchRows,
+  dedupeColumnSearchResults,
   dedupeSearchResults,
+  glossaryColumnRows,
   glossarySearchResults,
   relatedTableEvidence,
-  textMatchEvidence,
   tableCandidatesFromSearchResults,
   type BusinessTableCandidate,
   type SearchEverythingResult
@@ -4255,166 +4257,6 @@ function maskColumnProfile(
 
 function maskProfileValue(value: unknown): unknown {
   return value == null ? value : "***MASKED***";
-}
-
-interface ColumnSearchResult {
-  source: "catalog" | "business_glossary";
-  schema?: string;
-  table: string;
-  column: string;
-  type?: string;
-  nullable?: boolean;
-  comment?: string;
-  ordinalPosition?: number;
-  masked: boolean;
-  confidence: number;
-  evidence: Array<{ source: string; field: string; value: string; reason: string }>;
-}
-
-function columnSearchRows(
-  row: unknown,
-  query: string | undefined,
-  dataType: string | undefined,
-  config: ObConfig
-): ColumnSearchResult[] {
-  const record = row as Record<string, unknown>;
-  const schema = stringRecordValue(record, "table_schema", "TABLE_SCHEMA", "owner", "OWNER");
-  const table = stringRecordValue(record, "table_name", "TABLE_NAME");
-  const column = stringRecordValue(record, "column_name", "COLUMN_NAME");
-  if (!table || !column) {
-    return [];
-  }
-  const metadata = profileColumnMetadata(row, config.compatibility);
-  const type = metadata?.dataType ?? columnTypeLabel(config.compatibility, record);
-  const comment = metadata?.comment;
-  const evidence = [
-    ...(query ? columnSearchEvidence(query, schema, table, column, type, comment) : []),
-    ...(dataType && type ? dataTypeEvidence(type, dataType) : [])
-  ];
-  if (evidence.length === 0 && !query && !dataType) {
-    evidence.push({ source: "catalog", field: "metadata", value: column, reason: "Returned from visible column metadata." });
-  }
-  if (evidence.length === 0) {
-    return [];
-  }
-  return [{
-    source: "catalog",
-    schema,
-    table,
-    column,
-    type,
-    nullable: metadata?.nullable,
-    comment,
-    ordinalPosition: numberRecordValue(record, "ordinal_position", "ORDINAL_POSITION", "column_id", "COLUMN_ID"),
-    masked: shouldMaskColumnValue(column, config, schema, table),
-    confidence: Math.max(...evidence.map((item) => evidenceConfidence(item.field))),
-    evidence
-  }];
-}
-
-function columnSearchEvidence(
-  query: string,
-  schema: string | undefined,
-  table: string,
-  column: string,
-  type: string | undefined,
-  comment: string | undefined
-): ColumnSearchResult["evidence"] {
-  return [
-    { field: "schema", value: schema },
-    { field: "table", value: table },
-    { field: "column", value: column },
-    { field: "type", value: type },
-    { field: "comment", value: comment }
-  ]
-    .map((item) => item.value ? textMatchEvidence(item.field, item.value, query) : undefined)
-    .filter((item): item is { confidence: number; evidence: SearchEverythingResult["evidence"][number] } => Boolean(item))
-    .map((item) => ({
-      source: "catalog",
-      field: item.evidence.field,
-      value: item.evidence.value,
-      reason: item.evidence.reason
-    }));
-}
-
-function dataTypeEvidence(type: string, expectedType: string): ColumnSearchResult["evidence"] {
-  const match = textMatchEvidence("type", type, expectedType);
-  return match
-    ? [{ source: "catalog", field: match.evidence.field, value: match.evidence.value, reason: match.evidence.reason }]
-    : [];
-}
-
-function evidenceConfidence(field: string): number {
-  if (field === "column") {
-    return 0.95;
-  }
-  if (field === "table") {
-    return 0.78;
-  }
-  if (field === "type") {
-    return 0.72;
-  }
-  if (field === "comment") {
-    return 0.66;
-  }
-  if (field === "business_glossary") {
-    return 0.9;
-  }
-  return 0.58;
-}
-
-function glossaryColumnRows(
-  match: {
-    term: string;
-    targets: Array<{ schema?: string; table?: string; column?: string; description?: string }>;
-    evidence: string[];
-  },
-  query: string,
-  config: ObConfig
-): ColumnSearchResult[] {
-  const termEvidence = textMatchEvidence("business_glossary", match.term, query);
-  return match.targets
-    .filter((target) => target.table && target.column)
-    .map((target) => ({
-      source: "business_glossary" as const,
-      schema: target.schema,
-      table: target.table!,
-      column: target.column!,
-      comment: target.description,
-      masked: shouldMaskColumnValue(target.column!, config, target.schema, target.table),
-      confidence: Math.max(0.9, termEvidence?.confidence ?? 0),
-      evidence: [
-        ...(termEvidence
-          ? [{ source: "business_glossary", field: termEvidence.evidence.field, value: termEvidence.evidence.value, reason: termEvidence.evidence.reason }]
-          : []),
-        ...match.evidence.map((item) => ({
-          source: "business_glossary",
-          field: "business_glossary",
-          value: item,
-          reason: "Matched configured business glossary evidence."
-        }))
-      ].slice(0, 10)
-    }));
-}
-
-function dedupeColumnSearchResults(results: ColumnSearchResult[]): ColumnSearchResult[] {
-  const best = new Map<string, ColumnSearchResult>();
-  for (const result of results) {
-    const key = [result.schema ?? "", result.table, result.column].join(":").toLowerCase();
-    const previous = best.get(key);
-    if (!previous) {
-      best.set(key, result);
-      continue;
-    }
-    best.set(key, {
-      ...previous,
-      ...Object.fromEntries(Object.entries(result).filter(([, value]) => value != null)),
-      masked: previous.masked || result.masked,
-      confidence: Math.max(previous.confidence, result.confidence),
-      evidence: [...previous.evidence, ...result.evidence].slice(0, 20)
-    });
-  }
-  return [...best.values()];
 }
 
 function explicitPrepareQueryCandidate(
