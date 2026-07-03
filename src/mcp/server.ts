@@ -492,48 +492,6 @@ export function createObMcpServer(
   );
 
   registerTool(
-    "ob_detect_dimension_columns",
-    {
-      title: "Detect Dimension Columns",
-      description: "Detect likely status, type, channel, region, flag, and category columns from visible table metadata.",
-      inputSchema: {
-        ...profileInput,
-        table: z.string().min(1),
-        schema: z.string().optional(),
-        maxColumns: z.number().int().positive().max(50).optional()
-      }
-    },
-    async ({ profile, table, schema, maxColumns }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const metadataRows = await withQuerySlot(selected, () =>
-        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
-      );
-      const visibleColumns = filterColumnMetadata(metadataRows, selected.config.policy);
-      const candidates = detectDimensionColumnCandidates(
-        visibleColumns,
-        selected.config,
-        effectiveSchema,
-        table,
-        maxColumns ?? 20
-      );
-      return toLimitedResult(
-        {
-          mode: selected.config.compatibility,
-          schema: effectiveSchema,
-          table,
-          candidates,
-          warnings: candidates.length === 0
-            ? ["No likely dimension columns were detected from visible metadata."]
-            : ["Dimension-column detection is metadata-based; verify semantics before using the column for grouping or filtering."]
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
     "ob_find_recent_rows",
     {
       title: "Find Recent Rows",
