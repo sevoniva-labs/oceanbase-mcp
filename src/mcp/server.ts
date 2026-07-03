@@ -1,5 +1,4 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
 
 import {
   SERVER_VERSION
@@ -20,7 +19,7 @@ import {
   type TableRef,
   type TableRelationship
 } from "../db.js";
-import { buildErDiagram, renderErHtml, type ErDiagram, type ErEntity } from "../er.js";
+import { buildErDiagram, type ErDiagram, type ErEntity } from "../er.js";
 import type { ErGraph, ErGraphDiagnostic, ErGraphStatus } from "../er-graph.js";
 import {
   assertOutputAllowed,
@@ -59,24 +58,19 @@ import {
 } from "./query-builder.js";
 import { registerMcpResources } from "./resources.js";
 import {
-  erHtmlFormatSchema,
-  erRelationshipModeSchema,
-  profileInput,
   queryScenarioSchema
 } from "./schemas.js";
 import { toGatewayLimitedResult, toLimitedResult, toResult } from "./tool-runtime.js";
 import {
   buildErExportCommand,
-  defaultErHtmlTitle,
   erDiagnosticsFromWarnings,
-  formatErColumnLimitWarnings,
-  SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT,
-  shouldSkipSchemaInlineErHtmlRender
+  formatErColumnLimitWarnings
 } from "./tools/er-response.js";
 import { registerErDiagramTools } from "./tools/er-diagram-tool.js";
 import { registerErDocumentTools } from "./tools/er-document.js";
 import { registerErEntityDiagramTools } from "./tools/er-entity-diagram.js";
 import { registerErExportPlanTools } from "./tools/er-export-plan-tool.js";
+import { registerErHtmlTools } from "./tools/er-html-tool.js";
 import { registerErExplainRelationshipTools } from "./tools/er-explain-relationship.js";
 import {
   dedupeRelationships,
@@ -216,154 +210,7 @@ export function createObMcpServer(
   registerErDocumentTools(registerTool, runtime, context, buildErDiagramResult);
   registerErEntityDiagramTools(registerTool, runtime, context, buildErDiagramResult);
   registerErExportPlanTools(registerTool, runtime, context, buildErExportPlanResult);
-
-  registerTool(
-    "ob_generate_er_html",
-    {
-      title: "Generate ER HTML",
-      description: "Generate a self-contained HTML ER diagram from allowed OceanBase metadata and relationship evidence.",
-      inputSchema: {
-        ...profileInput,
-        schema: z.string().optional(),
-        table: z.string().optional(),
-        tables: z.array(z.string().min(1)).max(50).optional(),
-        businessTerm: z.string().min(1).optional(),
-        depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(500).optional(),
-        maxRelationships: z.number().int().positive().max(1000).optional(),
-        minConfidence: z.number().min(0).max(1).optional(),
-        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
-        includeInferred: z.boolean().optional().default(false),
-        format: erHtmlFormatSchema.optional().default("html-static"),
-        title: z.string().min(1).max(120).optional()
-      }
-    },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, format = "html-static", title }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const broadSchemaScope = !table && (!tables || tables.length === 0) && !businessTerm;
-      const configuredMaxTables = Math.max(1, selected.config.erMaxTables);
-      const requestedTableLimit = Math.min(maxTables ?? configuredMaxTables, configuredMaxTables, 500);
-      if (broadSchemaScope && requestedTableLimit > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT) {
-        const plan = await buildErExportPlanResult(selected, {
-          schema,
-          table,
-          tables,
-          businessTerm,
-          depth,
-          maxTables,
-          maxRelationships,
-          minConfidence,
-          relationshipMode,
-          includeInferred,
-          format
-        });
-        if (plan.tableCount > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT) {
-          return toLimitedResult(
-            {
-              mode: plan.mode,
-              schema: plan.schema,
-              rootTable: plan.rootTable,
-              businessTerm: plan.businessTerm,
-              tableCount: plan.tableCount,
-              relationshipCount: plan.relationshipCount,
-              contentType: "text/html",
-              format,
-              inline: false,
-              htmlOmitted: true,
-              renderSkipped: true,
-              inlineLimitBytes: selected.config.erInlineHtmlMaxBytes,
-              exportCommand: plan.singleFileCommand,
-              suggestedStrategy: plan.suggestedStrategy,
-              chunkCount: plan.chunkCount,
-              recommendedNextTools: plan.recommendedNextTools,
-              stats: plan.stats,
-              warnings: uniqueStrings([
-                ...plan.warnings,
-                `Schema-level ER HTML rendering was skipped because tableCount=${plan.tableCount} exceeds ${SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT}. Use ob_plan_er_export and CLI cluster export for large diagrams.`
-              ])
-            },
-            selected.config
-          );
-        }
-      }
-      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
-      if (shouldSkipSchemaInlineErHtmlRender(result.response, { table, tables, businessTerm })) {
-        return toLimitedResult(
-          {
-            mode: result.response.mode,
-            schema: result.response.schema,
-            rootTable: result.response.rootTable,
-            businessTerm: result.response.businessTerm,
-            tableCount: result.response.tableCount,
-            relationshipCount: result.response.relationshipCount,
-            contentType: "text/html",
-            format,
-            inline: false,
-            htmlOmitted: true,
-            renderSkipped: true,
-            inlineLimitBytes: selected.config.erInlineHtmlMaxBytes,
-            exportCommand: buildErExportCommand(result.response, format),
-            stats: result.response.stats,
-            warnings: uniqueStrings([
-              ...result.response.warnings,
-              `Schema-level ER HTML rendering was skipped because tableCount=${result.response.tableCount} exceeds ${SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT}. Use ob_plan_er_export and CLI cluster export for large diagrams.`
-            ])
-          },
-          selected.config
-        );
-      }
-      const html = renderErHtml(result.diagram, {
-        title: title ?? defaultErHtmlTitle(result.response),
-        warnings: result.response.warnings,
-        format,
-        maxColumnsPerEntity: selected.config.erMaxColumnsPerTable
-      });
-      const htmlBytes = Buffer.byteLength(html, "utf8");
-      if (htmlBytes > selected.config.erInlineHtmlMaxBytes) {
-        return toLimitedResult(
-          {
-            mode: result.response.mode,
-            schema: result.response.schema,
-            rootTable: result.response.rootTable,
-            businessTerm: result.response.businessTerm,
-            tableCount: result.response.tableCount,
-            relationshipCount: result.response.relationshipCount,
-            contentType: "text/html",
-            format,
-            inline: false,
-            htmlOmitted: true,
-            htmlBytes,
-            inlineLimitBytes: selected.config.erInlineHtmlMaxBytes,
-            exportCommand: buildErExportCommand(result.response, format),
-            stats: result.response.stats,
-            warnings: uniqueStrings([
-              ...result.response.warnings,
-              `ER HTML is ${htmlBytes} bytes and exceeds OB_ER_INLINE_HTML_MAX_BYTES=${selected.config.erInlineHtmlMaxBytes}; use CLI export for the full artifact.`
-            ])
-          },
-          selected.config
-        );
-      }
-      return toLimitedResult(
-        {
-          mode: result.response.mode,
-          schema: result.response.schema,
-          rootTable: result.response.rootTable,
-          businessTerm: result.response.businessTerm,
-          tableCount: result.response.tableCount,
-          relationshipCount: result.response.relationshipCount,
-          contentType: "text/html",
-          format,
-          inline: true,
-          html,
-          mermaid: result.response.mermaid,
-          stats: result.response.stats,
-          warnings: result.response.warnings
-        },
-        selected.config
-      );
-    }
-  );
+  registerErHtmlTools(registerTool, runtime, context, buildErDiagramResult, buildErExportPlanResult);
 
   return server;
 }
