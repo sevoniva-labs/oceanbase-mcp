@@ -29,7 +29,7 @@ let processLogHandlersInstalled = false;
 
 export function serializeError(error: unknown, options: SerializeErrorOptions = { includeSqlMessage: true }): SerializedError {
   if (!(error instanceof Error)) {
-    return { message: String(error) };
+    return { message: redactString(String(error)) };
   }
 
   const record = error as Error & {
@@ -40,13 +40,17 @@ export function serializeError(error: unknown, options: SerializeErrorOptions = 
   };
 
   return {
-    message: error.message,
+    message: redactString(error.message),
     name: error.name,
-    code: record.code,
-    errno: record.errno,
-    sqlState: record.sqlState,
-    sqlMessage: options.includeSqlMessage === false ? undefined : record.sqlMessage
+    code: sanitizeErrorValue(record.code),
+    errno: sanitizeErrorValue(record.errno),
+    sqlState: sanitizeErrorValue(record.sqlState),
+    sqlMessage: options.includeSqlMessage === false ? undefined : sanitizeErrorValue(record.sqlMessage)
   };
+}
+
+function sanitizeErrorValue(value: unknown): unknown {
+  return typeof value === "string" ? redactString(value) : value;
 }
 
 export function logError(

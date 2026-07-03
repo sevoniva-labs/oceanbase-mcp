@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 import { loadConfig } from "../dist/config.js";
-import { logAudit, logError, logSlowOperation } from "../dist/errors.js";
+import { logAudit, logError, logSlowOperation, serializeError } from "../dist/errors.js";
 import { createObMcpServer } from "../dist/mcp.js";
 import { resultDiagnostics } from "../dist/mcp/tool-logging.js";
 
@@ -49,6 +49,19 @@ test("json logs can be written to a file with sensitive values redacted", () => 
     restoreEnv("OB_MCP_SLOW_CALL_MS", previousSlow);
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("serialized errors redact sensitive message fields", () => {
+  const error = new Error("connection failed password=secret token=secret");
+  error.code = "token=secret";
+  error.sqlMessage = "password=secret";
+
+  const serialized = serializeError(error);
+
+  assert.match(serialized.message, /password=\[redacted\]/);
+  assert.match(serialized.message, /token=\[redacted\]/);
+  assert.equal(serialized.code, "token=[redacted]");
+  assert.equal(serialized.sqlMessage, "password=[redacted]");
 });
 
 test("process crash handler writes a redacted JSONL entry before exit", () => {
