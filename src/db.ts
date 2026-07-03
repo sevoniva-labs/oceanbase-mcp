@@ -1,6 +1,7 @@
 import mysql, { type FieldPacket, type QueryResult } from "mysql2/promise";
 
 import type { CompatibilityMode, ObConfig } from "./config.js";
+import { oracleTimeoutHint, timeoutMicros } from "./db/dialect/oracle.js";
 import { normalizeSqlForDriver } from "./db/sql-driver.js";
 import type {
   ColumnProfile,
@@ -3543,15 +3544,6 @@ async function currentOracleSchema(pool: ObPool, timeoutMs: number): Promise<str
   const value = first?.schema_name ?? first?.SCHEMA_NAME;
   return typeof value === "string" && value.trim() ? value.trim().toUpperCase() : undefined;
 }
-
-function timeoutMicros(timeoutMs: number): number {
-  return Math.max(1_000, Math.trunc(timeoutMs * 1000));
-}
-
-function oracleTimeoutHint(timeoutMs: number): string {
-  return `/*+ query_timeout(${timeoutMicros(timeoutMs)}) */`;
-}
-
 
 async function isCurrentOracleSchema(pool: ObPool, schema: string | undefined, timeoutMs: number): Promise<boolean> {
   const current = await currentOracleSchema(pool, timeoutMs);

@@ -1,4 +1,5 @@
 import type { CompatibilityMode } from "../config.js";
+import { oracleTimeoutHint } from "./dialect/oracle.js";
 import type { ObPool, PermissionVerification } from "./types.js";
 
 export async function verifyReadOnlyPermissions(
@@ -178,12 +179,4 @@ function isOracleWritableRole(role: string): boolean {
 
 function normalizePrivilege(value: string): string {
   return value.toUpperCase().replace(/\s*\(.*/, "").replace(/\s+/g, " ").trim();
-}
-
-function timeoutMicros(timeoutMs: number): number {
-  return Math.max(1_000, Math.trunc(timeoutMs * 1000));
-}
-
-function oracleTimeoutHint(timeoutMs: number): string {
-  return `/*+ query_timeout(${timeoutMicros(timeoutMs)}) */`;
 }
