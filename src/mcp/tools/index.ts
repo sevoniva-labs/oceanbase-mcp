@@ -20,17 +20,7 @@ import { registerProfileColumnTools } from "./profile-columns.js";
 import { registerProfileTableTools } from "./profile-table.js";
 import { registerValueDistributionTools } from "./profile-value-distribution.js";
 import { registerQueryTools } from "./query-tools.js";
-import { registerSqlConversionTools } from "./sql-conversion.js";
-import { registerSqlErrorTools } from "./sql-errors.js";
-import { registerSqlLintTools } from "./sql-lint.js";
-import { registerSqlMapperContextTools } from "./sql-mapper-context.js";
-import { registerSqlPrepareTools } from "./sql-prepare.js";
-import { registerSqlProjectQueryTools } from "./sql-project-query.js";
-import { registerSqlQueryDocTools } from "./sql-query-doc.js";
-import { registerSqlRewriteTools } from "./sql-rewrite.js";
-import { registerSqlUsageTools } from "./sql-usages.js";
-import { registerSqlValidationTools } from "./sql-validation.js";
-import { registerSqlUnknownColumnTools } from "./sql-unknown-columns.js";
+import { registerSqlTools } from "./sql-tools.js";
 import { registerSystemTools } from "./system.js";
 
 export function registerMcpTools(
@@ -46,18 +36,7 @@ export function registerMcpTools(
 
   registerMetadataChangeTools(registerTool, runtime, context);
   registerMetadataCompareTools(registerTool, runtime, context);
-
-  registerSqlConversionTools(registerTool, runtime, context);
-  registerSqlErrorTools(registerTool, runtime, context);
-  registerSqlLintTools(registerTool, runtime, context);
-  registerSqlRewriteTools(registerTool, runtime, context);
-  registerSqlUsageTools(registerTool, runtime, context);
-  registerSqlValidationTools(registerTool, runtime, context);
-  registerSqlProjectQueryTools(registerTool, runtime, context);
-  registerSqlQueryDocTools(registerTool, runtime, context);
-  registerSqlMapperContextTools(registerTool, runtime, context);
-  registerSqlUnknownColumnTools(registerTool, runtime, context);
-  registerSqlPrepareTools(registerTool, runtime, context);
+  registerSqlTools(registerTool, runtime, context);
 
   registerProfileTableTools(registerTool, runtime, context);
   registerProfileColumnTools(registerTool, runtime, context);
