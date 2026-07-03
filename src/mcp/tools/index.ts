@@ -3,8 +3,6 @@ import type { QuerySessionState } from "../../query/sessions.js";
 import type { GatewayRuntime } from "../../runtime.js";
 import type { McpRequestContext } from "../context.js";
 import type { ToolRegistrar } from "../tool-registry.js";
-import { registerCatalogTools } from "./catalog.js";
-import { registerColumnDetectionTools } from "./column-detection.js";
 import { registerDataQualityTools } from "./data-quality.js";
 import { registerDocumentationTools } from "./documentation.js";
 import { buildErDiagramResult } from "./er-diagram-builder.js";
@@ -17,13 +15,11 @@ import { registerErExplainRelationshipTools } from "./er-explain-relationship.js
 import { registerErHtmlTools } from "./er-html-tool.js";
 import { registerMetadataChangeTools } from "./metadata-change.js";
 import { registerMetadataCompareTools } from "./metadata-compare.js";
-import { registerObjectMetadataTools } from "./object-metadata.js";
+import { registerMetadataTools } from "./metadata-tools.js";
 import { registerProfileColumnTools } from "./profile-columns.js";
 import { registerProfileTableTools } from "./profile-table.js";
 import { registerValueDistributionTools } from "./profile-value-distribution.js";
 import { registerQueryTools } from "./query-tools.js";
-import { registerSchemaMapTools } from "./schema-map.js";
-import { registerSearchCatalogTools } from "./search-catalog.js";
 import { registerSqlConversionTools } from "./sql-conversion.js";
 import { registerSqlErrorTools } from "./sql-errors.js";
 import { registerSqlLintTools } from "./sql-lint.js";
@@ -36,8 +32,6 @@ import { registerSqlUsageTools } from "./sql-usages.js";
 import { registerSqlValidationTools } from "./sql-validation.js";
 import { registerSqlUnknownColumnTools } from "./sql-unknown-columns.js";
 import { registerSystemTools } from "./system.js";
-import { registerTableContextTools } from "./table-context.js";
-import { registerTableMetadataTools } from "./table-metadata.js";
 
 export function registerMcpTools(
   registerTool: ToolRegistrar,
@@ -48,14 +42,7 @@ export function registerMcpTools(
 ): void {
   registerSystemTools(registerTool, runtime, context, httpConfig);
   registerQueryTools(registerTool, runtime, context, querySessions);
-
-  registerCatalogTools(registerTool, runtime, context);
-  registerSchemaMapTools(registerTool, runtime, context);
-  registerSearchCatalogTools(registerTool, runtime, context);
-  registerTableMetadataTools(registerTool, runtime, context);
-  registerTableContextTools(registerTool, runtime, context);
-  registerObjectMetadataTools(registerTool, runtime, context);
-  registerColumnDetectionTools(registerTool, runtime, context);
+  registerMetadataTools(registerTool, runtime, context);
 
   registerMetadataChangeTools(registerTool, runtime, context);
   registerMetadataCompareTools(registerTool, runtime, context);
