@@ -118,11 +118,6 @@ import { registerDataQualityTools } from "./tools/data-quality.js";
 import { registerProfileColumnTools } from "./tools/profile-columns.js";
 import { registerProfileTableTools } from "./tools/profile-table.js";
 import { registerValueDistributionTools } from "./tools/profile-value-distribution.js";
-import {
-  columnTypeLabel,
-  normalizeTableName,
-  stringRecordValue
-} from "./tools/profile-utils.js";
 import { registerSqlConversionTools } from "./tools/sql-conversion.js";
 import { registerSqlErrorTools } from "./tools/sql-errors.js";
 import { registerSqlLintTools } from "./tools/sql-lint.js";
@@ -845,57 +840,4 @@ async function buildErExportPlanResult(
       ...(includeInferred ? ["Use relationshipMode=inferred only for small explicit scopes."] : [])
     ])
   };
-}
-
-function uniqueTableRefs(refs: Array<{ schema?: string; table: string }>): Array<{ schema?: string; table: string }> {
-  const output: Array<{ schema?: string; table: string }> = [];
-  const seen = new Set<string>();
-  for (const ref of refs) {
-    const key = `${ref.schema ?? ""}.${ref.table}`.toLowerCase();
-    if (seen.has(key)) {
-      continue;
-    }
-    seen.add(key);
-    output.push(ref);
-  }
-  return output;
-}
-
-function columnNames(rows: unknown[]): string[] {
-  const names: string[] = [];
-  for (const row of rows) {
-    const record = row as Record<string, unknown>;
-    const value = record.column_name ?? record.COLUMN_NAME;
-    if (typeof value === "string" && value.trim()) {
-      names.push(value.trim());
-    }
-  }
-  return [...new Set(names)];
-}
-
-function safeSampleColumnNames(rows: unknown[]): string[] {
-  const names: string[] = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object" || Array.isArray(row)) {
-      continue;
-    }
-    const record = row as Record<string, unknown>;
-    const name = stringRecordValue(record, "column_name", "COLUMN_NAME");
-    if (!name) {
-      continue;
-    }
-    const type = [
-      stringRecordValue(record, "column_type", "COLUMN_TYPE"),
-      stringRecordValue(record, "data_type", "DATA_TYPE")
-    ].filter(Boolean).join(" ");
-    if (isLargeSampleColumnType(type)) {
-      continue;
-    }
-    names.push(name);
-  }
-  return [...new Set(names)];
-}
-
-function isLargeSampleColumnType(type: string): boolean {
-  return /\b(blob|clob|json|xml|raw|long|binary|varbinary|geometry|geography|image|lob)\b|text\b/i.test(type);
 }
