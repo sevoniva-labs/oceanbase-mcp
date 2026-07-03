@@ -155,6 +155,7 @@ import { registerMetadataChangeTools } from "./tools/metadata-change.js";
 import { registerMetadataCompareTools } from "./tools/metadata-compare.js";
 import { registerObjectMetadataTools } from "./tools/object-metadata.js";
 import { registerQueryBuildTools } from "./tools/query-build.js";
+import { registerQueryExecutionTools } from "./tools/query-execution.js";
 import { registerQueryPlanTools } from "./tools/query-plan.js";
 import { registerQueryTemplateTools } from "./tools/query-templates.js";
 import { registerSearchCatalogTools } from "./tools/search-catalog.js";
@@ -220,77 +221,7 @@ export function createObMcpServer(
   const registerTool = createToolRegistrar(server, runtime, context);
   registerMcpResources(server, runtime, context);
   registerSystemTools(registerTool, runtime, context, httpConfig);
-
-  registerTool(
-    "ob_query_preview",
-    {
-      title: "Preview Read-only Query",
-      description: "Preview policy, sensitive-column, and EXPLAIN risk for a read-only SQL statement without executing the target query.",
-      inputSchema: {
-        ...profileInput,
-        sql: z.string().min(1),
-        params: z.array(sqlParamSchema).optional().default([]),
-        maxRows: z.number().int().positive().max(10_000).optional()
-      }
-    },
-    async ({ profile, sql, params = [], maxRows }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const sqlParams = params as SqlParam[];
-      const checks = [
-        runExplainCheck("input_limits", () => assertSqlInputLimits(sql, sqlParams, selected.config)),
-        runExplainCheck("read_only_sql", () => assertReadOnlySql(sql))
-      ];
-      const policy = explainSqlPolicy(sql, policyContext(selected.config));
-      const allowed = checks.every((check) => check.ok) && policy.allowed;
-      const shape = queryShape(sql, selected.config.compatibility);
-      const sensitiveColumnRisk = sensitiveSqlTerms(sql, selected.config);
-      const warnings = queryPreviewWarnings(shape, sensitiveColumnRisk);
-
-      let plan: QueryOutput | undefined;
-      let analysis: ReturnType<typeof analyzeQueryPlan> | undefined;
-      if (allowed) {
-        const explainSql = buildExplainSql(sql);
-        const started = Date.now();
-        plan = await withQuerySlot(selected, () =>
-          runReadOnlyQuery(
-            selected.pool,
-            selected.config.compatibility,
-            explainSql,
-            sqlParams,
-            effectiveRowLimit(maxRows, selected.config),
-            selected.config.queryTimeoutMs,
-            selected.config.enforceReadOnlyTransaction,
-            selected.config.maxResultBytes
-          )
-        );
-        metrics.recordQueryDuration(Date.now() - started);
-        analysis = analyzeQueryPlan(plan, sql);
-        if (analysis.riskLevel !== "low") {
-          warnings.push(`EXPLAIN risk level is ${analysis.riskLevel}. Review findings before running the query.`);
-        }
-      } else {
-        warnings.push("EXPLAIN was skipped because SQL is not allowed by the current policy checks.");
-      }
-
-      return toLimitedResult(
-        {
-          sql,
-          paramCount: sqlParams.length,
-          allowed,
-          executed: false,
-          explainRun: Boolean(plan),
-          checks: [...checks, ...policy.checks],
-          policy,
-          shape,
-          sensitiveColumnRisk,
-          analysis,
-          plan,
-          warnings
-        },
-        selected.config
-      );
-    }
-  );
+  registerQueryExecutionTools(registerTool, runtime, context);
 
   registerTool(
     "ob_query",
