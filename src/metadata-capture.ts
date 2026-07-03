@@ -85,7 +85,7 @@ export async function captureMetadataSnapshot(
     const table = tableInfo.table;
     assertTableAccess(schema, table, policyContext(selected.config));
     const tableWarnings: string[] = [];
-    const metadata = await cachedTableDdlMetadata(selected, schema, table);
+    const metadata = await cachedTableDdlMetadata(selected, schema, table, columnLimit);
     const visibleColumns = filterColumnMetadata(metadata.columns, selected.config.policy);
     const visibleIndexes = filterColumnMetadata(metadata.indexes, selected.config.policy);
     const visibleConstraints = filterColumnMetadata(metadata.constraints, selected.config.policy);
@@ -110,7 +110,7 @@ export async function captureMetadataSnapshot(
       constraints: visibleConstraints,
       partitions: visiblePartitions,
       maskedColumns: columnNames(visibleColumns).filter((column) => shouldMaskSnapshotColumn(column, selected.config, schema, table)),
-      columnsTruncated: visibleColumns.length > columnLimit,
+      columnsTruncated: metadata.columnsTruncated || visibleColumns.length > columnLimit,
       warnings: uniqueStrings([
         ...metadata.warnings,
         ...tableWarnings
@@ -227,11 +227,12 @@ async function cachedSchemaMapTables(
 async function cachedTableDdlMetadata(
   selected: SnapshotRuntimeProfile,
   schema: string | undefined,
-  table: string
+  table: string,
+  maxColumns?: number
 ) {
-  return withMetadataCache(selected, "table_ddl_metadata", [selected.config.compatibility, schema ?? "", table], () =>
+  return withMetadataCache(selected, "table_ddl_metadata", [selected.config.compatibility, schema ?? "", table, maxColumns ?? ""], () =>
     withQuerySlot(selected, () =>
-      getTableDdlMetadata(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs)
+      getTableDdlMetadata(selected.pool, selected.config.compatibility, table, schema, selected.config.queryTimeoutMs, maxColumns)
     )
   );
 }

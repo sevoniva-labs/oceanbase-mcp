@@ -60,6 +60,38 @@ test("getTableDdlMetadata returns MySQL native DDL and structured metadata", asy
   assert.match(metadata.structuredDdl, /PRIMARY KEY/);
 });
 
+test("getTableDdlMetadata pushes MySQL column limits into catalog SQL", async () => {
+  const queries = [];
+  const pool = {
+    async query({ sql, values = [] }) {
+      queries.push({ sql, values });
+      if (sql.includes("SHOW CREATE TABLE")) {
+        return [[{ "Create Table": "CREATE TABLE `biz_test`.`orders` (`id` bigint NOT NULL)" }], []];
+      }
+      if (sql.includes("information_schema.statistics") || sql.includes("information_schema.table_constraints") || sql.includes("information_schema.partitions")) {
+        return [[], []];
+      }
+      if (sql.includes("information_schema.columns")) {
+        assert.match(sql, /LIMIT \?/i);
+        assert.deepEqual(values, ["orders", "biz_test", 3]);
+        return [[
+          { table_schema: "biz_test", table_name: "orders", column_name: "id", column_type: "bigint", ordinal_position: 1 },
+          { table_schema: "biz_test", table_name: "orders", column_name: "status", column_type: "varchar(32)", ordinal_position: 2 },
+          { table_schema: "biz_test", table_name: "orders", column_name: "note", column_type: "varchar(64)", ordinal_position: 3 }
+        ], []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+
+  const metadata = await getTableDdlMetadata(pool, "mysql", "orders", "biz_test", 1_000, 2);
+
+  assert.equal(metadata.columns.length, 2);
+  assert.equal(metadata.columnsTruncated, true);
+  assert(metadata.warnings.some((warning) => /limited to 2 column/.test(warning)));
+  assert(queries.some((query) => /LIMIT \?/i.test(query.sql)));
+});
+
 test("renderStructuredTableDdl renders Oracle-compatible table metadata", () => {
   const ddl = renderStructuredTableDdl(
     "oracle",

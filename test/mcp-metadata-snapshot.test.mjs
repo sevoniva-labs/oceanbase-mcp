@@ -9,7 +9,8 @@ test("ob_capture_metadata_snapshot captures bounded MySQL table metadata", async
     OB_ALLOWED_SCHEMAS: "biz_test",
     OB_MASKED_COLUMNS: "biz_test.orders.status"
   });
-  const server = createObMcpServer(runtime(config, mysqlPool()));
+  const queries = [];
+  const server = createObMcpServer(runtime(config, mysqlPool(queries)));
 
   const result = await server.executeToolHandler(server._registeredTools.ob_capture_metadata_snapshot, {
     schema: "biz_test",
@@ -33,6 +34,9 @@ test("ob_capture_metadata_snapshot captures bounded MySQL table metadata", async
   assert.equal(typeof snapshot.tables[0].fingerprint, "string");
   assert.equal(typeof snapshot.fingerprint, "string");
   assert(snapshot.warnings.some((warning) => warning.includes("metadata only")));
+  const columnQuery = queries.find((query) => /FROM information_schema\.columns/i.test(query.sql) && !/COUNT\(\*\)/i.test(query.sql));
+  assert.match(columnQuery.sql, /LIMIT \?/i);
+  assert.deepEqual(columnQuery.values, ["orders", "biz_test", 6]);
 });
 
 test("ob_capture_metadata_snapshot captures Oracle table and object metadata without source text", async () => {
@@ -40,7 +44,8 @@ test("ob_capture_metadata_snapshot captures Oracle table and object metadata wit
     OB_COMPATIBILITY: "oracle",
     OB_ALLOWED_SCHEMAS: "APP"
   });
-  const server = createObMcpServer(runtime(config, oraclePool()));
+  const queries = [];
+  const server = createObMcpServer(runtime(config, oraclePool(queries)));
 
   const result = await server.executeToolHandler(server._registeredTools.ob_capture_metadata_snapshot, {
     schema: "APP",
@@ -48,6 +53,7 @@ test("ob_capture_metadata_snapshot captures Oracle table and object metadata wit
     includeRelationships: false,
     includeOracleObjects: true,
     maxTables: 5,
+    maxColumnsPerTable: 5,
     maxObjects: 5
   }, {});
   const snapshot = JSON.parse(result.content[0].text);
@@ -60,6 +66,9 @@ test("ob_capture_metadata_snapshot captures Oracle table and object metadata wit
   assert.equal(snapshot.oracleObjects[0].objectType, "VIEW");
   assert.equal(typeof snapshot.oracleObjects[0].sourceFingerprint, "string");
   assert(!JSON.stringify(snapshot.oracleObjects[0]).includes("secret_token"));
+  const columnQuery = queries.find((query) => /FROM user_tab_columns c/i.test(query.sql) && !/COUNT\(\*\)/i.test(query.sql));
+  assert.match(columnQuery.sql, /ROWNUM <= \?/i);
+  assert.deepEqual(columnQuery.values, ["APP", "ORDERS", 6]);
 });
 
 function runtime(config, pool) {
@@ -72,9 +81,10 @@ function runtime(config, pool) {
   };
 }
 
-function mysqlPool() {
+function mysqlPool(queries = []) {
   return {
     async query({ sql, values = [] }) {
+      queries.push({ sql, values });
       if (/SHOW CREATE TABLE/i.test(sql)) {
         return [[{ "Create Table": "CREATE TABLE `biz_test`.`orders` (`id` bigint primary key)" }], []];
       }
@@ -116,9 +126,10 @@ function mysqlPool() {
   };
 }
 
-function oraclePool() {
+function oraclePool(queries = []) {
   return {
     async query({ sql, values = [] }) {
+      queries.push({ sql, values });
       if (/USER AS schema_name FROM DUAL/i.test(sql)) {
         return [[{ SCHEMA_NAME: "APP" }], []];
       }

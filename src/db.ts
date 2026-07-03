@@ -35,6 +35,7 @@ export interface TableDdlMetadata {
   nativeDdl?: string;
   structuredDdl: string;
   columns: unknown[];
+  columnsTruncated?: boolean;
   indexes: unknown[];
   constraints: unknown[];
   partitions: unknown[];
@@ -818,7 +819,8 @@ export async function getTableDdlMetadata(
   mode: CompatibilityMode,
   table: string,
   schema: string | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  maxColumns?: number
 ): Promise<TableDdlMetadata> {
   const resolvedSchema =
     mode === "oracle"
@@ -829,11 +831,22 @@ export async function getTableDdlMetadata(
   }
 
   const resolvedTable = mode === "oracle" ? table.trim().toUpperCase() : table.trim();
-  const columns = await describeTable(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
+  const columnLimit = maxColumns ? Math.max(1, Math.floor(maxColumns)) : undefined;
+  const rawColumns = await describeTable(pool, mode, resolvedTable, resolvedSchema, timeoutMs, columnLimit ? columnLimit + 1 : undefined);
+  const columnsTruncated = columnLimit != null && rawColumns.length > columnLimit;
+  const columns = columnLimit ? rawColumns.slice(0, columnLimit) : rawColumns;
   const indexes = await listIndexes(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
   const constraints = await listConstraints(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
   const partitions = await listPartitions(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
   const nativeDdl = mode === "mysql" && resolvedSchema ? await showMysqlCreateTable(pool, resolvedSchema, resolvedTable, timeoutMs) : undefined;
+  const warnings = [
+    ...(nativeDdl
+      ? []
+      : ["Native DDL is not available for this compatibility mode or endpoint; structured metadata was used."]),
+    ...(columnsTruncated
+      ? [`Column metadata was limited to ${columnLimit} column(s). Pass a narrower scope or a higher maxColumns value when appropriate.`]
+      : [])
+  ];
 
   return {
     mode,
@@ -842,12 +855,11 @@ export async function getTableDdlMetadata(
     nativeDdl,
     structuredDdl: renderStructuredTableDdl(mode, resolvedSchema, resolvedTable, columns, indexes, constraints, partitions),
     columns,
+    columnsTruncated,
     indexes,
     constraints,
     partitions,
-    warnings: nativeDdl
-      ? []
-      : ["Native DDL is not available for this compatibility mode or endpoint; structured metadata was used."]
+    warnings
   };
 }
 

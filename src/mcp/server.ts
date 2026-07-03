@@ -1573,17 +1573,25 @@ export function createObMcpServer(
       inputSchema: {
         ...profileInput,
         table: z.string().min(1),
-        schema: z.string().optional()
+        schema: z.string().optional(),
+        maxColumns: z.number().int().positive().max(10_000).optional()
       }
     },
-    async ({ profile, table, schema }) => {
+    async ({ profile, table, schema, maxColumns }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const columnLimit = Math.min(maxColumns ?? DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT, 10_000);
       const rows = await withQuerySlot(selected, () =>
-        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs, columnLimit + 1)
       );
-      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
+      return toLimitedResult(
+        describeTablePayload(filterColumnMetadata(rows, selected.config.policy), selected.config, maxColumns, {
+          columnLimit,
+          columnCountLowerBound: rows.length > columnLimit
+        }),
+        selected.config
+      );
     }
   );
 
@@ -1595,15 +1603,17 @@ export function createObMcpServer(
       inputSchema: {
         ...profileInput,
         table: z.string().min(1),
-        schema: z.string().optional()
+        schema: z.string().optional(),
+        maxColumns: z.number().int().positive().max(10_000).optional()
       }
     },
-    async ({ profile, table, schema }) => {
+    async ({ profile, table, schema, maxColumns }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const columnLimit = Math.min(maxColumns ?? DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT, 10_000);
       const metadata = await withQuerySlot(selected, () =>
-        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs, columnLimit)
       );
       const columns = filterColumnMetadata(metadata.columns, selected.config.policy);
       const indexes = filterColumnMetadata(metadata.indexes, selected.config.policy);
@@ -1626,6 +1636,8 @@ export function createObMcpServer(
           table: metadata.table,
           source: metadata.nativeDdl && !policyFiltered ? "native" : "structured",
           policyFiltered,
+          columnsTruncated: metadata.columnsTruncated,
+          columnLimit,
           ddl,
           columns,
           indexes,
@@ -1673,7 +1685,7 @@ export function createObMcpServer(
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
 
       const metadata = await withQuerySlot(selected, () =>
-        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs, DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT)
       );
       const columns = filterColumnMetadata(metadata.columns, selected.config.policy);
       const indexes = filterColumnMetadata(metadata.indexes, selected.config.policy);
@@ -1691,6 +1703,9 @@ export function createObMcpServer(
       const warnings = [...metadata.warnings];
       if (policyFiltered) {
         warnings.push("Some metadata rows were hidden by policy.");
+      }
+      if (metadata.columnsTruncated) {
+        warnings.push(`Column metadata was limited to ${DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT} column(s) for table context.`);
       }
 
       const statistics = await withQuerySlot(selected, () =>
