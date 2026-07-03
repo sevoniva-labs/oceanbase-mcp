@@ -103,7 +103,6 @@ import {
   columnSearchRows,
   dedupeColumnSearchResults,
   dedupeSearchResults,
-  glossaryColumnRows,
   glossarySearchResults,
   relatedTableEvidence,
   tableCandidatesFromSearchResults,
@@ -760,71 +759,6 @@ export function createObMcpServer(
           glossaryConfigured: glossary.configured,
           policyFiltered: glossary.policyFiltered,
           candidates,
-          warnings: glossary.warnings
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
-    "ob_find_columns",
-    {
-      title: "Find Columns",
-      description: "Find visible columns across tables by name, comment, data type, table pattern, or business term.",
-      inputSchema: {
-        ...profileInput,
-        query: z.string().optional(),
-        schema: z.string().optional(),
-        tablePattern: z.string().optional(),
-        dataType: z.string().optional(),
-        limit: z.number().int().positive().max(500).optional(),
-        includeGlossary: z.boolean().optional().default(true)
-      }
-    },
-    async ({ profile, query, schema, tablePattern, dataType, limit, includeGlossary = true }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      if (effectiveSchema && !isSchemaAllowed(effectiveSchema, selected.config.policy)) {
-        throw new Error(`Schema "${effectiveSchema}" is not allowed by the configured OceanBase MCP access policy.`);
-      }
-      const maxResults = Math.min(limit ?? 50, 500);
-      const rows = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          findColumns(
-            selected.pool,
-            selected.config.compatibility,
-            { query, schema: effectiveSchema, tablePattern, dataType },
-            maxResults,
-            selected.config.queryTimeoutMs
-          )
-        ),
-        selected.config.policy
-      );
-      const columns = rows.flatMap((row) =>
-        columnSearchRows(row, query, dataType, selected.config)
-      );
-      const glossary = includeGlossary && query
-        ? searchBusinessGlossary(selected.config, query, maxResults, effectiveSchema)
-        : { configured: Boolean(selected.config.businessGlossary), matches: [], policyFiltered: false, warnings: [] };
-      const glossaryColumns = glossary.matches.flatMap((match) =>
-        glossaryColumnRows(match, query ?? "", selected.config)
-      );
-      const results = dedupeColumnSearchResults([...columns, ...glossaryColumns])
-        .sort((left, right) => right.confidence - left.confidence || left.column.localeCompare(right.column))
-        .slice(0, maxResults);
-
-      return toLimitedResult(
-        {
-          query: query ?? null,
-          schema: effectiveSchema ?? null,
-          tablePattern: tablePattern ?? null,
-          dataType: dataType ?? null,
-          count: results.length,
-          truncated: rows.length >= maxResults,
-          glossaryConfigured: glossary.configured,
-          policyFiltered: glossary.policyFiltered,
-          columns: results,
           warnings: glossary.warnings
         },
         selected.config
