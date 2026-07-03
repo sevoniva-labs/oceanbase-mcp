@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { getTableDdlMetadata, renderStructuredTableDdl } from "../dist/db.js";
+import { getTableDdlMetadata, listConstraints, listIndexes, listPartitions, renderStructuredTableDdl } from "../dist/db.js";
 
 test("getTableDdlMetadata returns MySQL native DDL and structured metadata", async () => {
   const pool = {
@@ -90,6 +90,100 @@ test("getTableDdlMetadata pushes MySQL column limits into catalog SQL", async ()
   assert.equal(metadata.columnsTruncated, true);
   assert(metadata.warnings.some((warning) => /limited to 2 column/.test(warning)));
   assert(queries.some((query) => /LIMIT \?/i.test(query.sql)));
+});
+
+test("getTableDdlMetadata bounds MySQL index constraint and partition metadata", async () => {
+  const queries = [];
+  const pool = {
+    async query({ sql, values = [] }) {
+      queries.push({ sql, values });
+      if (sql.includes("SHOW CREATE TABLE")) {
+        return [[{ "Create Table": "CREATE TABLE `biz_test`.`orders` (`id` bigint NOT NULL)" }], []];
+      }
+      if (sql.includes("information_schema.statistics")) {
+        assert.match(sql, /LIMIT \?/i);
+        assert.equal(values.at(-1), 3);
+        return [[
+          { table_schema: "biz_test", table_name: "orders", index_name: "idx_1", non_unique: 1, seq_in_index: 1, column_name: "c1" },
+          { table_schema: "biz_test", table_name: "orders", index_name: "idx_2", non_unique: 1, seq_in_index: 1, column_name: "c2" },
+          { table_schema: "biz_test", table_name: "orders", index_name: "idx_3", non_unique: 1, seq_in_index: 1, column_name: "c3" }
+        ], []];
+      }
+      if (sql.includes("information_schema.table_constraints")) {
+        assert.match(sql, /LIMIT \?/i);
+        assert.equal(values.at(-1), 3);
+        return [[
+          { table_schema: "biz_test", table_name: "orders", constraint_name: "ck_1", constraint_type: "CHECK", column_name: "c1" },
+          { table_schema: "biz_test", table_name: "orders", constraint_name: "ck_2", constraint_type: "CHECK", column_name: "c2" },
+          { table_schema: "biz_test", table_name: "orders", constraint_name: "ck_3", constraint_type: "CHECK", column_name: "c3" }
+        ], []];
+      }
+      if (sql.includes("information_schema.columns")) {
+        return [[
+          { table_schema: "biz_test", table_name: "orders", column_name: "id", column_type: "bigint", ordinal_position: 1 }
+        ], []];
+      }
+      if (sql.includes("information_schema.partitions")) {
+        assert.match(sql, /LIMIT \?/i);
+        assert.equal(values.at(-1), 3);
+        return [[
+          { table_schema: "biz_test", table_name: "orders", partition_name: "p1", partition_method: "RANGE" },
+          { table_schema: "biz_test", table_name: "orders", partition_name: "p2", partition_method: "RANGE" },
+          { table_schema: "biz_test", table_name: "orders", partition_name: "p3", partition_method: "RANGE" }
+        ], []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+
+  const metadata = await getTableDdlMetadata(pool, "mysql", "orders", "biz_test", 1_000, 10, 2);
+
+  assert.equal(metadata.indexes.length, 2);
+  assert.equal(metadata.indexesTruncated, true);
+  assert.equal(metadata.constraints.length, 2);
+  assert.equal(metadata.constraintsTruncated, true);
+  assert.equal(metadata.partitions.length, 2);
+  assert.equal(metadata.partitionsTruncated, true);
+  assert(metadata.warnings.some((warning) => /Index metadata was limited to 2 row/.test(warning)));
+  assert(metadata.warnings.some((warning) => /Constraint metadata was limited to 2 row/.test(warning)));
+  assert(metadata.warnings.some((warning) => /Partition metadata was limited to 2 row/.test(warning)));
+  assert.equal(queries.filter((query) => /LIMIT \?/i.test(query.sql)).length >= 4, true);
+});
+
+test("Oracle table metadata list functions push row limits into catalog SQL", async () => {
+  const checked = new Set();
+  const pool = {
+    async query({ sql, values = [] }) {
+      if (sql.includes("FROM DUAL")) {
+        return [[{ SCHEMA_NAME: "OTHER" }], []];
+      }
+      if (sql.includes("all_indexes")) {
+        checked.add("indexes");
+        assert.match(sql, /ROWNUM <= \?/i);
+        assert.equal(values.at(-1), 4);
+        return [[], []];
+      }
+      if (sql.includes("all_constraints")) {
+        checked.add("constraints");
+        assert.match(sql, /ROWNUM <= \?/i);
+        assert.equal(values.at(-1), 5);
+        return [[], []];
+      }
+      if (sql.includes("all_tab_partitions")) {
+        checked.add("partitions");
+        assert.match(sql, /ROWNUM <= \?/i);
+        assert.equal(values.at(-1), 6);
+        return [[], []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+
+  await listIndexes(pool, "oracle", "ORDERS", "APP", 1_000, 4);
+  await listConstraints(pool, "oracle", "ORDERS", "APP", 1_000, 5);
+  await listPartitions(pool, "oracle", "ORDERS", "APP", 1_000, 6);
+
+  assert.deepEqual([...checked].sort(), ["constraints", "indexes", "partitions"]);
 });
 
 test("renderStructuredTableDdl renders Oracle-compatible table metadata", () => {

@@ -37,8 +37,11 @@ export interface TableDdlMetadata {
   columns: unknown[];
   columnsTruncated?: boolean;
   indexes: unknown[];
+  indexesTruncated?: boolean;
   constraints: unknown[];
+  constraintsTruncated?: boolean;
   partitions: unknown[];
+  partitionsTruncated?: boolean;
   warnings: string[];
 }
 
@@ -244,6 +247,7 @@ const ORACLE_OBJECT_TYPES: OracleObjectType[] = [
 ];
 const ORACLE_SOURCE_MAX_LINES = 200;
 const ORACLE_SOURCE_MAX_CHARS = 20_000;
+const DEFAULT_TABLE_DDL_METADATA_ITEM_LIMIT = 1_000;
 
 export function createObPool(config: ObConfig): ObPool {
   return mysql.createPool({
@@ -820,7 +824,8 @@ export async function getTableDdlMetadata(
   table: string,
   schema: string | undefined,
   timeoutMs: number,
-  maxColumns?: number
+  maxColumns?: number,
+  maxMetadataItems = DEFAULT_TABLE_DDL_METADATA_ITEM_LIMIT
 ): Promise<TableDdlMetadata> {
   const resolvedSchema =
     mode === "oracle"
@@ -832,12 +837,19 @@ export async function getTableDdlMetadata(
 
   const resolvedTable = mode === "oracle" ? table.trim().toUpperCase() : table.trim();
   const columnLimit = maxColumns ? Math.max(1, Math.floor(maxColumns)) : undefined;
+  const metadataLimit = Math.max(1, Math.floor(maxMetadataItems));
   const rawColumns = await describeTable(pool, mode, resolvedTable, resolvedSchema, timeoutMs, columnLimit ? columnLimit + 1 : undefined);
   const columnsTruncated = columnLimit != null && rawColumns.length > columnLimit;
   const columns = columnLimit ? rawColumns.slice(0, columnLimit) : rawColumns;
-  const indexes = await listIndexes(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
-  const constraints = await listConstraints(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
-  const partitions = await listPartitions(pool, mode, resolvedTable, resolvedSchema, timeoutMs);
+  const rawIndexes = await listIndexes(pool, mode, resolvedTable, resolvedSchema, timeoutMs, metadataLimit + 1);
+  const rawConstraints = await listConstraints(pool, mode, resolvedTable, resolvedSchema, timeoutMs, metadataLimit + 1);
+  const rawPartitions = await listPartitions(pool, mode, resolvedTable, resolvedSchema, timeoutMs, metadataLimit + 1);
+  const indexesTruncated = rawIndexes.length > metadataLimit;
+  const constraintsTruncated = rawConstraints.length > metadataLimit;
+  const partitionsTruncated = rawPartitions.length > metadataLimit;
+  const indexes = rawIndexes.slice(0, metadataLimit);
+  const constraints = rawConstraints.slice(0, metadataLimit);
+  const partitions = rawPartitions.slice(0, metadataLimit);
   const nativeDdl = mode === "mysql" && resolvedSchema ? await showMysqlCreateTable(pool, resolvedSchema, resolvedTable, timeoutMs) : undefined;
   const warnings = [
     ...(nativeDdl
@@ -845,6 +857,15 @@ export async function getTableDdlMetadata(
       : ["Native DDL is not available for this compatibility mode or endpoint; structured metadata was used."]),
     ...(columnsTruncated
       ? [`Column metadata was limited to ${columnLimit} column(s). Pass a narrower scope or a higher maxColumns value when appropriate.`]
+      : []),
+    ...(indexesTruncated
+      ? [`Index metadata was limited to ${metadataLimit} row(s). Narrow the table scope or inspect indexes separately when needed.`]
+      : []),
+    ...(constraintsTruncated
+      ? [`Constraint metadata was limited to ${metadataLimit} row(s). Narrow the table scope or inspect constraints separately when needed.`]
+      : []),
+    ...(partitionsTruncated
+      ? [`Partition metadata was limited to ${metadataLimit} row(s). Narrow the table scope or inspect partitions separately when needed.`]
       : [])
   ];
 
@@ -857,8 +878,11 @@ export async function getTableDdlMetadata(
     columns,
     columnsTruncated,
     indexes,
+    indexesTruncated,
     constraints,
+    constraintsTruncated,
     partitions,
+    partitionsTruncated,
     warnings
   };
 }
@@ -1840,14 +1864,31 @@ export async function listIndexes(
   mode: CompatibilityMode,
   table: string,
   schema: string | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  maxRows?: number
 ): Promise<unknown[]> {
+  const rowLimit = maxRows == null ? undefined : safeLimit(maxRows);
   if (mode === "oracle") {
     const owner = schema?.trim().toUpperCase();
+    const tableName = table.trim().toUpperCase();
     if (await isCurrentOracleSchema(pool, owner, timeoutMs)) {
       const resolvedOwner = owner ?? (await currentOracleSchema(pool, timeoutMs)) ?? "";
       const [rows] = await pool.query({
-        sql: `
+        sql: rowLimit
+          ? `
+          SELECT *
+          FROM (
+            SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, i.table_name, i.index_name, i.uniqueness, c.column_name, c.column_position
+            FROM user_indexes i
+            JOIN user_ind_columns c
+              ON c.index_name = i.index_name
+             AND c.table_name = i.table_name
+            WHERE i.table_name = ?
+            ORDER BY i.index_name, c.column_position
+          )
+          WHERE ROWNUM <= ?
+        `
+          : `
           SELECT ${oracleTimeoutHint(timeoutMs)} ? AS owner, i.table_name, i.index_name, i.uniqueness, c.column_name, c.column_position
           FROM user_indexes i
           JOIN user_ind_columns c
@@ -1856,14 +1897,31 @@ export async function listIndexes(
           WHERE i.table_name = ?
           ORDER BY i.index_name, c.column_position
         `,
-        values: [resolvedOwner, table.trim().toUpperCase()],
+        values: rowLimit ? [resolvedOwner, tableName, rowLimit] : [resolvedOwner, tableName],
         timeout: timeoutMs
       });
       return rows as unknown[];
     }
 
     const [rows] = await pool.query({
-      sql: `
+      sql: rowLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} i.owner, i.table_name, i.index_name, i.uniqueness, c.column_name, c.column_position
+          FROM all_indexes i
+          JOIN all_ind_columns c
+            ON c.index_owner = i.owner
+           AND c.index_name = i.index_name
+           AND c.table_owner = i.owner
+           AND c.table_name = i.table_name
+          WHERE i.table_name = ?
+            AND (? IS NULL OR i.owner = ?)
+          ORDER BY i.owner, i.index_name, c.column_position
+        )
+        WHERE ROWNUM <= ?
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} i.owner, i.table_name, i.index_name, i.uniqueness, c.column_name, c.column_position
         FROM all_indexes i
         JOIN all_ind_columns c
@@ -1875,7 +1933,7 @@ export async function listIndexes(
           AND (? IS NULL OR i.owner = ?)
         ORDER BY i.owner, i.index_name, c.column_position
       `,
-      values: [table.trim().toUpperCase(), owner ?? null, owner ?? null],
+      values: rowLimit ? [tableName, owner ?? null, owner ?? null, rowLimit] : [tableName, owner ?? null, owner ?? null],
       timeout: timeoutMs
     });
     return rows as unknown[];
@@ -1892,8 +1950,9 @@ export async function listIndexes(
       WHERE table_schema = ?
         AND table_name = ?
       ORDER BY index_name, seq_in_index
+      ${rowLimit ? "LIMIT ?" : ""}
     `,
-    values: [resolvedSchema, table],
+    values: rowLimit ? [resolvedSchema, table, rowLimit] : [resolvedSchema, table],
     timeout: timeoutMs
   });
   return rows as unknown[];
@@ -1904,14 +1963,40 @@ export async function listConstraints(
   mode: CompatibilityMode,
   table: string,
   schema: string | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  maxRows?: number
 ): Promise<unknown[]> {
+  const rowLimit = maxRows == null ? undefined : safeLimit(maxRows);
   if (mode === "oracle") {
     const owner = schema?.trim().toUpperCase();
+    const tableName = table.trim().toUpperCase();
     if (await isCurrentOracleSchema(pool, owner, timeoutMs)) {
       const resolvedOwner = owner ?? (await currentOracleSchema(pool, timeoutMs)) ?? "";
       const [rows] = await pool.query({
-        sql: `
+        sql: rowLimit
+          ? `
+          SELECT *
+          FROM (
+            SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, constraint_name, constraint_type, column_name, position, search_condition
+            FROM (
+              SELECT ? AS owner, c.table_name, c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.search_condition
+              FROM user_constraints c
+              LEFT JOIN user_cons_columns cc
+                ON cc.constraint_name = c.constraint_name
+               AND cc.table_name = c.table_name
+              WHERE c.table_name = ?
+              UNION ALL
+              SELECT ? AS owner, table_name, 'NOT_NULL_' || column_name AS constraint_name, 'NOT_NULL' AS constraint_type,
+                     column_name, column_id AS position, NULL AS search_condition
+              FROM user_tab_columns
+              WHERE table_name = ?
+                AND nullable = 'N'
+            )
+            ORDER BY constraint_name, position
+          )
+          WHERE ROWNUM <= ?
+        `
+          : `
           SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, constraint_name, constraint_type, column_name, position, search_condition
           FROM (
             SELECT ? AS owner, c.table_name, c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.search_condition
@@ -1929,14 +2014,42 @@ export async function listConstraints(
           )
           ORDER BY constraint_name, position
         `,
-        values: [resolvedOwner, table.trim().toUpperCase(), resolvedOwner, table.trim().toUpperCase()],
+        values: rowLimit
+          ? [resolvedOwner, tableName, resolvedOwner, tableName, rowLimit]
+          : [resolvedOwner, tableName, resolvedOwner, tableName],
         timeout: timeoutMs
       });
       return rows as unknown[];
     }
 
     const [rows] = await pool.query({
-      sql: `
+      sql: rowLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, constraint_name, constraint_type, column_name, position, search_condition
+          FROM (
+            SELECT c.owner, c.table_name, c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.search_condition
+            FROM all_constraints c
+            LEFT JOIN all_cons_columns cc
+              ON cc.owner = c.owner
+             AND cc.constraint_name = c.constraint_name
+             AND cc.table_name = c.table_name
+            WHERE c.table_name = ?
+              AND (? IS NULL OR c.owner = ?)
+            UNION ALL
+            SELECT owner, table_name, 'NOT_NULL_' || column_name AS constraint_name, 'NOT_NULL' AS constraint_type,
+                   column_name, column_id AS position, NULL AS search_condition
+            FROM all_tab_columns
+            WHERE table_name = ?
+              AND nullable = 'N'
+              AND (? IS NULL OR owner = ?)
+          )
+          ORDER BY owner, constraint_name, position
+        )
+        WHERE ROWNUM <= ?
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} owner, table_name, constraint_name, constraint_type, column_name, position, search_condition
         FROM (
           SELECT c.owner, c.table_name, c.constraint_name, c.constraint_type, cc.column_name, cc.position, c.search_condition
@@ -1957,14 +2070,24 @@ export async function listConstraints(
         )
         ORDER BY owner, constraint_name, position
       `,
-      values: [
-        table.trim().toUpperCase(),
-        owner ?? null,
-        owner ?? null,
-        table.trim().toUpperCase(),
-        owner ?? null,
-        owner ?? null
-      ],
+      values: rowLimit
+        ? [
+            tableName,
+            owner ?? null,
+            owner ?? null,
+            tableName,
+            owner ?? null,
+            owner ?? null,
+            rowLimit
+          ]
+        : [
+            tableName,
+            owner ?? null,
+            owner ?? null,
+            tableName,
+            owner ?? null,
+            owner ?? null
+          ],
       timeout: timeoutMs
     });
     return rows as unknown[];
@@ -2001,8 +2124,9 @@ export async function listConstraints(
           AND is_nullable = 'NO'
       ) AS constraints_with_not_null
       ORDER BY constraint_name, ordinal_position
+      ${rowLimit ? "LIMIT ?" : ""}
     `,
-    values: [resolvedSchema, table, resolvedSchema, table],
+    values: rowLimit ? [resolvedSchema, table, resolvedSchema, table, rowLimit] : [resolvedSchema, table, resolvedSchema, table],
     timeout: timeoutMs
   });
   return rows as unknown[];
@@ -2013,34 +2137,60 @@ export async function listPartitions(
   mode: CompatibilityMode,
   table: string,
   schema: string | undefined,
-  timeoutMs: number
+  timeoutMs: number,
+  maxRows?: number
 ): Promise<unknown[]> {
+  const rowLimit = maxRows == null ? undefined : safeLimit(maxRows);
   if (mode === "oracle") {
     const owner = schema?.trim().toUpperCase();
+    const tableName = table.trim().toUpperCase();
     if (await isCurrentOracleSchema(pool, owner, timeoutMs)) {
       const resolvedOwner = owner ?? (await currentOracleSchema(pool, timeoutMs)) ?? "";
       const [rows] = await pool.query({
-        sql: `
+        sql: rowLimit
+          ? `
+          SELECT *
+          FROM (
+            SELECT ${oracleTimeoutHint(timeoutMs)} ? AS table_owner, table_name, partition_name, high_value, partition_position, tablespace_name, num_rows
+            FROM user_tab_partitions
+            WHERE table_name = ?
+            ORDER BY table_name, partition_position
+          )
+          WHERE ROWNUM <= ?
+        `
+          : `
           SELECT ${oracleTimeoutHint(timeoutMs)} ? AS table_owner, table_name, partition_name, high_value, partition_position, tablespace_name, num_rows
           FROM user_tab_partitions
           WHERE table_name = ?
           ORDER BY table_name, partition_position
         `,
-        values: [resolvedOwner, table.trim().toUpperCase()],
+        values: rowLimit ? [resolvedOwner, tableName, rowLimit] : [resolvedOwner, tableName],
         timeout: timeoutMs
       });
       return rows as unknown[];
     }
 
     const [rows] = await pool.query({
-      sql: `
+      sql: rowLimit
+        ? `
+        SELECT *
+        FROM (
+          SELECT ${oracleTimeoutHint(timeoutMs)} table_owner, table_name, partition_name, high_value, partition_position, tablespace_name, num_rows
+          FROM all_tab_partitions
+          WHERE table_name = ?
+            AND (? IS NULL OR table_owner = ?)
+          ORDER BY table_owner, table_name, partition_position
+        )
+        WHERE ROWNUM <= ?
+      `
+        : `
         SELECT ${oracleTimeoutHint(timeoutMs)} table_owner, table_name, partition_name, high_value, partition_position, tablespace_name, num_rows
         FROM all_tab_partitions
         WHERE table_name = ?
           AND (? IS NULL OR table_owner = ?)
         ORDER BY table_owner, table_name, partition_position
       `,
-      values: [table.trim().toUpperCase(), owner ?? null, owner ?? null],
+      values: rowLimit ? [tableName, owner ?? null, owner ?? null, rowLimit] : [tableName, owner ?? null, owner ?? null],
       timeout: timeoutMs
     });
     return rows as unknown[];
@@ -2059,8 +2209,9 @@ export async function listPartitions(
         AND table_name = ?
         AND partition_name IS NOT NULL
       ORDER BY partition_ordinal_position, subpartition_ordinal_position
+      ${rowLimit ? "LIMIT ?" : ""}
     `,
-    values: [resolvedSchema, table],
+    values: rowLimit ? [resolvedSchema, table, rowLimit] : [resolvedSchema, table],
     timeout: timeoutMs
   });
   return rows as unknown[];
