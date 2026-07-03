@@ -29,6 +29,11 @@ test("ob_generate_er_diagram loads large schema metadata in bounded batches", as
   assert.equal(payload.tableCount, 220);
   assert.equal(payload.stats.loadedTables, 220);
   assert.equal(payload.stats.queryCount, 4);
+  assert.equal(payload.stats.truncated, true);
+  assert.equal(payload.stats.truncatedTables, 220);
+  assert.equal(payload.stats.truncatedColumns, 220);
+  assert.equal(payload.warnings.filter((warning) => /Columns for /i.test(warning)).length, 0);
+  assert.equal(payload.warnings.filter((warning) => /Columns were limited to OB_ER_MAX_COLUMNS_PER_TABLE=4/i.test(warning)).length, 1);
   assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name, column_type/i.test(entry.sql)).length, 1);
   assert.equal(queryLog.filter((entry) => /information_schema\.statistics/i.test(entry.sql)).length, 1);
   assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 1);
@@ -58,6 +63,10 @@ test("ob_generate_er_diagram avoids duplicate metadata reads for foreign-key rel
 
   assert.equal(payload.tableCount, 80);
   assert.equal(payload.stats.queryCount, 5);
+  assert.equal(payload.stats.truncated, true);
+  assert.equal(payload.stats.truncatedTables, 80);
+  assert.equal(payload.warnings.filter((warning) => /Columns for /i.test(warning)).length, 0);
+  assert.equal(payload.warnings.filter((warning) => /Columns were limited to OB_ER_MAX_COLUMNS_PER_TABLE=4/i.test(warning)).length, 1);
   assert.equal(queryLog.filter((entry) => /SELECT table_schema, table_name, column_name, column_type/i.test(entry.sql)).length, 1);
   assert.equal(queryLog.filter((entry) => /FROM information_schema\.statistics/i.test(entry.sql)).length, 1);
   assert.equal(queryLog.filter((entry) => /constraints_with_not_null/i.test(entry.sql)).length, 1);
@@ -91,6 +100,8 @@ test("ob_generate_er_html skips schema-level inline rendering for large scopes",
   assert.equal(payload.inline, false);
   assert.equal(payload.htmlOmitted, true);
   assert.equal(payload.renderSkipped, true);
+  assert.equal(payload.warnings.filter((warning) => /Columns for /i.test(warning)).length, 0);
+  assert.equal(payload.warnings.filter((warning) => /Columns were limited to OB_ER_MAX_COLUMNS_PER_TABLE=4/i.test(warning)).length, 1);
   assert.equal("html" in payload, false);
   assert.match(payload.exportCommand, /ob-mcp export-er/);
   assert(payload.warnings.some((warning) => /Schema-level ER HTML rendering was skipped/.test(warning)));

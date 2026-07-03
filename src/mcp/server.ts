@@ -5905,6 +5905,8 @@ interface ErDiagramToolResponse {
       entries: number;
     };
     truncated: boolean;
+    truncatedTables: number;
+    truncatedColumns: number;
     skippedStages: string[];
     warnings: string[];
   };
@@ -6110,6 +6112,8 @@ async function buildErDiagramResult(
 
   const entities: ErEntity[] = [];
   let loadedColumns = 0;
+  let truncatedColumns = 0;
+  const truncatedColumnTables: string[] = [];
   const finalRefs = [...scope.values()].map((ref) => ({ schema: ref.schema, table: ref.table }));
   let columnsByTable = new Map<string, unknown[]>();
   let constraintsByTable = new Map<string, unknown[]>();
@@ -6143,7 +6147,8 @@ async function buildErDiagramResult(
     const visibleColumns = columns.slice(0, selected.config.erMaxColumnsPerTable);
     if (columns.length > visibleColumns.length) {
       truncated = true;
-      warnings.push(`Columns for ${ref.schema ? `${ref.schema}.` : ""}${ref.table} were limited to OB_ER_MAX_COLUMNS_PER_TABLE=${selected.config.erMaxColumnsPerTable}.`);
+      truncatedColumns += columns.length - visibleColumns.length;
+      truncatedColumnTables.push(ref.schema ? `${ref.schema}.${ref.table}` : ref.table);
     }
     entities.push(erEntityFromMetadata(selected.config.compatibility, ref.schema, ref.table, visibleColumns, constraints, indexes));
   }
@@ -6158,6 +6163,7 @@ async function buildErDiagramResult(
   );
   const responseWarnings = uniqueStrings([
     ...warnings,
+    ...formatErColumnLimitWarnings(truncatedColumnTables, selected.config.erMaxColumnsPerTable, truncatedColumns),
     ...(relationshipScopeLimited ? ["Some related tables were omitted because maxTables was reached."] : []),
     ...(relationshipMode === "foreign_key" ? ["Name-inferred relationships are disabled by default; pass relationshipMode=inferred for a bounded inferred diagram."] : []),
     ...(filteredRelationshipCount > 0
@@ -6205,8 +6211,10 @@ async function buildErDiagramResult(
         entries: selected.metadataCache.entries.size
       },
       truncated,
+      truncatedTables: truncatedColumnTables.length,
+      truncatedColumns,
       skippedStages,
-      warnings
+      warnings: responseWarnings
     },
     mermaid: diagram.mermaid,
     diagram: {
@@ -6235,6 +6243,17 @@ function shouldSkipSchemaInlineErHtmlRender(
 ): boolean {
   const explicitScope = Boolean(input.table || input.businessTerm || (input.tables && input.tables.length > 0));
   return !explicitScope && response.tableCount > SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT;
+}
+
+function formatErColumnLimitWarnings(tables: string[], columnLimit: number, omittedColumns: number): string[] {
+  if (tables.length === 0) {
+    return [];
+  }
+  const sample = tables.slice(0, 10).join(", ");
+  const remaining = tables.length > 10 ? `, and ${tables.length - 10} more` : "";
+  return [
+    `Columns were limited to OB_ER_MAX_COLUMNS_PER_TABLE=${columnLimit} for ${tables.length} table(s); ${omittedColumns} column(s) were omitted. Sample: ${sample}${remaining}.`
+  ];
 }
 
 function erDiagnosticsFromWarnings(
