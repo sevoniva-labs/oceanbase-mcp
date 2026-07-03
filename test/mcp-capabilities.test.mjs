@@ -21,6 +21,8 @@ test("ob_list_capabilities returns visible tools and read-only limits", async ()
   assert(result.tools.every((tool) => typeof tool.operationType === "string"));
   assert(result.tools.every((tool) => typeof tool.budget?.maxBytes === "string"));
   assert(result.tools.every((tool) => typeof tool.budget?.timeoutMs === "string"));
+  assert(result.tools.every((tool) => typeof tool.mysqlSmoke === "boolean"));
+  assert(result.tools.every((tool) => typeof tool.oracleSmoke === "boolean"));
   assert.deepEqual(result.tools.map(toolSortKey), [...result.tools].sort(compareTools).map(toolSortKey));
 });
 
@@ -73,11 +75,28 @@ test("tool manifests declare read-only safety and execution budgets", () => {
     assert.equal(typeof manifest.requiresSqlGuard, "boolean");
     assert.equal(typeof manifest.requiresProfilePolicy, "boolean");
     assert.equal(manifest.requiresAuditLog, true);
+    assert("maxRows" in manifest.budget);
     assert.equal(typeof manifest.budget.maxBytes, "string");
+    assert("maxTables" in manifest.budget);
+    assert("maxColumns" in manifest.budget);
     assert.equal(typeof manifest.budget.maxDbCalls, "string");
     assert.equal(typeof manifest.budget.timeoutMs, "string");
+    assert.equal(typeof manifest.mysqlSmoke, "boolean");
+    assert.equal(typeof manifest.oracleSmoke, "boolean");
     assert.equal(typeof manifest.smoke.mysql, "boolean");
     assert.equal(typeof manifest.smoke.oracle, "boolean");
+    assert.equal(manifest.smoke.mysql, manifest.mysqlSmoke);
+    assert.equal(manifest.smoke.oracle, manifest.oracleSmoke);
+    if (manifest.mode === "all") {
+      assert.equal(manifest.mysqlSmoke, true, `${manifest.name} must declare MySQL smoke coverage`);
+      assert.equal(manifest.oracleSmoke, true, `${manifest.name} must declare Oracle smoke coverage`);
+    }
+    if (manifest.operationType === "read_data") {
+      assert.equal(manifest.requiresSqlGuard, true, `${manifest.name} must use SQL guard`);
+    }
+    if (manifest.dataTouch !== "none") {
+      assert.equal(manifest.requiresProfilePolicy, true, `${manifest.name} must require profile policy`);
+    }
   }
 });
 

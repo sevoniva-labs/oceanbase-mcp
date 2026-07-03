@@ -32,6 +32,8 @@ export interface ToolCapability {
   requiresProfilePolicy: boolean;
   requiresAuditLog: true;
   budget: ToolBudgetManifest;
+  mysqlSmoke: boolean;
+  oracleSmoke: boolean;
   smoke: ToolSmokeManifest;
 }
 
@@ -146,14 +148,56 @@ export function assertToolManifest(name: string): ToolCapability {
   if (!manifest.requiresAuditLog) {
     throw new Error(`Tool "${name}" must require audit logging.`);
   }
-  if (!manifest.budget.maxBytes || !manifest.budget.timeoutMs || !manifest.budget.maxDbCalls) {
-    throw new Error(`Tool "${name}" is missing execution budget metadata.`);
+  assertBudgetManifest(name, manifest.budget);
+  assertSmokeManifest(name, manifest);
+  if (manifest.operationType === "read_data" && !manifest.requiresSqlGuard) {
+    throw new Error(`Read-data tool "${name}" must require the SQL guard.`);
+  }
+  if (manifest.dataTouch !== "none" && !manifest.requiresProfilePolicy) {
+    throw new Error(`Tool "${name}" touches data or metadata and must require profile policy checks.`);
   }
   return manifest;
 }
 
+function assertBudgetManifest(name: string, budget: ToolBudgetManifest) {
+  if (!budget || typeof budget !== "object") {
+    throw new Error(`Tool "${name}" is missing execution budget metadata.`);
+  }
+  const optionalBudgetKeys = ["maxRows", "maxTables", "maxColumns"] as const;
+  for (const key of optionalBudgetKeys) {
+    if (!(key in budget) || (budget[key] !== null && typeof budget[key] !== "string")) {
+      throw new Error(`Tool "${name}" has an invalid ${key} budget declaration.`);
+    }
+  }
+  const requiredBudgetKeys = ["maxBytes", "maxDbCalls", "timeoutMs"] as const;
+  for (const key of requiredBudgetKeys) {
+    if (typeof budget[key] !== "string" || budget[key].trim().length === 0) {
+      throw new Error(`Tool "${name}" has an invalid ${key} budget declaration.`);
+    }
+  }
+}
+
+function assertSmokeManifest(name: string, manifest: ToolCapability) {
+  if (typeof manifest.mysqlSmoke !== "boolean" || typeof manifest.oracleSmoke !== "boolean") {
+    throw new Error(`Tool "${name}" is missing MySQL or Oracle smoke coverage metadata.`);
+  }
+  if (!manifest.smoke || manifest.smoke.mysql !== manifest.mysqlSmoke || manifest.smoke.oracle !== manifest.oracleSmoke) {
+    throw new Error(`Tool "${name}" has inconsistent smoke coverage metadata.`);
+  }
+  if (manifest.mode === "mysql" && !manifest.mysqlSmoke) {
+    throw new Error(`MySQL-only tool "${name}" must declare MySQL smoke coverage.`);
+  }
+  if (manifest.mode === "oracle" && !manifest.oracleSmoke) {
+    throw new Error(`Oracle-only tool "${name}" must declare Oracle smoke coverage.`);
+  }
+  if (manifest.mode === "all" && (!manifest.mysqlSmoke || !manifest.oracleSmoke)) {
+    throw new Error(`Cross-mode tool "${name}" must declare MySQL and Oracle smoke coverage.`);
+  }
+}
+
 function buildToolCapability(seed: ToolCapabilitySeed): ToolCapability {
   const operationType = operationTypeForGroup(seed.group);
+  const smoke = smokeForMode(seed.mode);
   return {
     ...seed,
     operationType,
@@ -163,7 +207,9 @@ function buildToolCapability(seed: ToolCapabilitySeed): ToolCapability {
     requiresProfilePolicy: requiresProfilePolicy(seed.name, seed.group),
     requiresAuditLog: true,
     budget: budgetFor(seed.name, seed.group, operationType),
-    smoke: smokeForMode(seed.mode)
+    mysqlSmoke: smoke.mysql,
+    oracleSmoke: smoke.oracle,
+    smoke
   };
 }
 
