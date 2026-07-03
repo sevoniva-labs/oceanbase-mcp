@@ -8,7 +8,6 @@ import { z } from "zod";
 import {
   assertToolManifest,
   buildUsageGuide,
-  getToolCapability,
   listCapabilities,
   SERVER_VERSION,
   TOOL_CAPABILITIES
@@ -47,7 +46,7 @@ import {
 import { diagnoseGateway } from "../diagnostics.js";
 import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "../er.js";
 import type { ErGraph, ErGraphDiagnostic, ErGraphStatus } from "../er-graph.js";
-import { logAudit, logError, logSlowOperation, recordCrashBreadcrumb, serializeError } from "../errors.js";
+import { logAudit } from "../errors.js";
 import { assertJsonByteLimit, jsonByteLength, jsonText, type QueryOutput } from "../format.js";
 import { captureMetadataSnapshot } from "../metadata-capture.js";
 import { analyzeChangeSqlImpact, analyzeMetadataImpact } from "../metadata-impact.js";
@@ -94,12 +93,11 @@ import {
 } from "../query/sessions.js";
 import { SENSITIVE_SAMPLE_PATTERN } from "../sensitive.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "../query-generation.js";
-import { createExecutionDiagnostics, selectRuntimeProfile, withExecutionDiagnostics, withMetadataCache, withQuerySlot, type GatewayRuntime } from "../runtime.js";
+import { selectRuntimeProfile, withMetadataCache, withQuerySlot, type GatewayRuntime } from "../runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "../sql.js";
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "../sql-scan.js";
 import { findSqlUsages } from "../sql-usage.js";
 import {
-  assertToolAllowed,
   authorizedGatewayConfig,
   gatewayLimitConfig,
   isToolAllowed,
@@ -132,7 +130,7 @@ import {
   type BuildSelectFilter,
   type BuildSelectOrderBy
 } from "./schemas.js";
-import { resultDiagnostics, resultTextBytes } from "./tool-logging.js";
+import { errorHints, safeTool, toGatewayLimitedResult, toLimitedResult, toResult, type ToolResult } from "./tool-runtime.js";
 import {
   buildErExportCommand,
   defaultErHtmlTitle,
@@ -147,7 +145,6 @@ export { effectiveRowLimit, shouldMaskColumnValue } from "../query/output.js";
 export { isToolAllowed } from "./access.js";
 export type { McpRequestContext } from "./context.js";
 
-const TOOL_TIMEOUT_GRACE_MS = 250;
 const LARGE_TABLE_CONTEXT_SAMPLE_ROW_THRESHOLD = 100_000;
 const QUERY_TERM_STOPWORDS = new Set([
   "show",
@@ -183,7 +180,7 @@ export function createObMcpServer(
     name: "ob-mcp",
     version: SERVER_VERSION
   });
-  const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ReturnType<typeof toResult>>) =>
+  const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ToolResult>) =>
     safeTool(name, handler, context, runtime);
   const registerTool = (
     name: string,
@@ -192,7 +189,7 @@ export function createObMcpServer(
       description: string;
       inputSchema: Record<string, z.ZodType>;
     },
-    handler: (args: any) => Promise<ReturnType<typeof toResult>>
+    handler: (args: any) => Promise<ToolResult>
   ) => {
     assertToolManifest(name);
     if (!isToolAllowed(name, context.principal)) {
@@ -10907,42 +10904,6 @@ function resourceResult(uri: string, data: unknown, config?: ObConfig) {
   };
 }
 
-function toLimitedResult(data: unknown, config: ObConfig) {
-  assertJsonByteLimit(data, config.maxResultBytes);
-  return toResult(data);
-}
-
-function toGatewayLimitedResult(data: unknown, runtime: GatewayRuntime, context: McpRequestContext) {
-  return toLimitedResult(data, gatewayLimitConfig(runtime, context));
-}
-
-function toResult(data: unknown) {
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: jsonText(data)
-      }
-    ]
-  };
-}
-
-function toErrorResult(error: unknown, args?: unknown) {
-  return {
-    isError: true,
-    content: [
-      {
-        type: "text" as const,
-        text: jsonText({
-          ok: false,
-          error: serializeError(error, { includeSqlMessage: false }),
-          hints: errorHints(error, args)
-        })
-      }
-    ]
-  };
-}
-
 function runExplainCheck(name: string, check: () => void) {
   try {
     check();
@@ -10964,249 +10925,4 @@ function explainGeneratedQuery(sql: string, paramCount: number, config: ObConfig
     checks: [...sqlChecks, ...policy.checks],
     tableRefs: policy.tableRefs
   };
-}
-
-function toolWallTimeoutMs(name: string, runtime: GatewayRuntime, context: McpRequestContext): number {
-  const config = gatewayLimitConfig(runtime, context);
-  const budget = getToolCapability(name)?.budget.timeoutMs;
-  const configuredTimeout = budget === "profile.erTotalTimeoutMs"
-    ? config.erTotalTimeoutMs
-    : config.queryTimeoutMs;
-  return Math.max(1, configuredTimeout + TOOL_TIMEOUT_GRACE_MS);
-}
-
-async function withToolTimeout<T>(operation: Promise<T>, timeoutMs: number, name: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(new Error(`Tool "${name}" exceeded configured timeout budget ${timeoutMs}ms.`));
-    }, timeoutMs);
-  });
-  try {
-    return await Promise.race([operation, timeout]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
-}
-
-function safeTool<Args>(
-  name: string,
-  handler: (args: Args) => Promise<ReturnType<typeof toResult>>,
-  context: McpRequestContext,
-  runtime: GatewayRuntime
-) {
-  return async (args: Args) => {
-    const started = Date.now();
-    const finish = metrics.startToolCall();
-    const requestId = context.requestId ?? randomUUID();
-    const toolCapability = getToolCapability(name);
-    const executionDiagnostics = createExecutionDiagnostics();
-    let timeoutMs: number | undefined;
-    recordCrashBreadcrumb("tool_start", {
-      tool: name,
-      toolGroup: toolCapability?.group,
-      operationType: toolCapability?.operationType,
-      transport: context.transport ?? "stdio",
-      requestId,
-      phase: "start",
-      clientId: context.clientId,
-      principal: context.principal?.name,
-      ...auditArgs(args)
-    });
-    try {
-      assertToolAllowed(name, context.principal);
-      timeoutMs = toolWallTimeoutMs(name, runtime, context);
-      const result = await withToolTimeout(
-        withExecutionDiagnostics(executionDiagnostics, () => Promise.resolve().then(() => handler(args))),
-        timeoutMs,
-        name
-      );
-      const durationMs = Date.now() - started;
-      const responseBytes = resultTextBytes(result);
-      const diagnostics = resultDiagnostics(result);
-      recordCrashBreadcrumb("tool_finish", {
-        ok: true,
-        tool: name,
-        toolGroup: toolCapability?.group,
-        operationType: toolCapability?.operationType,
-        durationMs,
-        responseBytes,
-        timeoutMs,
-        requestId,
-        phase: "finish",
-        dbCalls: executionDiagnostics.dbCalls,
-        ...diagnostics
-      });
-      logAudit("tool_call", {
-        ok: true,
-        tool: name,
-        toolGroup: toolCapability?.group,
-        operationType: toolCapability?.operationType,
-        transport: context.transport ?? "stdio",
-        requestId,
-        phase: "finish",
-        clientId: context.clientId,
-        principal: context.principal?.name,
-        durationMs,
-        timeoutMs,
-        responseBytes,
-        dbCalls: executionDiagnostics.dbCalls,
-        ...diagnostics,
-        ...auditArgs(args)
-      });
-      logSlowOperation("slow_tool_call", {
-        ok: true,
-        tool: name,
-        toolGroup: toolCapability?.group,
-        operationType: toolCapability?.operationType,
-        transport: context.transport ?? "stdio",
-        requestId,
-        phase: "finish",
-        clientId: context.clientId,
-        principal: context.principal?.name,
-        durationMs,
-        timeoutMs,
-        responseBytes,
-        dbCalls: executionDiagnostics.dbCalls,
-        ...diagnostics,
-        ...auditArgs(args)
-      });
-      return result;
-    } catch (error) {
-      const durationMs = Date.now() - started;
-      const errorResult = toErrorResult(error, args);
-      const responseBytes = resultTextBytes(errorResult);
-      const diagnostics = resultDiagnostics(errorResult);
-      const sanitizedError = serializeError(error, { includeSqlMessage: false });
-      metrics.recordToolBlocked();
-      metrics.recordToolError();
-      recordCrashBreadcrumb("tool_finish", {
-        ok: false,
-        tool: name,
-        toolGroup: toolCapability?.group,
-        operationType: toolCapability?.operationType,
-        durationMs,
-        responseBytes,
-        timeoutMs,
-        requestId,
-        phase: "finish",
-        errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
-        sanitizedError,
-        dbCalls: executionDiagnostics.dbCalls,
-        ...diagnostics
-      });
-      logAudit("tool_call", {
-        ok: false,
-        tool: name,
-        toolGroup: toolCapability?.group,
-        operationType: toolCapability?.operationType,
-        transport: context.transport ?? "stdio",
-        requestId,
-        phase: "finish",
-        clientId: context.clientId,
-        principal: context.principal?.name,
-        durationMs,
-        timeoutMs,
-        responseBytes,
-        errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
-        sanitizedError,
-        dbCalls: executionDiagnostics.dbCalls,
-        ...diagnostics,
-        blockedReason: (error as Error).message,
-        ...auditArgs(args)
-      });
-      logSlowOperation("slow_tool_call", {
-        ok: false,
-        tool: name,
-        toolGroup: toolCapability?.group,
-        operationType: toolCapability?.operationType,
-        transport: context.transport ?? "stdio",
-        requestId,
-        phase: "finish",
-        clientId: context.clientId,
-        principal: context.principal?.name,
-        durationMs,
-        timeoutMs,
-        responseBytes,
-        errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
-        sanitizedError,
-        dbCalls: executionDiagnostics.dbCalls,
-        ...diagnostics,
-        blockedReason: (error as Error).message,
-        ...auditArgs(args)
-      });
-      logError(name, error, { requestId, tool: name }, { includeSqlMessage: false });
-      return errorResult;
-    } finally {
-      finish();
-    }
-  };
-}
-
-function errorHints(error: unknown, args: unknown): string[] {
-  const message = (error as Error)?.message ?? String(error);
-  const lower = message.toLowerCase();
-  const sql = args && typeof args === "object" && "sql" in args ? String((args as Record<string, unknown>).sql ?? "") : "";
-  const hints: string[] = [];
-
-  if (/unknown column|invalid identifier|ora-00904|1054/.test(lower)) {
-    hints.push("Column was not found. Search visible metadata with ob_search_catalog, then read table details with ob_get_table_context.");
-    hints.push("In Oracle mode, check object and column casing. Unquoted identifiers are usually uppercase.");
-  }
-  if (/unknown table|table .* doesn't exist|ora-00942|1146/.test(lower)) {
-    hints.push("Table was not found or is not visible. Search visible schemas and tables with ob_search_catalog or ob_list_tables.");
-    hints.push("Check whether the SQL uses the configured schema and whether that schema is allowed by policy.");
-  }
-  if (/not allowed by the configured oceanbase mcp access policy|not allowed for token|blocked by ob_denied_columns|select \*/.test(lower)) {
-    hints.push("The request was blocked by MCP policy. Use ob_policy_explain or ob_query_preview to inspect the failing check.");
-    hints.push("Use explicit columns and allowed schema-qualified tables.");
-  }
-  if (/only read-only sql|write\/control keyword|multiple sql statements|side-effect|explain analyze|nextval/.test(lower)) {
-    hints.push("Only read-only SELECT, WITH, and safe EXPLAIN statements are allowed.");
-    hints.push("Remove writes, DDL, DCL, procedure calls, sequence NEXTVAL, locks, sleeps, file functions, and extra statements.");
-  }
-  if (/limit|offset|fetch|rownum|orderby must contain|paged query input/.test(lower)) {
-    hints.push("For ob_query_page, pass SQL without existing LIMIT, OFFSET/FETCH, or ROWNUM pagination.");
-    hints.push("Use orderBy only with simple identifiers, optional ASC/DESC, and comma separators.");
-  }
-  if (/access denied|permission|privilege|ora-01031|1044|1142/.test(lower)) {
-    hints.push("The database account may not have the required read or metadata privilege. Run ob_verify_permissions and check grants.");
-  }
-  if (/exceeded configured timeout budget|timeout|timed out|query execution was interrupted/.test(lower)) {
-    hints.push("The request exceeded the configured timeout. Narrow the schema, table scope, row limit, or ER export window before retrying.");
-    hints.push("For large ER diagrams, use ob_plan_er_export and export smaller chunks instead of requesting a full inline diagram.");
-  }
-  if (sql && !/\border\s+by\b/i.test(sql) && /ob_query_page|paged/i.test(lower)) {
-    hints.push("Add a stable ORDER BY for repeatable pagination.");
-  }
-
-  return [...new Set(hints)];
-}
-
-function auditArgs(args: unknown): Record<string, unknown> {
-  if (!args || typeof args !== "object") {
-    return {};
-  }
-  const record = args as Record<string, unknown>;
-  const output: Record<string, unknown> = {};
-  for (const key of ["profile", "schema", "table", "objectName", "objectType", "depth", "limit", "maxRows", "mask"]) {
-    if (record[key] != null) {
-      output[key] = record[key];
-    }
-  }
-  if (Array.isArray(record.objectTypes)) {
-    output.objectTypes = record.objectTypes;
-  }
-  if (typeof record.sql === "string") {
-    output.sqlLength = record.sql.length;
-  }
-  if (Array.isArray(record.params)) {
-    output.paramCount = record.params.length;
-  }
-  if (typeof record.query === "string") {
-    output.queryLength = record.query.length;
-  }
-  return output;
 }
