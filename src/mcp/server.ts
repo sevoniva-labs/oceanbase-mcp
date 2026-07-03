@@ -60,7 +60,6 @@ import {
 import { registerMcpResources } from "./resources.js";
 import {
   entityDiagramOutputFormatSchema,
-  erExportStrategySchema,
   erHtmlFormatSchema,
   erRelationshipModeSchema,
   profileInput,
@@ -77,6 +76,7 @@ import {
   shouldSkipSchemaInlineErHtmlRender
 } from "./tools/er-response.js";
 import { registerErDocumentTools } from "./tools/er-document.js";
+import { registerErExportPlanTools } from "./tools/er-export-plan-tool.js";
 import { registerErExplainRelationshipTools } from "./tools/er-explain-relationship.js";
 import {
   dedupeRelationships,
@@ -214,6 +214,7 @@ export function createObMcpServer(
   registerDocumentationTools(registerTool, runtime, context);
   registerErExplainRelationshipTools(registerTool, runtime, context);
   registerErDocumentTools(registerTool, runtime, context, buildErDiagramResult);
+  registerErExportPlanTools(registerTool, runtime, context, buildErExportPlanResult);
 
   registerTool(
     "ob_generate_er_diagram",
@@ -386,53 +387,6 @@ export function createObMcpServer(
         },
         selected.config
       );
-    }
-  );
-
-  registerTool(
-    "ob_plan_er_export",
-    {
-      title: "Plan ER Export",
-      description: "Plan local ER HTML export commands for large OceanBase schemas without returning large inline HTML.",
-      inputSchema: {
-        ...profileInput,
-        schema: z.string().optional(),
-        table: z.string().optional(),
-        tables: z.array(z.string().min(1)).max(50).optional(),
-        businessTerm: z.string().min(1).optional(),
-        depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(500).optional(),
-        maxRelationships: z.number().int().positive().max(1000).optional(),
-        minConfidence: z.number().min(0).max(1).optional(),
-        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
-        includeInferred: z.boolean().optional().default(false),
-        format: erHtmlFormatSchema.optional().default("html-interactive"),
-        strategy: erExportStrategySchema.optional(),
-        chunkSize: z.number().int().positive().max(100).optional(),
-        maxColumnsPerTable: z.number().int().positive().max(500).optional(),
-        outputDir: z.string().min(1).max(240).optional()
-      }
-    },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false, format = "html-interactive", strategy, chunkSize, maxColumnsPerTable, outputDir }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const result = await buildErExportPlanResult(selected, {
-        schema,
-        table,
-        tables,
-        businessTerm,
-        depth,
-        maxTables,
-        maxRelationships,
-        minConfidence,
-        relationshipMode,
-        includeInferred,
-        format,
-        strategy,
-        chunkSize,
-        maxColumnsPerTable,
-        outputDir
-      });
-      return toLimitedResult(result, selected.config);
     }
   );
 
