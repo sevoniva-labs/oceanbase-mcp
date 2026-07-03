@@ -2,6 +2,7 @@ import type { QueryResult } from "mysql2/promise";
 
 import type { CompatibilityMode } from "./config.js";
 import { oracleTimeoutHint } from "./db/dialect/oracle.js";
+import { fieldValue, groupBy, numberField, rowRecord, stringField } from "./db/metadata-values.js";
 import { runQuery } from "./db/query.js";
 import type {
   ColumnProfile,
@@ -3394,41 +3395,6 @@ function relationshipPairKey(mode: CompatibilityMode, relation: TableRelationshi
 
 function relationshipKey(mode: CompatibilityMode, relation: TableRelationship): string {
   return `${relation.relationType}:${relationshipPairKey(mode, relation)}:${relation.constraintName ?? ""}`;
-}
-
-function rowRecord(row: unknown): Record<string, unknown> {
-  return row && typeof row === "object" && !Array.isArray(row) ? (row as Record<string, unknown>) : {};
-}
-
-function fieldValue(record: Record<string, unknown>, ...keys: string[]): unknown {
-  return keys.map((key) => record[key]).find((value) => value != null);
-}
-
-function stringField(record: Record<string, unknown>, ...keys: string[]): string | undefined {
-  const value = fieldValue(record, ...keys);
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
-}
-
-function numberField(record: Record<string, unknown>, ...keys: string[]): number | undefined {
-  const value = fieldValue(record, ...keys);
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) {
-    return Number(value);
-  }
-  return undefined;
-}
-
-function groupBy<T>(items: T[], keyFn: (item: T) => string): Map<string, T[]> {
-  const grouped = new Map<string, T[]>();
-  for (const item of items) {
-    const key = keyFn(item);
-    const group = grouped.get(key) ?? [];
-    group.push(item);
-    grouped.set(key, group);
-  }
-  return grouped;
 }
 
 async function currentMysqlSchema(pool: ObPool, timeoutMs: number): Promise<string | undefined> {
