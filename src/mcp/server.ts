@@ -69,11 +69,11 @@ import {
   buildErExportCommand,
   defaultErHtmlTitle,
   erDiagnosticsFromWarnings,
-  fitErDiagramResponseForLimit,
   formatErColumnLimitWarnings,
   SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT,
   shouldSkipSchemaInlineErHtmlRender
 } from "./tools/er-response.js";
+import { registerErDiagramTools } from "./tools/er-diagram-tool.js";
 import { registerErDocumentTools } from "./tools/er-document.js";
 import { registerErEntityDiagramTools } from "./tools/er-entity-diagram.js";
 import { registerErExportPlanTools } from "./tools/er-export-plan-tool.js";
@@ -212,35 +212,10 @@ export function createObMcpServer(
 
   registerDocumentationTools(registerTool, runtime, context);
   registerErExplainRelationshipTools(registerTool, runtime, context);
+  registerErDiagramTools(registerTool, runtime, context, buildErDiagramResult);
   registerErDocumentTools(registerTool, runtime, context, buildErDiagramResult);
   registerErEntityDiagramTools(registerTool, runtime, context, buildErDiagramResult);
   registerErExportPlanTools(registerTool, runtime, context, buildErExportPlanResult);
-
-  registerTool(
-    "ob_generate_er_diagram",
-    {
-      title: "Generate ER Diagram",
-      description: "Generate Mermaid and JSON ER metadata from allowed OceanBase table metadata and relationships.",
-      inputSchema: {
-        ...profileInput,
-        schema: z.string().optional(),
-        table: z.string().optional(),
-        tables: z.array(z.string().min(1)).max(50).optional(),
-        businessTerm: z.string().min(1).optional(),
-        depth: z.number().int().min(1).max(3).optional(),
-        maxTables: z.number().int().positive().max(500).optional(),
-        maxRelationships: z.number().int().positive().max(1000).optional(),
-        minConfidence: z.number().min(0).max(1).optional(),
-        relationshipMode: erRelationshipModeSchema.optional().default("foreign_key"),
-        includeInferred: z.boolean().optional().default(false)
-      }
-    },
-    async ({ profile, schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode = "foreign_key", includeInferred = false }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const result = await buildErDiagramResult(selected, { schema, table, tables, businessTerm, depth, maxTables, maxRelationships, minConfidence, relationshipMode, includeInferred });
-      return toLimitedResult(fitErDiagramResponseForLimit(result.response, selected.config), selected.config);
-    }
-  );
 
   registerTool(
     "ob_generate_er_html",
