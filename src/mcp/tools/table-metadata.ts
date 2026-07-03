@@ -20,6 +20,10 @@ import { maskOutput } from "../../query/output.js";
 import { withQuerySlot, type GatewayRuntime } from "../../runtime.js";
 import { selectAuthorizedProfile } from "../access.js";
 import type { McpRequestContext } from "../context.js";
+import {
+  inferTablePurpose,
+  tableSummaryQueryEntryPoints
+} from "../metadata-summary.js";
 import { metadataSchema } from "../metadata-scope.js";
 import { policyContext } from "../policy-context.js";
 import { profileInput } from "../schemas.js";
@@ -29,6 +33,14 @@ import {
   DESCRIBE_TABLE_DEFAULT_COLUMN_LIMIT,
   describeTablePayload
 } from "./catalog.js";
+import {
+  buildSchemaMapRelationshipSummary,
+  compactSchemaColumns,
+  findSchemaMapTableInfo,
+  importantSchemaMapFields,
+  schemaMapPrimaryKeyColumns,
+  uniqueKeyGroups
+} from "./schema-map.js";
 
 export function registerTableMetadataTools(
   registerTool: ToolRegistrar,
@@ -141,6 +153,69 @@ export function registerTableMetadataTools(
         getTableStats(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
       return toLimitedResult(stats, selected.config);
+    }
+  );
+
+  registerTool(
+    "ob_get_table_summary",
+    {
+      title: "Get Table Summary",
+      description: "Return a compact table summary with inferred purpose, key fields, relationship hints, and query entry points.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        includeRelated: z.boolean().optional().default(true),
+        relationshipLimit: z.number().int().positive().max(50).optional(),
+        maxColumns: z.number().int().positive().max(100).optional()
+      }
+    },
+    async ({ profile, table, schema, includeRelated = true, relationshipLimit, maxColumns }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const metadata = await withQuerySlot(selected, () =>
+        getTableDdlMetadata(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
+      );
+      const columns = filterColumnMetadata(metadata.columns, selected.config.policy);
+      const constraints = filterColumnMetadata(metadata.constraints, selected.config.policy);
+      const compactColumns = compactSchemaColumns(columns, constraints, selected.config, metadata.schema, metadata.table);
+      const primaryKeys = schemaMapPrimaryKeyColumns(constraints);
+      const uniqueKeys = uniqueKeyGroups(constraints);
+      const timeFields = compactColumns.filter((column) => column.roles.includes("time")).map((column) => column.name);
+      const statusFields = compactColumns.filter((column) => column.roles.includes("status")).map((column) => column.name);
+      const keyFields = importantSchemaMapFields(compactColumns, primaryKeys, timeFields, statusFields);
+      const tableInfo = await findSchemaMapTableInfo(selected, metadata.schema, metadata.table);
+      const statistics = await withQuerySlot(selected, () =>
+        getTableStats(selected.pool, selected.config.compatibility, metadata.table, metadata.schema, selected.config.queryTimeoutMs)
+      );
+      const relationSummary = includeRelated
+        ? await buildSchemaMapRelationshipSummary(selected, metadata.schema, metadata.table, Math.min(relationshipLimit ?? 10, 50))
+        : undefined;
+
+      return toLimitedResult(
+        {
+          mode: selected.config.compatibility,
+          schema: metadata.schema,
+          table: metadata.table,
+          purpose: inferTablePurpose(metadata.table, tableInfo?.comment, compactColumns),
+          rowEstimate: tableInfo?.rowEstimate ?? statistics.rowEstimate,
+          statistics,
+          primaryKeys,
+          uniqueKeys,
+          keyFields,
+          timeFields,
+          statusFields,
+          columns: compactColumns.slice(0, Math.min(maxColumns ?? 20, 100)),
+          columnsTruncated: compactColumns.length > Math.min(maxColumns ?? 20, 100),
+          relatedTables: relationSummary,
+          queryEntryPoints: tableSummaryQueryEntryPoints(primaryKeys, timeFields, statusFields, relationSummary),
+          warnings: [
+            "Purpose and field roles are inferred from visible metadata; verify with domain knowledge before using them as business facts."
+          ]
+        },
+        selected.config
+      );
     }
   );
 
