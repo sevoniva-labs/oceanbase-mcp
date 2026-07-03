@@ -190,7 +190,7 @@ function changeObjectLabel(change: MetadataSnapshotComparison["breakingChanges"]
 }
 
 function markdownCell(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
 
 function escapeHtml(value: string): string {

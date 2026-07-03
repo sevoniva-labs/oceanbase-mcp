@@ -3,6 +3,7 @@ import "dotenv/config";
 import { loadGatewayConfig, loadHttpConfig } from "./config.js";
 import { diagnoseGateway, type DiagnosticCheck } from "./diagnostics.js";
 import { ping } from "./db.js";
+import { serializeError } from "./errors.js";
 import { jsonText } from "./format.js";
 import { diagnoseLocalProject } from "./local-diagnostics.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "./runtime.js";
@@ -45,10 +46,7 @@ export async function runDoctorCommand(args: string[] = []): Promise<number> {
     console.error(
       jsonText({
         ok: false,
-        error: {
-          message: (error as Error).message,
-          name: (error as Error).name
-        }
+        error: serializeError(error, { includeSqlMessage: false })
       })
     );
     return 1;

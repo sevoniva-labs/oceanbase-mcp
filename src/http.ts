@@ -27,6 +27,23 @@ const runtime = createGatewayRuntime(gatewayConfig);
 
 const app = express();
 app.set("trust proxy", httpConfig.trustProxy);
+const httpRateLimiter = rateLimit({
+  windowMs: httpConfig.rateLimitWindowMs,
+  limit: httpConfig.rateLimitMax,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    logAudit("http_rate_limited", {
+      path: req.path,
+      remoteAddress: req.socket.remoteAddress,
+      requestId: getRequestContext(req).requestId,
+      clientId: getRequestContext(req).clientId,
+      rateLimitWindowMs: httpConfig.rateLimitWindowMs,
+      rateLimitMax: httpConfig.rateLimitMax
+    });
+    res.status(429).json({ error: "Too many requests" });
+  }
+});
 
 app.use(
   httpConfig.allowedHosts && httpConfig.allowedHosts.length > 0
@@ -53,6 +70,7 @@ app.use((req, res, next) => {
 });
 
 app.use(restrictSourceIp);
+app.use(httpRateLimiter);
 
 app.get("/healthz", endpointAuth(httpConfig.healthAuthRequired), (_req, res) => {
   const diagnostics = diagnoseGateway(gatewayConfig, httpConfig);
@@ -70,23 +88,6 @@ app.get("/metrics", endpointAuth(httpConfig.metricsAuthRequired), (_req, res) =>
 
 app.use(
   httpConfig.path,
-  rateLimit({
-    windowMs: httpConfig.rateLimitWindowMs,
-    limit: httpConfig.rateLimitMax,
-    standardHeaders: true,
-    legacyHeaders: false,
-    handler: (req, res) => {
-      logAudit("http_rate_limited", {
-        path: req.path,
-        remoteAddress: req.socket.remoteAddress,
-        requestId: getRequestContext(req).requestId,
-        clientId: getRequestContext(req).clientId,
-        rateLimitWindowMs: httpConfig.rateLimitWindowMs,
-        rateLimitMax: httpConfig.rateLimitMax
-      });
-      res.status(429).json({ error: "Too many requests" });
-    }
-  }),
   authenticate,
   express.json({ limit: httpConfig.bodyLimit }),
   jsonBodyErrorHandler

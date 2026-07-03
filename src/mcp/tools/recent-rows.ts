@@ -10,7 +10,6 @@ import {
   filterColumnMetadata
 } from "../../policy.js";
 import {
-  effectiveRowLimit,
   enrichQueryOutput,
   shouldMaskColumnValue
 } from "../../query/output.js";

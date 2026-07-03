@@ -22,7 +22,6 @@ import { renderSchemaDocumentMarkdown } from "./documentation-schema-render.js";
 import { buildTableDocument } from "./documentation-table-build.js";
 import { renderTableDocumentMarkdown } from "./documentation-table-render.js";
 import {
-  buildSchemaMapRelationshipSummary,
   buildSchemaMapTableSummary,
   cachedSchemaMapTables,
   filterSchemaMapTables,

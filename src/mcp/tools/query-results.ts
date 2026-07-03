@@ -4,7 +4,6 @@ import { buildResultPreview, compareQueryResultRows, summarizeQueryResultRows } 
 import {
   cleanupQuerySessions,
   getQuerySessionForProfile,
-  publicQuerySession,
   type QuerySessionState
 } from "../../query/sessions.js";
 import type { GatewayRuntime } from "../../runtime.js";

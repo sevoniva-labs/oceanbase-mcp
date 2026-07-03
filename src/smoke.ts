@@ -17,9 +17,14 @@ try {
   console.log(
     jsonText({
       config: publicConfig(config),
-      ping: pingResult,
-      query: queryResult,
-      schemaSample: schemas.slice(0, 10)
+      ping: { ok: pingResult.ok === true },
+      query: {
+        ok: queryResult.rowCount > 0,
+        rowCount: queryResult.rowCount,
+        fieldCount: queryResult.fields?.length ?? 0,
+        truncated: queryResult.truncated
+      },
+      schemaCount: schemas.length
     })
   );
 } finally {

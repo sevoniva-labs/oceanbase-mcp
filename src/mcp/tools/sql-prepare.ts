@@ -9,7 +9,6 @@ import {
 } from "../../db.js";
 import {
   assertTableAccess,
-  explainSqlPolicy,
   filterColumnMetadata,
   isDeniedColumn,
   isSchemaAllowed

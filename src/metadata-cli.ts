@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, resolve } from "node:path";
 
 import { loadGatewayConfig } from "./config.js";
+import { serializeError } from "./errors.js";
 import { assertJsonByteLimit, jsonText } from "./format.js";
 import { captureMetadataSnapshot, type CaptureMetadataSnapshotInput } from "./metadata-capture.js";
 import { compareMetadataSnapshots, renderMetadataComparisonMarkdown } from "./metadata-change.js";
@@ -63,7 +64,7 @@ export async function runMetadataCommand(args: string[], cwd = process.cwd()): P
   } catch (error) {
     console.error(JSON.stringify({
       ok: false,
-      error: (error as Error).message
+      error: serializeError(error, { includeSqlMessage: false })
     }, null, 2));
     return 1;
   }

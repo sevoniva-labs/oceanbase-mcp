@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { closeSync, constants, existsSync, fstatSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, extname, join, relative, resolve } from "node:path";
 
 import { assertReadOnlySql, hasPaginationClause } from "./sql.js";
@@ -277,14 +277,13 @@ export function scanSqlProject(options: ScanSqlOptions = {}): SqlScanReport {
   let skippedFiles = 0;
 
   for (const file of files) {
-    const stat = lstatSync(file.absPath);
-    if (stat.size > maxBytes) {
+    const readResult = readBoundedRegularFile(file.absPath, maxBytes);
+    if (!readResult.ok) {
       skippedFiles += 1;
-      warnings.push(`${file.relPath} was skipped because it exceeds maxBytes.`);
+      warnings.push(`${file.relPath} was skipped because ${readResult.reason}.`);
       continue;
     }
-    const content = readFileSync(file.absPath, "utf8");
-    for (const snippet of extractSqlSnippets(file.ext, content)) {
+    for (const snippet of extractSqlSnippets(file.ext, readResult.content)) {
       const finding = classifySqlSnippet(file, snippet);
       if (finding) {
         findings.push(finding);
@@ -311,6 +310,30 @@ export function scanSqlProject(options: ScanSqlOptions = {}): SqlScanReport {
 
 export function extractSqlSnippetsFromContent(ext: string, content: string): SqlScanSnippet[] {
   return extractSqlSnippets(normalizeExtension(ext), content);
+}
+
+function readBoundedRegularFile(
+  absPath: string,
+  maxBytes: number
+): { ok: true; content: string } | { ok: false; reason: string } {
+  let fd: number | undefined;
+  try {
+    fd = openSync(absPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) {
+      return { ok: false, reason: "it is not a regular file" };
+    }
+    if (stat.size > maxBytes) {
+      return { ok: false, reason: "it exceeds maxBytes" };
+    }
+    return { ok: true, content: readFileSync(fd, "utf8") };
+  } catch {
+    return { ok: false, reason: "it could not be read safely" };
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
 }
 
 export function renderScanSqlText(report: SqlScanReport): string {

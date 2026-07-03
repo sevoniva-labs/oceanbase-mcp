@@ -1,6 +1,5 @@
 import type { ObConfig } from "./config.js";
 import {
-  describeTable,
   findRelatedTables,
   getObjectMetadata,
   getTableDdlMetadata,

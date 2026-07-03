@@ -1702,7 +1702,7 @@ function tableLabel(schema: string | undefined, table: string): string {
 }
 
 function escapeMarkdown(value: string): string {
-  return value.replace(/\|/g, "\\|").replace(/\r?\n/g, " ");
+  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/[\r\n]+/g, " ");
 }
 
 function plantUmlAlias(schema: string | undefined, table: string): string {

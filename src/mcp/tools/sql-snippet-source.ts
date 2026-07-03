@@ -1,4 +1,4 @@
-import { readFileSync, statSync } from "node:fs";
+import { closeSync, constants, fstatSync, openSync, readFileSync } from "node:fs";
 import { extname, relative, resolve } from "node:path";
 
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "../../sql-scan.js";
@@ -44,14 +44,7 @@ export function resolveProjectQuerySource(
   if (!PROJECT_QUERY_ALLOWED_EXTENSIONS.has(ext)) {
     throw new Error("filePath must use one of .sql, .xml, .ts, .js, or .java.");
   }
-  const stat = statSync(absPath);
-  if (!stat.isFile()) {
-    throw new Error("filePath must point to a regular file.");
-  }
-  if (stat.size > PROJECT_QUERY_MAX_FILE_BYTES) {
-    throw new Error(`filePath exceeds the ${PROJECT_QUERY_MAX_FILE_BYTES} byte scan limit.`);
-  }
-  const content = readFileSync(absPath, "utf8");
+  const content = readProjectSqlFile(absPath);
   const snippets = extractSqlSnippetsFromContent(ext, content);
   if (snippets.length === 0) {
     throw new Error("No SQL snippet was found in filePath.");
@@ -72,6 +65,30 @@ export function resolveProjectQuerySource(
         : []
     }
   };
+}
+
+function readProjectSqlFile(absPath: string): string {
+  let fd: number | undefined;
+  try {
+    fd = openSync(absPath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+    const stat = fstatSync(fd);
+    if (!stat.isFile()) {
+      throw new Error("filePath must point to a regular file.");
+    }
+    if (stat.size > PROJECT_QUERY_MAX_FILE_BYTES) {
+      throw new Error(`filePath exceeds the ${PROJECT_QUERY_MAX_FILE_BYTES} byte scan limit.`);
+    }
+    return readFileSync(fd, "utf8");
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith("filePath ")) {
+      throw error;
+    }
+    throw new Error("filePath could not be read safely.");
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
 }
 
 function selectProjectSqlSnippet(snippets: SqlScanSnippet[], line: number | undefined): SqlScanSnippet {

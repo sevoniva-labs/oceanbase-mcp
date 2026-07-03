@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 
 import { loadGatewayConfig, type GatewayConfig } from "../config.js";
+import { serializeError } from "../errors.js";
 import { closeGatewayRuntime, createGatewayRuntime } from "../runtime.js";
 import { createObMcpServer } from "../mcp.js";
 
@@ -177,7 +178,7 @@ export async function runExportErCommand(args: string[], cwd = process.cwd()): P
   } catch (error) {
     console.error(JSON.stringify({
       ok: false,
-      error: (error as Error).message
+      error: serializeError(error, { includeSqlMessage: false })
     }, null, 2));
     return 1;
   } finally {

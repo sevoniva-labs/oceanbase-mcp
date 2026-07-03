@@ -8,7 +8,7 @@ import { metrics } from "../../metrics.js";
 import { analyzeQueryPlan } from "../../plan-analysis.js";
 import { explainSqlPolicy } from "../../policy.js";
 import { effectiveRowLimit } from "../../query/output.js";
-import { hasSqlRowLimit, queryShape, sensitiveSqlTerms } from "../../query/preview.js";
+import { queryShape, sensitiveSqlTerms } from "../../query/preview.js";
 import { selectRuntimeProfile, withQuerySlot, type GatewayRuntime } from "../../runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql } from "../../sql.js";
 import { selectAuthorizedProfile } from "../access.js";
