@@ -131,6 +131,7 @@ import {
   describeTablePayload,
   registerCatalogTools
 } from "./tools/catalog.js";
+import { registerColumnDetectionTools } from "./tools/column-detection.js";
 import { registerQueryResultTools } from "./tools/query-results.js";
 import { registerSystemTools } from "./tools/system.js";
 import { registerDocumentationTools } from "./tools/documentation.js";
@@ -224,6 +225,7 @@ export function createObMcpServer(
   registerObjectMetadataTools(registerTool, runtime, context);
   registerTableMetadataTools(registerTool, runtime, context);
   registerTableContextTools(registerTool, runtime, context);
+  registerColumnDetectionTools(registerTool, runtime, context);
 
   registerTool(
     "ob_profile_table",
@@ -483,48 +485,6 @@ export function createObMcpServer(
             distribution.length,
             Boolean(profiledColumn.masked)
           )
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
-    "ob_detect_time_columns",
-    {
-      title: "Detect Time Columns",
-      description: "Detect likely create, update, and business time columns from visible table metadata.",
-      inputSchema: {
-        ...profileInput,
-        table: z.string().min(1),
-        schema: z.string().optional(),
-        maxColumns: z.number().int().positive().max(50).optional()
-      }
-    },
-    async ({ profile, table, schema, maxColumns }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const metadataRows = await withQuerySlot(selected, () =>
-        describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
-      );
-      const visibleColumns = filterColumnMetadata(metadataRows, selected.config.policy);
-      const candidates = detectTimeColumnCandidates(
-        visibleColumns,
-        selected.config,
-        effectiveSchema,
-        table,
-        maxColumns ?? 20
-      );
-      return toLimitedResult(
-        {
-          mode: selected.config.compatibility,
-          schema: effectiveSchema,
-          table,
-          candidates,
-          warnings: candidates.length === 0
-            ? ["No likely time columns were detected from visible metadata. Ask the user to provide the time column explicitly."]
-            : ["Time-column detection is metadata-based; verify semantics before using the column as a business time filter."]
         },
         selected.config
       );
