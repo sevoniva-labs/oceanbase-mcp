@@ -8,6 +8,7 @@ test("ob_generate_er_html returns self-contained ER HTML from visible metadata",
   const config = loadConfig({
     OB_ALLOWED_SCHEMAS: "biz_test",
     OB_DENIED_COLUMNS: "secret_token",
+    OB_ER_MAX_COLUMNS_PER_TABLE: "24",
     OB_ER_INLINE_HTML_MAX_BYTES: "1048576"
   });
   const server = createObMcpServer(runtime(config));
@@ -34,6 +35,10 @@ test("ob_generate_er_html returns self-contained ER HTML from visible metadata",
   assert.match(payload.html, /data-relation-filter="confirmed" checked/);
   assert.match(payload.html, /Schema Overview/);
   assert.match(payload.html, /cytoscape\(/);
+  assert.match(payload.html, /data-field-toggle/);
+  assert.match(payload.html, /Show all /);
+  assert.match(payload.html, /fields shown/);
+  assert.match(payload.html, /business_field_16/);
   assert.match(payload.html, /<link rel="icon" href="data:image\/svg\+xml/);
   assert.doesNotMatch(payload.html, /<link[^>]+href=["']https?:/i);
   assert.doesNotMatch(payload.html, /src=["']/i);
@@ -122,6 +127,15 @@ function columnsFor(table) {
   return [
     { table_schema: "biz_test", table_name: "orders", column_name: "id", column_type: "bigint", data_type: "bigint", is_nullable: "NO", ordinal_position: 1 },
     { table_schema: "biz_test", table_name: "orders", column_name: "user_id", column_type: "bigint", data_type: "bigint", is_nullable: "NO", ordinal_position: 2 },
-    { table_schema: "biz_test", table_name: "orders", column_name: "secret_token", column_type: "varchar(128)", data_type: "varchar", is_nullable: "YES", ordinal_position: 3 }
+    { table_schema: "biz_test", table_name: "orders", column_name: "secret_token", column_type: "varchar(128)", data_type: "varchar", is_nullable: "YES", ordinal_position: 3 },
+    ...Array.from({ length: 16 }, (_, index) => ({
+      table_schema: "biz_test",
+      table_name: "orders",
+      column_name: `business_field_${String(index + 1).padStart(2, "0")}`,
+      column_type: index % 2 === 0 ? "varchar(64)" : "decimal(18,2)",
+      data_type: index % 2 === 0 ? "varchar" : "decimal",
+      is_nullable: "YES",
+      ordinal_position: index + 4
+    }))
   ];
 }

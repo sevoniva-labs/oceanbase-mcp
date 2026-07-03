@@ -343,6 +343,19 @@ export function renderErHtml(diagram: ErDiagram, options: ErHtmlOptions = {}): s
     .overview-label { display: block; color: var(--muted); font-size: 12px; }
     .field-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
     .field-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px; background: var(--panel-soft); }
+    .field-summary { margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+    .field-toggle {
+      width: 100%;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--accent-strong);
+      border-color: #b7d8d4;
+      background: var(--accent-soft);
+    }
+    .field-toggle span { color: var(--muted); font-size: 12px; }
     .field-name { font-weight: 700; overflow-wrap: anywhere; }
     .field-type { color: var(--muted); font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
     .badge { display: inline-flex; margin: 4px 4px 0 0; padding: 2px 5px; border-radius: 4px; background: var(--info-soft); color: var(--info); font-size: 11px; }
@@ -587,6 +600,19 @@ function renderInteractiveErMapHtml(
     .overview-label { display: block; color: var(--muted); font-size: 12px; }
     .field-list { display: grid; gap: 8px; list-style: none; padding: 0; margin: 0; }
     .field-item { border: 1px solid var(--line); border-radius: 6px; padding: 8px; background: var(--panel-soft); }
+    .field-summary { margin-bottom: 8px; color: var(--muted); font-size: 12px; }
+    .field-toggle {
+      width: 100%;
+      margin-top: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--accent);
+      border-color: #b7d8d4;
+      background: var(--accent-soft);
+    }
+    .field-toggle span { color: var(--muted); font-size: 12px; }
     .relationship-item {
       width: 100%;
       display: block;
@@ -753,6 +779,7 @@ function renderErMapScript(overviewHtml: string): string {
   const relationFilters = Array.from(document.querySelectorAll("[data-relation-filter]"));
   const nodesById = new Map((graph.nodes || []).map((node) => [node.id, node]));
   const edgesById = new Map((graph.edges || []).map((edge) => [edge.id, edge]));
+  const FIELD_PREVIEW_LIMIT = 12;
   let focusedNodeId = "";
 
   function escape(value) {
@@ -860,23 +887,41 @@ function renderErMapScript(overviewHtml: string): string {
       inspector.innerHTML = overviewHtml;
     }
   }
-  function renderNodeDetail(node) {
+  function renderColumnItem(column) {
+    const badges = [
+      column.primaryKey ? '<span class="badge key">PK</span>' : '',
+      column.nullable === false ? '<span class="badge">NOT NULL</span>' : '',
+      column.indexed ? '<span class="badge">IDX</span>' : ''
+    ].join("");
+    return '<li class="field-item"><div class="field-name">' + escape(column.name) + '</div><div class="field-type">' + escape(column.type || "") + '</div>' + badges + (column.comment ? '<div class="field-type">' + escape(column.comment) + '</div>' : '') + '</li>';
+  }
+  function renderColumnSection(columns, expanded) {
+    const allColumns = columns || [];
+    if (allColumns.length === 0) {
+      return '<p class="empty-state">No visible columns are available for this table.</p>';
+    }
+    const visibleColumns = expanded ? allColumns : allColumns.slice(0, FIELD_PREVIEW_LIMIT);
+    const remaining = Math.max(0, allColumns.length - visibleColumns.length);
+    const fields = visibleColumns.map(renderColumnItem).join("");
+    const summary = '<div class="field-summary">' + visibleColumns.length + ' of ' + allColumns.length + ' fields shown</div>';
+    const toggle = allColumns.length > FIELD_PREVIEW_LIMIT
+      ? '<button type="button" class="field-toggle" data-field-toggle aria-expanded="' + (expanded ? 'true' : 'false') + '">' + (expanded ? 'Show fewer fields' : 'Show all ' + allColumns.length + ' fields') + '<span>' + (remaining > 0 ? remaining + ' hidden' : 'expanded') + '</span></button>'
+      : '';
+    return summary + '<ul class="field-list">' + fields + '</ul>' + toggle;
+  }
+  function renderNodeDetail(node, expanded = false) {
     const direct = (graph.edges || []).filter((edge) => edge.source === node.id || edge.target === node.id);
-    const fields = (node.columns || []).map((column) => {
-      const badges = [
-        column.primaryKey ? '<span class="badge key">PK</span>' : '',
-        column.nullable === false ? '<span class="badge">NOT NULL</span>' : '',
-        column.indexed ? '<span class="badge">IDX</span>' : ''
-      ].join("");
-      return '<li class="field-item"><div class="field-name">' + escape(column.name) + '</div><div class="field-type">' + escape(column.type || "") + '</div>' + badges + (column.comment ? '<div class="field-type">' + escape(column.comment) + '</div>' : '') + '</li>';
-    }).join("");
     const rels = direct.length
       ? '<h3>Relationships</h3><div class="field-list">' + direct.map((edge) => {
           const other = edge.source === node.id ? nodesById.get(edge.target) : nodesById.get(edge.source);
           return '<button type="button" class="relationship-item" data-edge-detail="' + escape(edge.id) + '"><div class="field-name">' + escape(other ? other.qualifiedName : "") + '</div><div class="field-type">' + escape(edge.relationClass + " / " + edge.relationType + " / confidence " + edge.confidence) + '</div></button>';
         }).join("") + '</div>'
       : '<p class="empty-state">No direct relationship is visible for this table.</p>';
-    inspector.innerHTML = '<div class="detail-title">' + escape(node.qualifiedName) + '</div><div class="detail-meta">' + escape(node.domain) + ' / ' + (node.columns || []).length + ' column(s)</div><h3>Columns</h3><ul class="field-list">' + fields + '</ul>' + rels;
+    inspector.innerHTML = '<div class="detail-title">' + escape(node.qualifiedName) + '</div><div class="detail-meta">' + escape(node.domain) + ' / ' + (node.columns || []).length + ' column(s)</div><h3>Columns</h3>' + renderColumnSection(node.columns, expanded) + rels;
+    const toggle = inspector.querySelector("[data-field-toggle]");
+    if (toggle) {
+      toggle.addEventListener("click", () => renderNodeDetail(node, toggle.getAttribute("aria-expanded") !== "true"));
+    }
     inspector.querySelectorAll("[data-edge-detail]").forEach((button) => {
       button.addEventListener("click", () => renderEdgeDetail(edgesById.get(button.getAttribute("data-edge-detail") || "")));
     });
@@ -1452,6 +1497,7 @@ function renderInteractiveScript(): string {
   const search = document.getElementById("er-search");
   const filterCount = document.getElementById("er-filter-count");
   const defaultInspectorHtml = inspector.innerHTML;
+  const FIELD_PREVIEW_LIMIT = 12;
   let scale = 1;
   let focused = "";
   const entityByKey = new Map((data.entities || []).map((entity) => [tableKey(entity.schema, entity.table), entity]));
@@ -1503,21 +1549,35 @@ function renderInteractiveScript(): string {
       behavior: "smooth"
     });
   }
-  function renderInspector(key) {
+  function renderColumnItem(column) {
+    const badges = [
+      column.primaryKey ? '<span class="badge key">PK</span>' : '',
+      column.nullable === false ? '<span class="badge">NOT NULL</span>' : '',
+      column.indexed ? '<span class="badge">IDX</span>' : ''
+    ].join("");
+    return '<li class="field-item"><div class="field-name">' + escape(column.name) + '</div><div class="field-type">' + escape(column.type || "") + '</div>' + badges + (column.comment ? '<div class="source-block">' + escape(column.comment) + '</div>' : '') + '</li>';
+  }
+  function renderColumnSection(columns, expanded) {
+    const allColumns = columns || [];
+    if (allColumns.length === 0) {
+      return '<p class="empty-state">No visible columns are available for this table.</p>';
+    }
+    const visibleColumns = expanded ? allColumns : allColumns.slice(0, FIELD_PREVIEW_LIMIT);
+    const remaining = Math.max(0, allColumns.length - visibleColumns.length);
+    const fields = visibleColumns.map(renderColumnItem).join("");
+    const summary = '<div class="field-summary">' + visibleColumns.length + ' of ' + allColumns.length + ' fields shown</div>';
+    const toggle = allColumns.length > FIELD_PREVIEW_LIMIT
+      ? '<button type="button" class="field-toggle" data-field-toggle aria-expanded="' + (expanded ? 'true' : 'false') + '">' + (expanded ? 'Show fewer fields' : 'Show all ' + allColumns.length + ' fields') + '<span>' + (remaining > 0 ? remaining + ' hidden' : 'expanded') + '</span></button>'
+      : '';
+    return summary + '<ul class="field-list">' + fields + '</ul>' + toggle;
+  }
+  function renderInspector(key, expanded = false) {
     const entity = entityByKey.get(key);
     if (!entity) {
       inspector.innerHTML = defaultInspectorHtml;
       return;
     }
     const direct = relationships.filter((relation) => tableKey(relation.sourceSchema, relation.sourceTable) === key || tableKey(relation.targetSchema, relation.targetTable) === key);
-    const fields = (entity.columns || []).map((column) => {
-      const badges = [
-        column.primaryKey ? '<span class="badge key">PK</span>' : '',
-        column.nullable === false ? '<span class="badge">NOT NULL</span>' : '',
-        column.indexed ? '<span class="badge">IDX</span>' : ''
-      ].join("");
-      return '<li class="field-item"><div class="field-name">' + escape(column.name) + '</div><div class="field-type">' + escape(column.type || "") + '</div>' + badges + (column.comment ? '<div class="source-block">' + escape(column.comment) + '</div>' : '') + '</li>';
-    }).join("");
     const rels = direct.length
       ? '<h3>Direct Relationships</h3><ul class="field-list">' + direct.map((relation) => {
           const source = (relation.sourceSchema ? relation.sourceSchema + "." : "") + relation.sourceTable;
@@ -1526,7 +1586,11 @@ function renderInteractiveScript(): string {
           return '<li class="field-item"><div class="field-name">' + escape(target) + ' -> ' + escape(source) + '</div><div class="field-type">' + escape((relation.constraintName || relation.relationType) + " / confidence " + Number(relation.confidence || 0).toFixed(2)) + '</div><div class="source-block">' + escape(evidence) + '</div></li>';
         }).join("") + '</ul>'
       : '<p class="empty-state">No direct relationship is visible for this table.</p>';
-    inspector.innerHTML = '<div class="detail-title">' + escape(tableName(entity)) + '</div><div class="detail-meta">' + (entity.columns || []).length + ' column(s)</div><h3>Columns</h3><ul class="field-list">' + fields + '</ul>' + rels;
+    inspector.innerHTML = '<div class="detail-title">' + escape(tableName(entity)) + '</div><div class="detail-meta">' + (entity.columns || []).length + ' column(s)</div><h3>Columns</h3>' + renderColumnSection(entity.columns, expanded) + rels;
+    const toggle = inspector.querySelector("[data-field-toggle]");
+    if (toggle) {
+      toggle.addEventListener("click", () => renderInspector(key, toggle.getAttribute("aria-expanded") !== "true"));
+    }
   }
   function focusTable(key) {
     focused = key || "";
