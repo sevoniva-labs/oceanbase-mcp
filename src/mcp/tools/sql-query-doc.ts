@@ -22,11 +22,11 @@ import {
 import {
   projectQueryRecommendations,
   projectQueryStructure,
-  renderQueryDocumentMarkdown,
   snippetMetadataFindings,
   snippetMetadataRecommendations,
   validateSnippetMetadata
 } from "./sql-snippet-metadata.js";
+import { renderQueryDocumentMarkdown } from "./sql-query-doc-render.js";
 import { resolveProjectQuerySource } from "./sql-snippet-source.js";
 
 export function registerSqlQueryDocTools(
