@@ -1066,17 +1066,21 @@ export function createObMcpServer(
       inputSchema: {
         ...profileInput,
         table: z.string().min(1),
-        schema: z.string().optional()
+        schema: z.string().optional(),
+        maxColumns: z.number().int().positive().max(10_000).optional()
       }
     },
-    async ({ profile, table, schema }) => {
+    async ({ profile, table, schema, maxColumns }) => {
       const selected = selectAuthorizedProfile(runtime, profile, context);
       const effectiveSchema = metadataSchema(selected.config, schema);
       assertTableAccess(effectiveSchema, table, policyContext(selected.config));
       const rows = await withQuerySlot(selected, () =>
         describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
       );
-      return toLimitedResult(filterColumnMetadata(rows, selected.config.policy), selected.config);
+      return toLimitedResult(
+        describeTablePayload(filterColumnMetadata(rows, selected.config.policy), selected.config, maxColumns),
+        selected.config
+      );
     }
   );
 
@@ -4188,6 +4192,46 @@ function filterSchemaMapTables(rows: SchemaMapTable[], config: ObConfig): Schema
       return false;
     }
   });
+}
+
+function describeTablePayload(rows: unknown[], config: ObConfig, maxColumns: number | undefined): unknown {
+  const columnLimit = Math.min(maxColumns ?? rows.length, 10_000);
+  const limitedRows = rows.slice(0, columnLimit);
+  const explicitlyTruncated = limitedRows.length < rows.length;
+  if (!maxColumns && !explicitlyTruncated && jsonByteLength(limitedRows) <= config.maxResultBytes) {
+    return limitedRows;
+  }
+
+  const baseWarnings = explicitlyTruncated
+    ? [`Only ${limitedRows.length} of ${rows.length} visible columns are returned. Pass maxColumns to adjust the scope.`]
+    : [];
+  const buildPayload = (columns: unknown[], byteTruncated: boolean) => ({
+    columns,
+    columnCount: rows.length,
+    returnedColumns: columns.length,
+    truncated: explicitlyTruncated || byteTruncated,
+    warnings: byteTruncated
+      ? [...baseWarnings, "Column metadata output was capped by OB_MAX_RESULT_BYTES."]
+      : baseWarnings
+  });
+
+  if (jsonByteLength(buildPayload(limitedRows, false)) <= config.maxResultBytes) {
+    return buildPayload(limitedRows, false);
+  }
+
+  let low = 0;
+  let high = limitedRows.length;
+  let best = 0;
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    if (jsonByteLength(buildPayload(limitedRows.slice(0, mid), true)) <= config.maxResultBytes) {
+      best = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return buildPayload(limitedRows.slice(0, best), true);
 }
 
 async function cachedSchemaMapTables(
