@@ -21,13 +21,7 @@ import { registerObjectMetadataTools } from "./object-metadata.js";
 import { registerProfileColumnTools } from "./profile-columns.js";
 import { registerProfileTableTools } from "./profile-table.js";
 import { registerValueDistributionTools } from "./profile-value-distribution.js";
-import { registerQueryBuildTools } from "./query-build.js";
-import { registerQueryExecutionTools } from "./query-execution.js";
-import { registerQueryPlanTools } from "./query-plan.js";
-import { registerQueryResultTools } from "./query-results.js";
-import { registerQuerySessionTools } from "./query-sessions.js";
-import { registerQueryTemplateTools } from "./query-templates.js";
-import { registerRecentRowsTools } from "./recent-rows.js";
+import { registerQueryTools } from "./query-tools.js";
 import { registerSchemaMapTools } from "./schema-map.js";
 import { registerSearchCatalogTools } from "./search-catalog.js";
 import { registerSqlConversionTools } from "./sql-conversion.js";
@@ -53,9 +47,7 @@ export function registerMcpTools(
   httpConfig?: HttpConfig
 ): void {
   registerSystemTools(registerTool, runtime, context, httpConfig);
-  registerQueryExecutionTools(registerTool, runtime, context);
-  registerQuerySessionTools(registerTool, runtime, context, querySessions);
-  registerQueryResultTools(registerTool, runtime, context, querySessions);
+  registerQueryTools(registerTool, runtime, context, querySessions);
 
   registerCatalogTools(registerTool, runtime, context);
   registerSchemaMapTools(registerTool, runtime, context);
@@ -67,11 +59,6 @@ export function registerMcpTools(
 
   registerMetadataChangeTools(registerTool, runtime, context);
   registerMetadataCompareTools(registerTool, runtime, context);
-
-  registerQueryPlanTools(registerTool, runtime, context);
-  registerQueryBuildTools(registerTool, runtime, context);
-  registerQueryTemplateTools(registerTool, runtime, context);
-  registerRecentRowsTools(registerTool, runtime, context);
 
   registerSqlConversionTools(registerTool, runtime, context);
   registerSqlErrorTools(registerTool, runtime, context);
