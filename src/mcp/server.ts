@@ -132,6 +132,7 @@ import {
   type BuildSelectFilter,
   type BuildSelectOrderBy
 } from "./schemas.js";
+import { resultDiagnostics, resultTextBytes } from "./tool-logging.js";
 
 export { effectiveRowLimit, shouldMaskColumnValue } from "../query/output.js";
 export { isToolAllowed } from "./access.js";
@@ -11256,114 +11257,6 @@ function safeTool<Args>(
       finish();
     }
   };
-}
-
-function resultTextBytes(result: ReturnType<typeof toResult>): number {
-  return result.content.reduce((sum, item) => sum + Buffer.byteLength(item.text ?? "", "utf8"), 0);
-}
-
-function resultDiagnostics(result: ReturnType<typeof toResult>): Record<string, unknown> {
-  const text = result.content[0]?.text;
-  if (!text) {
-    return {
-      warningCount: 0,
-      warnings: [],
-      truncated: false
-    };
-  }
-  try {
-    return payloadDiagnostics(JSON.parse(text));
-  } catch {
-    return {
-      warningCount: 0,
-      warnings: [],
-      truncated: false
-    };
-  }
-}
-
-function payloadDiagnostics(payload: unknown): Record<string, unknown> {
-  const warnings = payloadWarnings(payload);
-  const truncated = payloadTruncated(payload);
-  const rowsRead = payloadRowsRead(payload);
-  const objectsRead = payloadObjectsRead(payload);
-  return {
-    warningCount: warnings.length,
-    warnings,
-    truncated,
-    ...(rowsRead != null ? { rowsRead } : {}),
-    ...(objectsRead != null ? { objectsRead } : {})
-  };
-}
-
-function payloadWarnings(payload: unknown): string[] {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return [];
-  }
-  const warnings = (payload as Record<string, unknown>).warnings;
-  if (!Array.isArray(warnings)) {
-    return [];
-  }
-  return warnings.filter((warning): warning is string => typeof warning === "string").slice(0, 20);
-}
-
-function payloadTruncated(payload: unknown): boolean {
-  if (!payload || typeof payload !== "object") {
-    return false;
-  }
-  if (Array.isArray(payload)) {
-    return false;
-  }
-  const record = payload as Record<string, unknown>;
-  return Boolean(
-    record.truncated ||
-    record.columnsTruncated ||
-    record.tablesTruncated ||
-    (record.resultState && typeof record.resultState === "object" && (record.resultState as Record<string, unknown>).truncated)
-  );
-}
-
-function payloadRowsRead(payload: unknown): number | undefined {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return undefined;
-  }
-  const record = payload as Record<string, unknown>;
-  for (const key of ["rowCount", "returnedRows", "sampledRows"]) {
-    const value = record[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-  }
-  if (Array.isArray(record.rows)) {
-    return record.rows.length;
-  }
-  return undefined;
-}
-
-function payloadObjectsRead(payload: unknown): number | undefined {
-  if (Array.isArray(payload)) {
-    return payload.length;
-  }
-  if (!payload || typeof payload !== "object") {
-    return undefined;
-  }
-  const record = payload as Record<string, unknown>;
-  for (const key of ["objectCount", "tableCount", "columnCount", "relationshipCount", "returnedColumns"]) {
-    const value = record[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
-      return value;
-    }
-  }
-  if (Array.isArray(record.columns)) {
-    return record.columns.length;
-  }
-  if (Array.isArray(record.tables)) {
-    return record.tables.length;
-  }
-  if (Array.isArray(record.relationships)) {
-    return record.relationships.length;
-  }
-  return undefined;
 }
 
 function errorHints(error: unknown, args: unknown): string[] {
