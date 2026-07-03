@@ -22,8 +22,7 @@ import {
   runReadOnlyQuery,
   sampleRows,
   type TableRef,
-  type TableRelationship,
-  type SqlParam
+  type TableRelationship
 } from "../db.js";
 import { buildErDiagram, renderErDot, renderErHtml, renderErMarkdown, renderErPlantUml, type ErDiagram, type ErEntity } from "../er.js";
 import type { ErGraph, ErGraphDiagnostic, ErGraphStatus } from "../er-graph.js";
@@ -76,9 +75,7 @@ import {
   erHtmlFormatSchema,
   erRelationshipModeSchema,
   profileInput,
-  queryScenarioSchema,
-  sqlParamSchema,
-  tableDocumentFormatSchema
+  queryScenarioSchema
 } from "./schemas.js";
 import { toGatewayLimitedResult, toLimitedResult, toResult } from "./tool-runtime.js";
 import {
@@ -137,18 +134,13 @@ import { registerSqlConversionTools } from "./tools/sql-conversion.js";
 import { registerSqlErrorTools } from "./tools/sql-errors.js";
 import {
   lintReadOnlySql,
-  lintSeverity,
   registerSqlLintTools
 } from "./tools/sql-lint.js";
 import { registerSqlProjectQueryTools } from "./tools/sql-project-query.js";
+import { registerSqlQueryDocTools } from "./tools/sql-query-doc.js";
 import { registerSqlValidationTools } from "./tools/sql-validation.js";
 import {
   normalizedSnippetTableRef,
-  projectQueryRecommendations,
-  projectQueryStructure,
-  renderQueryDocumentMarkdown,
-  snippetMetadataFindings,
-  snippetMetadataRecommendations,
   validateSnippetMetadata
 } from "./tools/sql-snippet-metadata.js";
 import {
@@ -338,73 +330,9 @@ export function createObMcpServer(
 
   registerSqlValidationTools(registerTool, runtime, context);
   registerSqlProjectQueryTools(registerTool, runtime, context);
+  registerSqlQueryDocTools(registerTool, runtime, context);
 
   registerSqlPrepareTools(registerTool, runtime, context);
-
-  registerTool(
-    "ob_generate_query_doc",
-    {
-      title: "Generate Query Documentation",
-      description: "Generate bounded JSON or Markdown documentation for a SQL snippet without executing the target query.",
-      inputSchema: {
-        ...profileInput,
-        sql: z.string().min(1).optional(),
-        filePath: z.string().min(1).optional(),
-        line: z.number().int().positive().optional(),
-        params: z.array(sqlParamSchema).optional().default([]),
-        schema: z.string().optional(),
-        format: tableDocumentFormatSchema.optional().default("markdown"),
-        maxRows: z.number().int().positive().max(10_000).optional(),
-        runExplain: z.boolean().optional().default(false),
-        title: z.string().min(1).max(120).optional()
-      }
-    },
-    async ({ profile, sql, filePath, line, params = [], schema, format = "markdown", maxRows, runExplain = false, title }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const source = resolveProjectQuerySource(sql, filePath, line);
-      const sqlParams = params as SqlParam[];
-      const lint = await lintReadOnlySql(selected, source.sql, sqlParams, effectiveRowLimit(maxRows, selected.config), runExplain);
-      const policy = explainSqlPolicy(source.sql, policyContext(selected.config));
-      const metadata = await validateSnippetMetadata(selected, source.sql, policy.tableRefs, metadataSchema(selected.config, schema));
-      const metadataFindings = snippetMetadataFindings(metadata);
-      const findings = [...lint.findings, ...metadataFindings];
-      const document = {
-        generatedAt: new Date().toISOString(),
-        mode: selected.config.compatibility,
-        source: source.source,
-        sql: source.sql,
-        paramCount: sqlParams.length,
-        executed: false,
-        explainRun: lint.explainRun,
-        allowed: lint.allowed && metadataFindings.every((finding) => finding.severity !== "high"),
-        severity: lintSeverity(findings),
-        structure: projectQueryStructure(source.sql, selected.config.compatibility, policy.tableRefs),
-        metadata,
-        findings,
-        recommendations: uniqueStrings([
-          ...lint.recommendations,
-          ...snippetMetadataRecommendations(metadataFindings),
-          ...projectQueryRecommendations(source.source)
-        ]),
-        warnings: uniqueStrings([
-          ...metadata.warnings,
-          "Query documentation is based on parsed SQL and visible metadata; dynamic SQL may need review after rendering."
-        ])
-      };
-      return toLimitedResult(
-        {
-          format,
-          mode: selected.config.compatibility,
-          generatedAt: document.generatedAt,
-          executed: false,
-          document,
-          markdown: format === "markdown" ? renderQueryDocumentMarkdown(document, title) : undefined,
-          warnings: document.warnings
-        },
-        selected.config
-      );
-    }
-  );
 
   registerTool(
     "ob_generate_mapper_context",
