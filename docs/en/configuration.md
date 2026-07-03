@@ -81,6 +81,8 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MAX_SQL_LENGTH` | `20000` | Maximum SQL text length. |
 | `OB_MAX_PARAM_COUNT` | `500` | Maximum SQL parameter count. |
 | `OB_MAX_CONCURRENT_QUERIES` | `5` | Maximum concurrent database operations per profile. |
+| `OB_MAX_DB_CALLS` | `40` | Maximum database calls allowed during one regular tool call. |
+| `OB_METADATA_MAX_DB_CALLS` | `120` | Maximum database calls allowed during one metadata snapshot, comparison, or documentation tool call. |
 | `OB_METADATA_CACHE_ENABLED` | `true` | Enables profile-scoped metadata caching. |
 | `OB_METADATA_CACHE_TTL_MS` | `60000` | Metadata cache TTL. Only table, column, constraint, and relationship metadata is cached. |
 | `OB_METADATA_CACHE_MAX_ENTRIES` | `500` | Maximum metadata cache entries per profile. |
@@ -94,6 +96,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_ER_MAX_TABLES` | `50` | Table-count cap for ER diagrams. The default is conservative; local use can raise it, with tool input capped at 500. |
 | `OB_ER_MAX_COLUMNS_PER_TABLE` | `12` | Maximum columns returned per table in ER diagrams. |
 | `OB_ER_MAX_RELATIONSHIPS` | `100` | Relationship-count cap for ER diagrams. |
+| `OB_ER_MAX_DB_CALLS` | `240` | Maximum database calls allowed during one ER tool call. |
 | `OB_ER_INLINE_HTML_MAX_BYTES` | `262144` | Inline MCP HTML response cap. Use `ob-mcp export-er --out-dir` for large cluster ER export. |
 
 Masking priority:

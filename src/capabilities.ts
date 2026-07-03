@@ -177,9 +177,22 @@ export function resolveToolBudget(tool: ToolCapability | string, config: ObConfi
     maxTables: manifest.budget.maxTables === "profile.erMaxTables" ? config.erMaxTables : null,
     maxColumns: manifest.budget.maxColumns === "profile.erMaxColumnsPerTable" ? config.erMaxColumnsPerTable : null,
     maxRelationships: manifest.group === "diagram" || manifest.name === "ob_plan_er_export" ? config.erMaxRelationships : null,
-    maxDbCalls: null,
+    maxDbCalls: resolveMaxDbCalls(manifest, config),
     timeoutMs: manifest.budget.timeoutMs === "profile.erTotalTimeoutMs" ? config.erTotalTimeoutMs : config.queryTimeoutMs
   };
+}
+
+function resolveMaxDbCalls(manifest: ToolCapability, config: ObConfig): number | null {
+  if (manifest.dataTouch === "none") {
+    return null;
+  }
+  if (manifest.group === "diagram" || manifest.name === "ob_plan_er_export") {
+    return config.erMaxDbCalls;
+  }
+  if (manifest.group === "metadata_change" || manifest.operationType === "local_export") {
+    return config.metadataMaxDbCalls;
+  }
+  return config.maxDbCalls;
 }
 
 function assertBudgetManifest(name: string, budget: ToolBudgetManifest) {

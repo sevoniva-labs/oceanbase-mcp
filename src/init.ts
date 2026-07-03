@@ -223,6 +223,9 @@ OB_MAX_RESULT_BYTES=1048576
 OB_MAX_SQL_LENGTH=20000
 OB_MAX_PARAM_COUNT=500
 OB_MAX_CONCURRENT_QUERIES=5
+OB_MAX_DB_CALLS=40
+OB_METADATA_MAX_DB_CALLS=120
+OB_ER_MAX_DB_CALLS=240
 
 # 样例值脱敏规则，支持 schema.table.column、table.column、column 和 * 通配。
 # OB_MASKED_COLUMNS=${input.schema}.users.email,*.orders.phone,access_token

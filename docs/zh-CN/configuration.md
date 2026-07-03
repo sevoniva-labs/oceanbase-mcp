@@ -81,6 +81,8 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_MAX_SQL_LENGTH` | `20000` | SQL 文本长度上限。 |
 | `OB_MAX_PARAM_COUNT` | `500` | SQL 参数数量上限。 |
 | `OB_MAX_CONCURRENT_QUERIES` | `5` | 每个 profile 同时执行的数据库操作上限。 |
+| `OB_MAX_DB_CALLS` | `40` | 单次普通工具调用允许的数据库访问次数上限。 |
+| `OB_METADATA_MAX_DB_CALLS` | `120` | 单次元数据快照、对比、文档类工具允许的数据库访问次数上限。 |
 | `OB_METADATA_CACHE_ENABLED` | `true` | 是否启用 profile 级元数据缓存。 |
 | `OB_METADATA_CACHE_TTL_MS` | `60000` | 元数据缓存 TTL。仅缓存表结构、约束、关系等元数据。 |
 | `OB_METADATA_CACHE_MAX_ENTRIES` | `500` | 每个 profile 的元数据缓存最大条目数。 |
@@ -94,6 +96,7 @@ OB_MCP_ALLOWED_IPS=127.0.0.1,10.0.0.0/8
 | `OB_ER_MAX_TABLES` | `50` | ER 表数量上限。默认保守，可按本地机器资源调高，工具输入最大 500。 |
 | `OB_ER_MAX_COLUMNS_PER_TABLE` | `12` | 每张表在 ER 图中返回的最大字段数。 |
 | `OB_ER_MAX_RELATIONSHIPS` | `100` | ER 关系数量上限。 |
+| `OB_ER_MAX_DB_CALLS` | `240` | 单次 ER 工具调用允许的数据库访问次数上限。 |
 | `OB_ER_INLINE_HTML_MAX_BYTES` | `262144` | MCP inline HTML 返回大小上限。大图建议使用 `ob-mcp export-er --out-dir` 导出 cluster 目录。 |
 
 脱敏优先级：

@@ -61,11 +61,14 @@ export interface ObConfig {
   maxSqlLength: number;
   maxParamCount: number;
   maxConcurrentQueries: number;
+  maxDbCalls: number;
+  metadataMaxDbCalls: number;
   erTotalTimeoutMs: number;
   erQueryTimeoutMs: number;
   erMaxTables: number;
   erMaxColumnsPerTable: number;
   erMaxRelationships: number;
+  erMaxDbCalls: number;
   erInlineHtmlMaxBytes: number;
   metadataCacheEnabled: boolean;
   metadataCacheTtlMs: number;
@@ -205,11 +208,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env, profile = DEFAU
     maxSqlLength: parseInteger(env.OB_MAX_SQL_LENGTH, 20_000, "OB_MAX_SQL_LENGTH"),
     maxParamCount: parseInteger(env.OB_MAX_PARAM_COUNT, 500, "OB_MAX_PARAM_COUNT"),
     maxConcurrentQueries: parseInteger(env.OB_MAX_CONCURRENT_QUERIES, Math.max(1, Math.min(connectionLimit, 5)), "OB_MAX_CONCURRENT_QUERIES"),
+    maxDbCalls: parseInteger(env.OB_MAX_DB_CALLS, 40, "OB_MAX_DB_CALLS"),
+    metadataMaxDbCalls: parseInteger(env.OB_METADATA_MAX_DB_CALLS, 120, "OB_METADATA_MAX_DB_CALLS"),
     erTotalTimeoutMs: parseInteger(env.OB_ER_TOTAL_TIMEOUT_MS, 15_000, "OB_ER_TOTAL_TIMEOUT_MS"),
     erQueryTimeoutMs: parseInteger(env.OB_ER_QUERY_TIMEOUT_MS, Math.min(queryTimeoutMs, 5_000), "OB_ER_QUERY_TIMEOUT_MS"),
     erMaxTables: parseInteger(env.OB_ER_MAX_TABLES, 50, "OB_ER_MAX_TABLES"),
     erMaxColumnsPerTable: parseInteger(env.OB_ER_MAX_COLUMNS_PER_TABLE, 12, "OB_ER_MAX_COLUMNS_PER_TABLE"),
     erMaxRelationships: parseInteger(env.OB_ER_MAX_RELATIONSHIPS, 100, "OB_ER_MAX_RELATIONSHIPS"),
+    erMaxDbCalls: parseInteger(env.OB_ER_MAX_DB_CALLS, 240, "OB_ER_MAX_DB_CALLS"),
     erInlineHtmlMaxBytes: parseInteger(env.OB_ER_INLINE_HTML_MAX_BYTES, Math.min(maxResultBytes, 262_144), "OB_ER_INLINE_HTML_MAX_BYTES"),
     metadataCacheEnabled,
     metadataCacheTtlMs: parseInteger(env.OB_METADATA_CACHE_TTL_MS, 60_000, "OB_METADATA_CACHE_TTL_MS"),

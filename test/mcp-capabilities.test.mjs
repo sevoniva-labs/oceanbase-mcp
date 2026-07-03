@@ -105,14 +105,18 @@ test("tool manifest budgets resolve to active profile limits", () => {
     OB_ALLOWED_SCHEMAS: "biz_test",
     OB_MAX_ROWS: "37",
     OB_MAX_RESULT_BYTES: "123456",
+    OB_MAX_DB_CALLS: "7",
+    OB_METADATA_MAX_DB_CALLS: "13",
     OB_QUERY_TIMEOUT_MS: "7000",
     OB_ER_TOTAL_TIMEOUT_MS: "11000",
     OB_ER_MAX_TABLES: "42",
     OB_ER_MAX_COLUMNS_PER_TABLE: "9",
-    OB_ER_MAX_RELATIONSHIPS: "88"
+    OB_ER_MAX_RELATIONSHIPS: "88",
+    OB_ER_MAX_DB_CALLS: "17"
   });
   const queryBudget = resolveToolBudget("ob_query", config);
   const erBudget = resolveToolBudget("ob_generate_er_html", config);
+  const metadataBudget = resolveToolBudget("ob_capture_metadata_snapshot", config);
 
   assert.deepEqual(queryBudget, {
     maxRows: 37,
@@ -120,7 +124,7 @@ test("tool manifest budgets resolve to active profile limits", () => {
     maxTables: null,
     maxColumns: null,
     maxRelationships: null,
-    maxDbCalls: null,
+    maxDbCalls: 7,
     timeoutMs: 7000
   });
   assert.deepEqual(erBudget, {
@@ -129,9 +133,10 @@ test("tool manifest budgets resolve to active profile limits", () => {
     maxTables: 42,
     maxColumns: 9,
     maxRelationships: 88,
-    maxDbCalls: null,
+    maxDbCalls: 17,
     timeoutMs: 11000
   });
+  assert.equal(metadataBudget.maxDbCalls, 13);
 });
 
 test("registered MCP tools all have a manifest entry", () => {

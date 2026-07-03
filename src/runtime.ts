@@ -25,6 +25,8 @@ export interface MetadataCacheStore {
 
 export interface ExecutionDiagnostics {
   dbCalls: number;
+  maxDbCalls: number | null;
+  toolName?: string;
 }
 
 interface MetadataCacheEntry {
@@ -90,11 +92,16 @@ export async function withQuerySlot<T>(
     );
   }
 
-  selected.limiter.active += 1;
   const diagnostics = executionDiagnosticsStore.getStore();
   if (diagnostics) {
     diagnostics.dbCalls += 1;
+    if (diagnostics.maxDbCalls != null && diagnostics.dbCalls > diagnostics.maxDbCalls) {
+      throw new Error(
+        `Tool "${diagnostics.toolName ?? "unknown"}" exceeded DB call budget maxDbCalls=${diagnostics.maxDbCalls}. Narrow schema, table scope, page size, or ER export window before retrying.`
+      );
+    }
   }
+  selected.limiter.active += 1;
   try {
     return await operation();
   } finally {
@@ -102,9 +109,11 @@ export async function withQuerySlot<T>(
   }
 }
 
-export function createExecutionDiagnostics(): ExecutionDiagnostics {
+export function createExecutionDiagnostics(maxDbCalls: number | null = null, toolName?: string): ExecutionDiagnostics {
   return {
-    dbCalls: 0
+    dbCalls: 0,
+    maxDbCalls,
+    toolName
   };
 }
 

@@ -64,7 +64,7 @@ export function safeTool<Args>(
     const resolvedBudget = toolCapability
       ? resolveToolBudget(toolCapability, gatewayLimitConfig(runtime, context))
       : undefined;
-    const executionDiagnostics = createExecutionDiagnostics();
+    const executionDiagnostics = createExecutionDiagnostics(resolvedBudget?.maxDbCalls ?? null, name);
     let timeoutMs: number | undefined;
     recordCrashBreadcrumb("tool_start", {
       tool: name,
