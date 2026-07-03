@@ -11,6 +11,8 @@ const DANGEROUS_READ_PATTERNS = [
   /\binto\s+(?:local\s+)?[A-Za-z_][\w$]*(?:\s*,|\s*(?:from|$))/i,
   /\bload_file\s*\(/i,
   /\bfor\s+update\b/i,
+  /\bfor\s+share\b/i,
+  /\block\s+in\s+share\s+mode\b/i,
   /\bget_lock\s*\(/i,
   /\brelease_lock\s*\(/i,
   /\bsleep\s*\(/i,
