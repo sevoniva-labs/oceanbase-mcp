@@ -100,7 +100,6 @@ import {
   selectBuildColumns,
   sqlQuoteIdentifier
 } from "./query-builder.js";
-import { queryExampleFromTemplate } from "./query-examples.js";
 import { registerMcpResources } from "./resources.js";
 import { explainGeneratedQuery, runExplainCheck } from "./sql-policy-explain.js";
 import {
@@ -150,6 +149,7 @@ import { registerMetadataCompareTools } from "./tools/metadata-compare.js";
 import { registerObjectMetadataTools } from "./tools/object-metadata.js";
 import { registerQueryBuildTools } from "./tools/query-build.js";
 import { registerQueryPlanTools } from "./tools/query-plan.js";
+import { registerQueryTemplateTools } from "./tools/query-templates.js";
 import {
   buildSchemaMapTableSummary,
   cachedDescribeTable,
@@ -691,6 +691,7 @@ export function createObMcpServer(
 
   registerQueryPlanTools(registerTool, runtime, context);
   registerQueryBuildTools(registerTool, runtime, context);
+  registerQueryTemplateTools(registerTool, runtime, context);
 
   registerTool(
     "ob_search_catalog",
@@ -2090,144 +2091,6 @@ export function createObMcpServer(
             ...(source.source.warnings ?? []),
             "Candidates are based on visible metadata only."
           ])
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
-    "ob_generate_query",
-    {
-      title: "Generate Read-only Query Templates",
-      description: "Generate read-only SQL templates from policy-filtered table metadata without executing them.",
-      inputSchema: {
-        ...profileInput,
-        table: z.string().min(1),
-        schema: z.string().optional(),
-        scenarios: z.array(queryScenarioSchema).optional(),
-        maxColumns: z.number().int().min(1).max(50).optional(),
-        maxRows: z.number().int().positive().optional()
-      }
-    },
-    async ({ profile, table, schema, scenarios, maxColumns, maxRows }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const columns = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
-        ),
-        selected.config.policy
-      );
-      const constraints = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          listConstraints(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
-        ),
-        selected.config.policy
-      );
-      const requestedScenarios = scenarios as QueryTemplateScenario[] | undefined;
-      const relationships = !requestedScenarios || requestedScenarios.includes("join")
-        ? (await withQuerySlot(selected, () =>
-            findRelatedTables(selected.pool, selected.config.compatibility, table, effectiveSchema, 1, 20, selected.config.queryTimeoutMs)
-          )).relations.filter((relation) =>
-            isRelationshipAllowed(relation, selected.config) &&
-            relation.sourceColumns.every((column) => !isDeniedColumn(column, selected.config.policy)) &&
-            relation.targetColumns.every((column) => !isDeniedColumn(column, selected.config.policy))
-          )
-        : [];
-      const generated = generateQueryTemplates({
-        mode: selected.config.compatibility,
-        schema: effectiveSchema,
-        table,
-        columns,
-        constraints,
-        relationships,
-        scenarios: requestedScenarios,
-        maxColumns: maxColumns ?? 12,
-        rowLimit: effectiveRowLimit(maxRows, selected.config)
-      });
-      const templates = generated.templates.map((template) => ({
-        ...template,
-        policy: explainGeneratedQuery(template.sql, template.parameters.length, selected.config)
-      }));
-      return toLimitedResult(
-        {
-          mode: selected.config.compatibility,
-          schema: effectiveSchema,
-          table,
-          templates,
-          warnings: generated.warnings,
-          executed: false
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
-    "ob_generate_query_examples",
-    {
-      title: "Generate Query Examples",
-      description: "Generate scenario-based read-only SQL examples from policy-filtered table metadata without executing them.",
-      inputSchema: {
-        ...profileInput,
-        table: z.string().min(1),
-        schema: z.string().optional(),
-        scenarios: z.array(queryScenarioSchema).optional(),
-        maxColumns: z.number().int().min(1).max(50).optional(),
-        maxRows: z.number().int().positive().optional()
-      }
-    },
-    async ({ profile, table, schema, scenarios, maxColumns, maxRows }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const effectiveSchema = metadataSchema(selected.config, schema);
-      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
-      const columns = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          describeTable(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
-        ),
-        selected.config.policy
-      );
-      const constraints = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          listConstraints(selected.pool, selected.config.compatibility, table, effectiveSchema, selected.config.queryTimeoutMs)
-        ),
-        selected.config.policy
-      );
-      const requestedScenarios = scenarios as QueryTemplateScenario[] | undefined;
-      const relationships = !requestedScenarios || requestedScenarios.includes("join")
-        ? (await withQuerySlot(selected, () =>
-            findRelatedTables(selected.pool, selected.config.compatibility, table, effectiveSchema, 1, 20, selected.config.queryTimeoutMs)
-          )).relations.filter((relation) =>
-            isRelationshipAllowed(relation, selected.config) &&
-            relation.sourceColumns.every((column) => !isDeniedColumn(column, selected.config.policy)) &&
-            relation.targetColumns.every((column) => !isDeniedColumn(column, selected.config.policy))
-          )
-        : [];
-      const generated = generateQueryTemplates({
-        mode: selected.config.compatibility,
-        schema: effectiveSchema,
-        table,
-        columns,
-        constraints,
-        relationships,
-        scenarios: requestedScenarios,
-        maxColumns: maxColumns ?? 12,
-        rowLimit: effectiveRowLimit(maxRows, selected.config)
-      });
-      const examples = generated.templates.map((template) =>
-        queryExampleFromTemplate(template, selected.config)
-      );
-      return toLimitedResult(
-        {
-          mode: selected.config.compatibility,
-          schema: effectiveSchema,
-          table,
-          rowLimit: effectiveRowLimit(maxRows, selected.config),
-          examples,
-          warnings: generated.warnings,
-          executed: false
         },
         selected.config
       );

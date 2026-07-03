@@ -4,6 +4,50 @@ import test from "node:test";
 import { loadConfig } from "../dist/config.js";
 import { createObMcpServer } from "../dist/mcp.js";
 
+test("ob_generate_query returns policy-checked MySQL templates", async () => {
+  const config = loadConfig({
+    OB_ALLOWED_SCHEMAS: "biz_test",
+    OB_MAX_ROWS: "30"
+  });
+  const server = createObMcpServer(runtime(config, mysqlPool()));
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_query, {
+    schema: "biz_test",
+    table: "orders",
+    scenarios: ["by_primary_key", "pagination"]
+  }, {});
+  const output = JSON.parse(result.content[0].text);
+
+  assert.equal(output.executed, false);
+  assert.equal(output.mode, "mysql");
+  assert.equal(output.templates.length, 2);
+  assert(output.templates.every((template) => template.policy.allowed));
+  assert(output.templates.every((template) => !/SELECT\s+\*/i.test(template.sql)));
+});
+
+test("ob_generate_query returns Oracle-compatible templates", async () => {
+  const config = loadConfig({
+    OB_COMPATIBILITY: "oracle",
+    OB_ALLOWED_SCHEMAS: "APP",
+    OB_MAX_ROWS: "25"
+  });
+  const server = createObMcpServer(runtime(config, oraclePool()));
+
+  const result = await server.executeToolHandler(server._registeredTools.ob_generate_query, {
+    schema: "APP",
+    table: "ORDERS",
+    scenarios: ["by_primary_key", "pagination"]
+  }, {});
+  const output = JSON.parse(result.content[0].text);
+  const sql = output.templates.map((template) => template.sql).join("\n");
+
+  assert.equal(output.executed, false);
+  assert.equal(output.mode, "oracle");
+  assert(output.templates.every((template) => template.policy.allowed));
+  assert.match(sql, /"APP"\."ORDERS"/);
+  assert.doesNotMatch(sql, /\bLIMIT\b/i);
+});
+
 test("ob_generate_query_examples returns MySQL read-only examples from metadata", async () => {
   const config = loadConfig({
     OB_ALLOWED_SCHEMAS: "biz_test",
