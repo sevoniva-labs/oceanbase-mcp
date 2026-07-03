@@ -228,3 +228,94 @@ test("ob_get_table_context skips default sample rows for large tables", async ()
   assert(context.warnings.some((warning) => /Sample rows were skipped because the table row estimate is 1000001/i.test(warning)));
   assert.equal(queries.some((sql) => /SELECT `id`, `status` FROM `biz_test`\.`large_orders`/i.test(sql)), false);
 });
+
+test("ob_get_table_context skips default sample rows for large Oracle tables", async () => {
+  const config = loadConfig({
+    OB_COMPATIBILITY: "oracle",
+    OB_ALLOWED_SCHEMAS: "APP",
+    OB_MAX_ROWS: "10"
+  });
+  const table = "BIG_ORDERS";
+  const queries = [];
+  const pool = {
+    async query({ sql }) {
+      queries.push(sql);
+      if (/FROM\s+\(SELECT\s+"ID",\s+"STATUS"\s+FROM\s+"APP"\."BIG_ORDERS"/i.test(sql)) {
+        throw new Error("sample query should not run for large Oracle table context without explicit sampleLimit");
+      }
+      if (/USER AS schema_name FROM DUAL/i.test(sql)) {
+        return [[{ SCHEMA_NAME: "APP" }], []];
+      }
+      if (/FROM user_tab_columns c/i.test(sql)) {
+        return [[
+          { OWNER: "APP", TABLE_NAME: table, COLUMN_NAME: "ID", DATA_TYPE: "NUMBER", DATA_PRECISION: 20, NULLABLE: "N", COLUMN_ID: 1, COMMENTS: "order id" },
+          { OWNER: "APP", TABLE_NAME: table, COLUMN_NAME: "STATUS", DATA_TYPE: "VARCHAR2", DATA_LENGTH: 32, NULLABLE: "Y", COLUMN_ID: 2, COMMENTS: "order status" }
+        ], []];
+      }
+      if (/FROM user_indexes i/i.test(sql)) {
+        return [[{
+          OWNER: "APP",
+          TABLE_NAME: table,
+          INDEX_NAME: "PK_BIG_ORDERS",
+          UNIQUENESS: "UNIQUE",
+          COLUMN_NAME: "ID",
+          COLUMN_POSITION: 1
+        }], []];
+      }
+      if (/FROM user_constraints c/i.test(sql)) {
+        return [[{
+          OWNER: "APP",
+          TABLE_NAME: table,
+          CONSTRAINT_NAME: "PK_BIG_ORDERS",
+          CONSTRAINT_TYPE: "P",
+          COLUMN_NAME: "ID",
+          POSITION: 1
+        }], []];
+      }
+      if (/FROM user_tab_partitions/i.test(sql)) {
+        return [[], []];
+      }
+      if (/FROM all_tables/i.test(sql)) {
+        return [[{
+          OWNER: "APP",
+          TABLE_NAME: table,
+          NUM_ROWS: 1_000_001,
+          BLOCKS: 2048,
+          LAST_ANALYZED: "2026-07-01 10:00:00"
+        }], []];
+      }
+      if (/FROM all_tab_columns/i.test(sql)) {
+        return [[{ ITEM_COUNT: 2 }], []];
+      }
+      if (/FROM all_indexes/i.test(sql)) {
+        return [[{ ITEM_COUNT: 1 }], []];
+      }
+      if (/FROM all_constraints/i.test(sql)) {
+        return [[{ ITEM_COUNT: 1 }], []];
+      }
+      if (/FROM all_tab_partitions/i.test(sql)) {
+        return [[{ ITEM_COUNT: 0 }], []];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    }
+  };
+  const server = createObMcpServer({
+    defaultProfile: "default",
+    configs: { default: config },
+    pools: { default: pool },
+    queryLimiters: { default: { active: 0, limit: 5 } }
+  });
+  const result = await server.executeToolHandler(server._registeredTools.ob_get_table_context, {
+    schema: "APP",
+    table,
+    includeRelated: false,
+    includeTemplates: false
+  }, {});
+  const context = JSON.parse(result.content[0].text);
+
+  assert.equal(context.mode, "oracle");
+  assert.equal(context.statistics.rowEstimate.value, 1_000_001);
+  assert.equal(context.sample, undefined);
+  assert(context.warnings.some((warning) => /Sample rows were skipped because the table row estimate is 1000001/i.test(warning)));
+  assert.equal(queries.some((sql) => /FROM\s+\(SELECT\s+"ID",\s+"STATUS"\s+FROM\s+"APP"\."BIG_ORDERS"/i.test(sql)), false);
+});
