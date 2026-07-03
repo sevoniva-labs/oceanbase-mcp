@@ -49,11 +49,16 @@ export function serializeError(error: unknown, options: SerializeErrorOptions = 
   };
 }
 
-export function logError(context: string, error: unknown, data: Record<string, unknown> = {}): void {
+export function logError(
+  context: string,
+  error: unknown,
+  data: Record<string, unknown> = {},
+  options: SerializeErrorOptions = {}
+): void {
   writeJsonLog({
     level: "error",
     context,
-    error: serializeError(error),
+    error: serializeError(error, options),
     timestamp: new Date().toISOString(),
     ...data
   });

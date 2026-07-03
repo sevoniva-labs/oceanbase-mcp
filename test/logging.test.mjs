@@ -129,8 +129,60 @@ test("tool audit logs include bounded response size", async () => {
     assert.equal(toolCall.ok, true);
     assert.equal(typeof toolCall.responseBytes, "number");
     assert(toolCall.responseBytes > 0);
+    assert.match(toolCall.requestId, /^[0-9a-f-]{36}$/i);
+    assert.equal(toolCall.phase, "finish");
+    assert.equal(typeof toolCall.warningCount, "number");
+    assert.equal(Array.isArray(toolCall.warnings), true);
+    assert.equal(toolCall.truncated, false);
     assert.equal(toolCall.paramCount, 1);
     assert.equal(toolCall.sqlLength, 51);
+  } finally {
+    restoreEnv("OB_MCP_LOG_FILE", previousFile);
+    restoreEnv("OB_MCP_LOG_STDERR", previousStderr);
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("tool audit logs include sanitized error metadata", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "ob-mcp-tool-error-log-"));
+  const previousFile = process.env.OB_MCP_LOG_FILE;
+  const previousStderr = process.env.OB_MCP_LOG_STDERR;
+  try {
+    const file = join(dir, "tool-error.jsonl");
+    process.env.OB_MCP_LOG_FILE = file;
+    process.env.OB_MCP_LOG_STDERR = "false";
+    const config = loadConfig({
+      OB_ALLOWED_SCHEMAS: "biz_test",
+      OB_ENFORCE_READ_ONLY_TX: "false"
+    });
+    const server = createObMcpServer({
+      defaultProfile: "default",
+      configs: { default: config },
+      pools: {
+        default: {
+          async query() {
+            throw new Error("query should not execute");
+          }
+        }
+      },
+      queryLimiters: { default: { active: 0, limit: 5 } }
+    });
+
+    await server.executeToolHandler(server._registeredTools.ob_query, {
+      sql: "DROP TABLE biz_test.orders"
+    }, {});
+
+    const lines = readFileSync(file, "utf8").trim().split(/\n/).map((line) => JSON.parse(line));
+    const toolCall = lines.find((line) => line.event === "tool_call" && line.tool === "ob_query");
+    assert.ok(toolCall);
+    assert.equal(toolCall.ok, false);
+    assert.match(toolCall.requestId, /^[0-9a-f-]{36}$/i);
+    assert.equal(toolCall.phase, "finish");
+    assert.equal(toolCall.errorCode, "Error");
+    assert.equal(toolCall.sanitizedError.name, "Error");
+    assert.equal(toolCall.sanitizedError.sqlMessage, undefined);
+    assert.equal(typeof toolCall.responseBytes, "number");
+    assert.equal(Array.isArray(toolCall.warnings), true);
   } finally {
     restoreEnv("OB_MCP_LOG_FILE", previousFile);
     restoreEnv("OB_MCP_LOG_STDERR", previousStderr);

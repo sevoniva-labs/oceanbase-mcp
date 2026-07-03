@@ -11113,13 +11113,16 @@ function safeTool<Args>(
   return async (args: Args) => {
     const started = Date.now();
     const finish = metrics.startToolCall();
+    const requestId = context.requestId ?? randomUUID();
+    const toolCapability = getToolCapability(name);
     let timeoutMs: number | undefined;
     recordCrashBreadcrumb("tool_start", {
       tool: name,
-      toolGroup: getToolCapability(name)?.group,
-      operationType: getToolCapability(name)?.operationType,
+      toolGroup: toolCapability?.group,
+      operationType: toolCapability?.operationType,
       transport: context.transport ?? "stdio",
-      requestId: context.requestId,
+      requestId,
+      phase: "start",
       clientId: context.clientId,
       principal: context.principal?.name,
       ...auditArgs(args)
@@ -11130,39 +11133,49 @@ function safeTool<Args>(
       const result = await withToolTimeout(Promise.resolve().then(() => handler(args)), timeoutMs, name);
       const durationMs = Date.now() - started;
       const responseBytes = resultTextBytes(result);
+      const diagnostics = resultDiagnostics(result);
       recordCrashBreadcrumb("tool_finish", {
         ok: true,
         tool: name,
+        toolGroup: toolCapability?.group,
+        operationType: toolCapability?.operationType,
         durationMs,
         responseBytes,
-        timeoutMs
+        timeoutMs,
+        requestId,
+        phase: "finish",
+        ...diagnostics
       });
       logAudit("tool_call", {
         ok: true,
         tool: name,
-        toolGroup: getToolCapability(name)?.group,
-        operationType: getToolCapability(name)?.operationType,
+        toolGroup: toolCapability?.group,
+        operationType: toolCapability?.operationType,
         transport: context.transport ?? "stdio",
-        requestId: context.requestId,
+        requestId,
+        phase: "finish",
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
         timeoutMs,
         responseBytes,
+        ...diagnostics,
         ...auditArgs(args)
       });
       logSlowOperation("slow_tool_call", {
         ok: true,
         tool: name,
-        toolGroup: getToolCapability(name)?.group,
-        operationType: getToolCapability(name)?.operationType,
+        toolGroup: toolCapability?.group,
+        operationType: toolCapability?.operationType,
         transport: context.transport ?? "stdio",
-        requestId: context.requestId,
+        requestId,
+        phase: "finish",
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
         timeoutMs,
         responseBytes,
+        ...diagnostics,
         ...auditArgs(args)
       });
       return result;
@@ -11170,47 +11183,63 @@ function safeTool<Args>(
       const durationMs = Date.now() - started;
       const errorResult = toErrorResult(error, args);
       const responseBytes = resultTextBytes(errorResult);
+      const diagnostics = resultDiagnostics(errorResult);
+      const sanitizedError = serializeError(error, { includeSqlMessage: false });
       metrics.recordToolBlocked();
       metrics.recordToolError();
       recordCrashBreadcrumb("tool_finish", {
         ok: false,
         tool: name,
+        toolGroup: toolCapability?.group,
+        operationType: toolCapability?.operationType,
         durationMs,
         responseBytes,
         timeoutMs,
-        error: (error as Error).message
+        requestId,
+        phase: "finish",
+        errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
+        sanitizedError,
+        ...diagnostics
       });
       logAudit("tool_call", {
         ok: false,
         tool: name,
-        toolGroup: getToolCapability(name)?.group,
-        operationType: getToolCapability(name)?.operationType,
+        toolGroup: toolCapability?.group,
+        operationType: toolCapability?.operationType,
         transport: context.transport ?? "stdio",
-        requestId: context.requestId,
+        requestId,
+        phase: "finish",
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
         timeoutMs,
         responseBytes,
+        errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
+        sanitizedError,
+        ...diagnostics,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
       });
       logSlowOperation("slow_tool_call", {
         ok: false,
         tool: name,
-        toolGroup: getToolCapability(name)?.group,
-        operationType: getToolCapability(name)?.operationType,
+        toolGroup: toolCapability?.group,
+        operationType: toolCapability?.operationType,
         transport: context.transport ?? "stdio",
-        requestId: context.requestId,
+        requestId,
+        phase: "finish",
         clientId: context.clientId,
         principal: context.principal?.name,
         durationMs,
         timeoutMs,
         responseBytes,
+        errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
+        sanitizedError,
+        ...diagnostics,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
       });
-      logError(name, error);
+      logError(name, error, { requestId, tool: name }, { includeSqlMessage: false });
       return errorResult;
     } finally {
       finish();
@@ -11220,6 +11249,110 @@ function safeTool<Args>(
 
 function resultTextBytes(result: ReturnType<typeof toResult>): number {
   return result.content.reduce((sum, item) => sum + Buffer.byteLength(item.text ?? "", "utf8"), 0);
+}
+
+function resultDiagnostics(result: ReturnType<typeof toResult>): Record<string, unknown> {
+  const text = result.content[0]?.text;
+  if (!text) {
+    return {
+      warningCount: 0,
+      warnings: [],
+      truncated: false
+    };
+  }
+  try {
+    return payloadDiagnostics(JSON.parse(text));
+  } catch {
+    return {
+      warningCount: 0,
+      warnings: [],
+      truncated: false
+    };
+  }
+}
+
+function payloadDiagnostics(payload: unknown): Record<string, unknown> {
+  const warnings = payloadWarnings(payload);
+  const truncated = payloadTruncated(payload);
+  const rowsRead = payloadRowsRead(payload);
+  const objectsRead = payloadObjectsRead(payload);
+  return {
+    warningCount: warnings.length,
+    warnings,
+    truncated,
+    ...(rowsRead != null ? { rowsRead } : {}),
+    ...(objectsRead != null ? { objectsRead } : {})
+  };
+}
+
+function payloadWarnings(payload: unknown): string[] {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return [];
+  }
+  const warnings = (payload as Record<string, unknown>).warnings;
+  if (!Array.isArray(warnings)) {
+    return [];
+  }
+  return warnings.filter((warning): warning is string => typeof warning === "string").slice(0, 20);
+}
+
+function payloadTruncated(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  if (Array.isArray(payload)) {
+    return false;
+  }
+  const record = payload as Record<string, unknown>;
+  return Boolean(
+    record.truncated ||
+    record.columnsTruncated ||
+    record.tablesTruncated ||
+    (record.resultState && typeof record.resultState === "object" && (record.resultState as Record<string, unknown>).truncated)
+  );
+}
+
+function payloadRowsRead(payload: unknown): number | undefined {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return undefined;
+  }
+  const record = payload as Record<string, unknown>;
+  for (const key of ["rowCount", "returnedRows", "sampledRows"]) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  if (Array.isArray(record.rows)) {
+    return record.rows.length;
+  }
+  return undefined;
+}
+
+function payloadObjectsRead(payload: unknown): number | undefined {
+  if (Array.isArray(payload)) {
+    return payload.length;
+  }
+  if (!payload || typeof payload !== "object") {
+    return undefined;
+  }
+  const record = payload as Record<string, unknown>;
+  for (const key of ["objectCount", "tableCount", "columnCount", "relationshipCount", "returnedColumns"]) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  if (Array.isArray(record.columns)) {
+    return record.columns.length;
+  }
+  if (Array.isArray(record.tables)) {
+    return record.tables.length;
+  }
+  if (Array.isArray(record.relationships)) {
+    return record.relationships.length;
+  }
+  return undefined;
 }
 
 function errorHints(error: unknown, args: unknown): string[] {
