@@ -126,8 +126,11 @@ test("renderErHtml uses interactive graph map for large schemas", () => {
   assert.ok(html.includes('"relationClass":"confirmed"'));
   assert.ok(html.includes("cytoscape("));
   assert.ok(html.includes('layout.on("layoutstop"'));
-  assert.ok(html.includes("const targetNodeId = focusedNodeId && visibleNodeIds.has(focusedNodeId)"));
-  assert.ok(html.includes("focusNode(targetNodeId, elements.nodes.length > 30 ? 64 : 40)"));
+  assert.ok(html.includes('name: overviewLayout ? "grid" : "dagre"'));
+  assert.ok(html.includes("cy.zoom(elements.nodes.length > 120 ? 0.48 : 0.62)"));
+  assert.ok(html.includes("if (focusedNodeId && visibleNodeIds.has(focusedNodeId))"));
+  assert.ok(html.includes("cy.fit(cy.elements(), 48)"));
+  assert.doesNotMatch(html, /firstNode\.id\(\)/);
   assert.ok(html.includes("node.id === focusedNodeId ? ' active' : ''"));
   assert.match(html, /<link rel="icon" href="data:image\/svg\+xml/);
   assert.doesNotMatch(html, /container: map,\s*wheelSensitivity/s);

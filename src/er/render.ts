@@ -854,28 +854,35 @@ function renderErMapScript(overviewHtml: string): string {
     map.dataset.visibleTables = String(elements.nodes.length);
     map.dataset.visibleRelationships = String(elements.edges.length);
     visibleRelationshipCount.textContent = String(elements.edges.length);
+    const overviewLayout = elements.nodes.length > 30 && !focusedNodeId;
     const layout = cy.layout({
-      name: "dagre",
-      rankDir: "LR",
-      nodeSep: 70,
-      rankSep: 120,
-      edgeSep: 24,
+      name: overviewLayout ? "grid" : "dagre",
+      rows: overviewLayout ? Math.ceil(Math.sqrt(elements.nodes.length)) : undefined,
+      avoidOverlap: overviewLayout ? true : undefined,
+      nodeDimensionsIncludeLabels: overviewLayout ? true : undefined,
+      rankDir: overviewLayout ? undefined : "LR",
+      nodeSep: overviewLayout ? undefined : 70,
+      rankSep: overviewLayout ? undefined : 120,
+      edgeSep: overviewLayout ? undefined : 24,
       fit: false,
       padding: 40
     });
     layout.on("layoutstop", () => {
       if (elements.nodes.length > 0) {
-        const firstNode = cy.nodes()[0];
         const visibleNodeIds = new Set(elements.nodes.map((element) => element.data.id));
-        const targetNodeId = focusedNodeId && visibleNodeIds.has(focusedNodeId)
-          ? focusedNodeId
-          : elements.nodes.length > 30 && firstNode
-            ? firstNode.id()
-            : "";
-        if (targetNodeId) {
-          focusNode(targetNodeId, elements.nodes.length > 30 ? 64 : 40);
+        if (focusedNodeId && visibleNodeIds.has(focusedNodeId)) {
+          focusNode(focusedNodeId, elements.nodes.length > 30 ? 64 : 40);
         } else {
-          cy.fit(cy.elements(), 48);
+          focusedNodeId = "";
+          map.dataset.selectedTable = "";
+          cy.elements().removeClass("faded selected neighbor");
+          inspector.innerHTML = overviewHtml;
+          if (overviewLayout) {
+            cy.zoom(elements.nodes.length > 120 ? 0.48 : 0.62);
+            cy.pan({ x: 32, y: 56 });
+          } else {
+            cy.fit(cy.elements(), 48);
+          }
         }
       }
     });
