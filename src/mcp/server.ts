@@ -704,68 +704,6 @@ export function createObMcpServer(
   registerSearchCatalogTools(registerTool, runtime, context);
   registerSqlUsageTools(registerTool, runtime, context);
 
-  registerTool(
-    "ob_find_tables_by_business_term",
-    {
-      title: "Find Tables by Business Term",
-      description: "Find visible candidate tables from a business term using glossary, catalog metadata, comments, and relationship evidence.",
-      inputSchema: {
-        ...profileInput,
-        term: z.string().min(1),
-        schema: z.string().optional(),
-        limit: z.number().int().positive().max(100).optional(),
-        includeRelated: z.boolean().optional().default(true),
-        relationshipLimit: z.number().int().positive().max(50).optional()
-      }
-    },
-    async ({ profile, term, schema, limit, includeRelated = true, relationshipLimit }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      if (schema) {
-        assertTableAccess(schema, "*", policyContext(selected.config));
-      }
-      const maxResults = Math.min(limit ?? 20, 100);
-      const catalogRows = filterColumnMetadata(
-        await withQuerySlot(selected, () =>
-          searchCatalog(
-            selected.pool,
-            selected.config.compatibility,
-            term,
-            schema,
-            maxResults,
-            selected.config.queryTimeoutMs
-          )
-        ),
-        selected.config.policy
-      );
-      const glossary = searchBusinessGlossary(selected.config, term, maxResults, schema);
-      const searchResults = dedupeSearchResults([
-        ...catalogRows.flatMap((row) => catalogSearchResult(row, term, selected.config)),
-        ...glossary.matches.flatMap((match) => glossarySearchResults(match, term))
-      ]);
-      const candidates = tableCandidatesFromSearchResults(searchResults, selected.config, maxResults);
-      if (includeRelated) {
-        await attachRelatedTablesToCandidates(
-          selected,
-          candidates,
-          Math.min(relationshipLimit ?? 8, 50)
-        );
-      }
-
-      return toLimitedResult(
-        {
-          term,
-          schema: schema ?? null,
-          count: candidates.length,
-          glossaryConfigured: glossary.configured,
-          policyFiltered: glossary.policyFiltered,
-          candidates,
-          warnings: glossary.warnings
-        },
-        selected.config
-      );
-    }
-  );
-
   registerObjectMetadataTools(registerTool, runtime, context);
   registerTableMetadataTools(registerTool, runtime, context);
 
@@ -4392,34 +4330,6 @@ function extractHanQueryTerms(value: string): string[] {
 function isUsefulQueryTerm(value: string): boolean {
   const normalized = normalizeGlossaryText(value);
   return normalized.length >= 2 && !QUERY_TERM_STOPWORDS.has(normalized);
-}
-
-async function attachRelatedTablesToCandidates(
-  selected: ReturnType<typeof selectRuntimeProfile>,
-  candidates: BusinessTableCandidate[],
-  relationshipLimit: number
-): Promise<void> {
-  for (const candidate of candidates.slice(0, 10)) {
-    const relationships = await withQuerySlot(selected, () =>
-      findRelatedTables(
-        selected.pool,
-        selected.config.compatibility,
-        candidate.table,
-        candidate.schema,
-        1,
-        relationshipLimit,
-        selected.config.queryTimeoutMs
-      )
-    );
-    const related = relationships.relations
-      .filter((relation) => isRelationshipAllowed(relation, selected.config))
-      .map((relation) => relatedTableEvidence(candidate, relation, selected.config.compatibility))
-      .filter((item): item is NonNullable<BusinessTableCandidate["relatedTables"]>[number] => Boolean(item))
-      .slice(0, relationshipLimit);
-    if (related.length > 0) {
-      candidate.relatedTables = related;
-    }
-  }
 }
 
 function uniqueTableRefs(refs: Array<{ schema?: string; table: string }>): Array<{ schema?: string; table: string }> {
