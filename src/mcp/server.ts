@@ -42,7 +42,6 @@ import { logAudit } from "../errors.js";
 import { assertJsonByteLimit, type QueryOutput } from "../format.js";
 import { metrics } from "../metrics.js";
 import { analyzeQueryPlan } from "../plan-analysis.js";
-import { buildPerformanceReport } from "../performance-report.js";
 import {
   assertOutputAllowed,
   assertObjectAccess,
@@ -138,6 +137,7 @@ import {
 import { registerQueryResultTools } from "./tools/query-results.js";
 import { registerSystemTools } from "./tools/system.js";
 import { registerMetadataChangeTools } from "./tools/metadata-change.js";
+import { registerQueryPlanTools } from "./tools/query-plan.js";
 import { createToolRegistrar } from "./tool-registry.js";
 
 export { effectiveRowLimit, shouldMaskColumnValue } from "../query/output.js";
@@ -925,172 +925,7 @@ export function createObMcpServer(
     }
   );
 
-  registerTool(
-    "ob_explain",
-    {
-      title: "Explain Query",
-      description: "Run EXPLAIN for a strictly read-only SQL statement.",
-      inputSchema: {
-        ...profileInput,
-        sql: z.string().min(1),
-        params: z.array(sqlParamSchema).optional().default([]),
-        maxRows: z.number().int().positive().max(10_000).optional()
-      }
-    },
-    async ({ profile, sql, params = [], maxRows }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const sqlParams = params as SqlParam[];
-      assertSqlInputLimits(sql, sqlParams, selected.config);
-      assertReadOnlySql(sql);
-      assertSqlPolicy(sql, policyContext(selected.config));
-      const explainSql = buildExplainSql(sql);
-      const started = Date.now();
-      const output = await withQuerySlot(selected, () =>
-        runReadOnlyQuery(
-          selected.pool,
-          selected.config.compatibility,
-          explainSql,
-          sqlParams,
-          effectiveRowLimit(maxRows, selected.config),
-          selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction,
-          selected.config.maxResultBytes
-        )
-      );
-      metrics.recordQueryDuration(Date.now() - started);
-      return toLimitedResult(output, selected.config);
-    }
-  );
-
-  registerTool(
-    "ob_analyze_query_plan",
-    {
-      title: "Analyze Query Plan",
-      description: "Run EXPLAIN for a strictly read-only SQL statement and return evidence-based plan findings.",
-      inputSchema: {
-        ...profileInput,
-        sql: z.string().min(1),
-        params: z.array(sqlParamSchema).optional().default([]),
-        maxRows: z.number().int().positive().max(10_000).optional()
-      }
-    },
-    async ({ profile, sql, params = [], maxRows }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const sqlParams = params as SqlParam[];
-      assertSqlInputLimits(sql, sqlParams, selected.config);
-      assertReadOnlySql(sql);
-      assertSqlPolicy(sql, policyContext(selected.config));
-      const explainSql = buildExplainSql(sql);
-      const started = Date.now();
-      const plan = await withQuerySlot(selected, () =>
-        runReadOnlyQuery(
-          selected.pool,
-          selected.config.compatibility,
-          explainSql,
-          sqlParams,
-          effectiveRowLimit(maxRows, selected.config),
-          selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction,
-          selected.config.maxResultBytes
-        )
-      );
-      metrics.recordQueryDuration(Date.now() - started);
-      return toLimitedResult(
-        {
-          sql,
-          analysis: analyzeQueryPlan(plan, sql),
-          plan
-        },
-        selected.config
-      );
-    }
-  );
-
-  registerTool(
-    "ob_generate_performance_report",
-    {
-      title: "Generate Performance Report",
-      description: "Generate a read-only SQL performance advisory report from EXPLAIN, table statistics, and index metadata.",
-      inputSchema: {
-        ...profileInput,
-        sql: z.string().min(1),
-        params: z.array(sqlParamSchema).optional().default([]),
-        maxRows: z.number().int().positive().max(10_000).optional()
-      }
-    },
-    async ({ profile, sql, params = [], maxRows }) => {
-      const selected = selectAuthorizedProfile(runtime, profile, context);
-      const sqlParams = params as SqlParam[];
-      assertSqlInputLimits(sql, sqlParams, selected.config);
-      assertReadOnlySql(sql);
-      assertSqlPolicy(sql, policyContext(selected.config));
-      const policy = explainSqlPolicy(sql, policyContext(selected.config));
-      const explainSql = buildExplainSql(sql);
-      const started = Date.now();
-      const plan = await withQuerySlot(selected, () =>
-        runReadOnlyQuery(
-          selected.pool,
-          selected.config.compatibility,
-          explainSql,
-          sqlParams,
-          effectiveRowLimit(maxRows, selected.config),
-          selected.config.queryTimeoutMs,
-          selected.config.enforceReadOnlyTransaction,
-          selected.config.maxResultBytes
-        )
-      );
-      metrics.recordQueryDuration(Date.now() - started);
-      const planAnalysis = analyzeQueryPlan(plan, sql);
-      const tableContexts = [];
-      for (const ref of uniqueTableRefs(policy.tableRefs).slice(0, 5)) {
-        const metadataRef = metadataTableRef(selected.config, ref.schema, ref.table);
-        assertTableAccess(metadataRef.schema, metadataRef.table, policyContext(selected.config));
-        const stats = await withQuerySlot(selected, () =>
-          getTableStats(
-            selected.pool,
-            selected.config.compatibility,
-            metadataRef.table,
-            metadataRef.schema,
-            selected.config.queryTimeoutMs
-          )
-        );
-        const indexes = filterColumnMetadata(
-          await withQuerySlot(selected, () =>
-            listIndexes(
-              selected.pool,
-              selected.config.compatibility,
-              metadataRef.table,
-              metadataRef.schema,
-              selected.config.queryTimeoutMs
-            )
-          ),
-          selected.config.policy
-        );
-        tableContexts.push({
-          schema: metadataRef.schema,
-          table: metadataRef.table,
-          stats,
-          indexes
-        });
-      }
-      return toLimitedResult(
-        {
-          sql,
-          executed: false,
-          report: buildPerformanceReport(planAnalysis, tableContexts),
-          planAnalysis,
-          tables: tableContexts.map((item) => ({
-            schema: item.schema,
-            table: item.table,
-            stats: item.stats,
-            indexRows: item.indexes.length
-          })),
-          plan
-        },
-        selected.config
-      );
-    }
-  );
+  registerQueryPlanTools(registerTool, runtime, context);
 
   registerTool(
     "ob_search_catalog",
