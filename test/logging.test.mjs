@@ -131,6 +131,7 @@ test("tool audit logs include bounded response size", async () => {
     assert(toolCall.responseBytes > 0);
     assert.match(toolCall.requestId, /^[0-9a-f-]{36}$/i);
     assert.equal(toolCall.phase, "finish");
+    assert.equal(toolCall.dbCalls, 1);
     assert.equal(typeof toolCall.warningCount, "number");
     assert.equal(Array.isArray(toolCall.warnings), true);
     assert.equal(toolCall.truncated, false);
@@ -178,6 +179,7 @@ test("tool audit logs include sanitized error metadata", async () => {
     assert.equal(toolCall.ok, false);
     assert.match(toolCall.requestId, /^[0-9a-f-]{36}$/i);
     assert.equal(toolCall.phase, "finish");
+    assert.equal(toolCall.dbCalls, 0);
     assert.equal(toolCall.errorCode, "Error");
     assert.equal(toolCall.sanitizedError.name, "Error");
     assert.equal(toolCall.sanitizedError.sqlMessage, undefined);

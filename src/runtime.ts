@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import type { GatewayConfig, ObConfig } from "./config.js";
 import { createObPool, type ObPool } from "./db.js";
 
@@ -21,11 +23,17 @@ export interface MetadataCacheStore {
   evictions: number;
 }
 
+export interface ExecutionDiagnostics {
+  dbCalls: number;
+}
+
 interface MetadataCacheEntry {
   value: unknown;
   createdAt: number;
   expiresAt: number;
 }
+
+const executionDiagnosticsStore = new AsyncLocalStorage<ExecutionDiagnostics>();
 
 export function createGatewayRuntime(config: GatewayConfig): GatewayRuntime {
   const pools: Record<string, ObPool> = {};
@@ -83,11 +91,28 @@ export async function withQuerySlot<T>(
   }
 
   selected.limiter.active += 1;
+  const diagnostics = executionDiagnosticsStore.getStore();
+  if (diagnostics) {
+    diagnostics.dbCalls += 1;
+  }
   try {
     return await operation();
   } finally {
     selected.limiter.active -= 1;
   }
+}
+
+export function createExecutionDiagnostics(): ExecutionDiagnostics {
+  return {
+    dbCalls: 0
+  };
+}
+
+export function withExecutionDiagnostics<T>(
+  diagnostics: ExecutionDiagnostics,
+  operation: () => Promise<T>
+): Promise<T> {
+  return executionDiagnosticsStore.run(diagnostics, operation);
 }
 
 export async function withMetadataCache<T>(

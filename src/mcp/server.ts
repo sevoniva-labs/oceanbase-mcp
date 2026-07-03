@@ -94,7 +94,7 @@ import {
 } from "../query/sessions.js";
 import { SENSITIVE_SAMPLE_PATTERN } from "../sensitive.js";
 import { generateQueryTemplates, type QueryTemplateScenario } from "../query-generation.js";
-import { selectRuntimeProfile, withMetadataCache, withQuerySlot, type GatewayRuntime } from "../runtime.js";
+import { createExecutionDiagnostics, selectRuntimeProfile, withExecutionDiagnostics, withMetadataCache, withQuerySlot, type GatewayRuntime } from "../runtime.js";
 import { assertReadOnlySql, assertSqlInputLimits, buildExplainSql, buildPagedReadOnlySql, prepareReadOnlySql } from "../sql.js";
 import { extractSqlSnippetsFromContent, type SqlScanSnippet } from "../sql-scan.js";
 import { findSqlUsages } from "../sql-usage.js";
@@ -11115,6 +11115,7 @@ function safeTool<Args>(
     const finish = metrics.startToolCall();
     const requestId = context.requestId ?? randomUUID();
     const toolCapability = getToolCapability(name);
+    const executionDiagnostics = createExecutionDiagnostics();
     let timeoutMs: number | undefined;
     recordCrashBreadcrumb("tool_start", {
       tool: name,
@@ -11130,7 +11131,11 @@ function safeTool<Args>(
     try {
       assertToolAllowed(name, context.principal);
       timeoutMs = toolWallTimeoutMs(name, runtime, context);
-      const result = await withToolTimeout(Promise.resolve().then(() => handler(args)), timeoutMs, name);
+      const result = await withToolTimeout(
+        withExecutionDiagnostics(executionDiagnostics, () => Promise.resolve().then(() => handler(args))),
+        timeoutMs,
+        name
+      );
       const durationMs = Date.now() - started;
       const responseBytes = resultTextBytes(result);
       const diagnostics = resultDiagnostics(result);
@@ -11144,6 +11149,7 @@ function safeTool<Args>(
         timeoutMs,
         requestId,
         phase: "finish",
+        dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics
       });
       logAudit("tool_call", {
@@ -11159,6 +11165,7 @@ function safeTool<Args>(
         durationMs,
         timeoutMs,
         responseBytes,
+        dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics,
         ...auditArgs(args)
       });
@@ -11175,6 +11182,7 @@ function safeTool<Args>(
         durationMs,
         timeoutMs,
         responseBytes,
+        dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics,
         ...auditArgs(args)
       });
@@ -11199,6 +11207,7 @@ function safeTool<Args>(
         phase: "finish",
         errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
         sanitizedError,
+        dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics
       });
       logAudit("tool_call", {
@@ -11216,6 +11225,7 @@ function safeTool<Args>(
         responseBytes,
         errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
         sanitizedError,
+        dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
@@ -11235,6 +11245,7 @@ function safeTool<Args>(
         responseBytes,
         errorCode: sanitizedError.code ?? sanitizedError.name ?? "Error",
         sanitizedError,
+        dbCalls: executionDiagnostics.dbCalls,
         ...diagnostics,
         blockedReason: (error as Error).message,
         ...auditArgs(args)
