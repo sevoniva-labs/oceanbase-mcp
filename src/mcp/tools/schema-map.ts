@@ -145,6 +145,47 @@ export function registerSchemaMapTools(
   );
 
   registerTool(
+    "ob_find_related_tables",
+    {
+      title: "Find Related Tables",
+      description: "Find foreign-key and conservative naming-based relationships for an allowed OceanBase table.",
+      inputSchema: {
+        ...profileInput,
+        table: z.string().min(1),
+        schema: z.string().optional(),
+        depth: z.number().int().min(1).max(3).optional(),
+        limit: z.number().int().positive().max(500).optional()
+      }
+    },
+    async ({ profile, table, schema, depth, limit }) => {
+      const selected = selectAuthorizedProfile(runtime, profile, context);
+      const effectiveSchema = metadataSchema(selected.config, schema);
+      assertTableAccess(effectiveSchema, table, policyContext(selected.config));
+      const maxRelations = Math.min(limit ?? 50, 500);
+      const result = await withQuerySlot(selected, () =>
+        findRelatedTables(
+          selected.pool,
+          selected.config.compatibility,
+          table,
+          effectiveSchema,
+          depth ?? 1,
+          maxRelations,
+          selected.config.queryTimeoutMs
+        )
+      );
+      const relations = result.relations.filter((relation) => isRelationshipAllowed(relation, selected.config));
+      return toLimitedResult(
+        {
+          ...result,
+          relations,
+          policyFiltered: relations.length !== result.relations.length
+        },
+        selected.config
+      );
+    }
+  );
+
+  registerTool(
     "ob_generate_data_dictionary",
     {
       title: "Generate Data Dictionary",
