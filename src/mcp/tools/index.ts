@@ -6,9 +6,8 @@ import type { ToolRegistrar } from "../tool-registry.js";
 import { registerDataUnderstandingTools } from "./data-understanding-tools.js";
 import { registerDocumentationTools } from "./documentation.js";
 import { registerErTools } from "./er-tools.js";
-import { registerMetadataChangeTools } from "./metadata-change.js";
-import { registerMetadataCompareTools } from "./metadata-compare.js";
 import { registerMetadataTools } from "./metadata-tools.js";
+import { registerMetadataWorkflowTools } from "./metadata-workflow-tools.js";
 import { registerQueryTools } from "./query-tools.js";
 import { registerSqlTools } from "./sql-tools.js";
 import { registerSystemTools } from "./system.js";
@@ -24,8 +23,7 @@ export function registerMcpTools(
   registerQueryTools(registerTool, runtime, context, querySessions);
   registerMetadataTools(registerTool, runtime, context);
 
-  registerMetadataChangeTools(registerTool, runtime, context);
-  registerMetadataCompareTools(registerTool, runtime, context);
+  registerMetadataWorkflowTools(registerTool, runtime, context);
   registerSqlTools(registerTool, runtime, context);
   registerDataUnderstandingTools(registerTool, runtime, context);
 
