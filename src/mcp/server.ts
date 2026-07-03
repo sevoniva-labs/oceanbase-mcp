@@ -6,7 +6,6 @@ import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mc
 import { z } from "zod";
 
 import {
-  assertToolManifest,
   buildUsageGuide,
   listCapabilities,
   SERVER_VERSION,
@@ -130,7 +129,7 @@ import {
   type BuildSelectFilter,
   type BuildSelectOrderBy
 } from "./schemas.js";
-import { errorHints, safeTool, toGatewayLimitedResult, toLimitedResult, toResult, type ToolResult } from "./tool-runtime.js";
+import { errorHints, toGatewayLimitedResult, toLimitedResult, toResult } from "./tool-runtime.js";
 import {
   buildErExportCommand,
   defaultErHtmlTitle,
@@ -140,6 +139,7 @@ import {
   SCHEMA_INLINE_ER_TABLE_RENDER_LIMIT,
   shouldSkipSchemaInlineErHtmlRender
 } from "./tools/er-response.js";
+import { createToolRegistrar } from "./tool-registry.js";
 
 export { effectiveRowLimit, shouldMaskColumnValue } from "../query/output.js";
 export { isToolAllowed } from "./access.js";
@@ -180,23 +180,7 @@ export function createObMcpServer(
     name: "ob-mcp",
     version: SERVER_VERSION
   });
-  const toolHandler = <Args>(name: string, handler: (args: Args) => Promise<ToolResult>) =>
-    safeTool(name, handler, context, runtime);
-  const registerTool = (
-    name: string,
-    spec: {
-      title: string;
-      description: string;
-      inputSchema: Record<string, z.ZodType>;
-    },
-    handler: (args: any) => Promise<ToolResult>
-  ) => {
-    assertToolManifest(name);
-    if (!isToolAllowed(name, context.principal)) {
-      return;
-    }
-    server.registerTool(name, spec, toolHandler(name, handler) as any);
-  };
+  const registerTool = createToolRegistrar(server, runtime, context);
 
   server.registerResource(
     "connection",
