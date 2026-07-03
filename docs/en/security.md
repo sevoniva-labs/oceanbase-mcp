@@ -37,6 +37,26 @@ Use both layers:
 | Secret file loading | Supported for database password and bearer token. |
 | Database permission check | `ob_verify_permissions` reads grants/session privileges. |
 
+## CI Security Checks
+
+The `Security` GitHub Actions workflow runs:
+
+- CodeQL with `security-extended` and `security-and-quality` queries.
+- Semgrep `p/ci` rules as a blocking SAST gate.
+- `npm audit` for all dependencies and production dependencies.
+- OSV Scanner against `package-lock.json`.
+- `secretlint` with the recommended rule preset.
+- Repository policy checks for pinned GitHub Actions, workflow permissions, Docker base-image digest pinning, and npm package scope.
+
+Local equivalents:
+
+```bash
+npm run security:gates
+npm run security:secrets
+npm run security:sca
+semgrep --config p/ci --error --exclude node_modules --exclude dist --exclude .git --exclude output --exclude tmp .
+```
+
 ## Source IP Allowlist
 
 Configure exact IP addresses and CIDR ranges:
@@ -85,6 +105,9 @@ Only enable proxy trust when the MCP server cannot be reached directly by untrus
 npm test
 npm run mcp:smoke
 npm run http:smoke
+npm run security:gates
+npm run security:secrets
+npm run security:sca
 npm audit --omit=dev --audit-level=moderate
 ```
 

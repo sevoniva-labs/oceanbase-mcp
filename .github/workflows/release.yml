@@ -35,9 +35,11 @@ jobs:
       - name: 解析版本
         id: meta
         shell: bash
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version || '' }}
         run: |
           if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.version }}"
+            TAG="${INPUT_VERSION}"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
@@ -345,7 +347,7 @@ jobs:
           tag_name: ${{ needs.metadata.outputs.tag }}
           name: OceanBase MCP ${{ needs.metadata.outputs.tag }}
           body_path: release-notes.md
-          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease == true }}
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.prerelease == 'true' }}
           files: |
             dist-release/*.tgz
             dist-release/*.json

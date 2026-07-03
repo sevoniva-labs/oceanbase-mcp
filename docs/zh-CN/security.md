@@ -37,6 +37,26 @@ OceanBase MCP 是 MCP client 与 OceanBase 之间的只读网关。它保护数�
 | secret 文件加载 | 支持数据库密码和 Bearer token。 |
 | 数据库账号权限核验 | `ob_verify_permissions` 读取 grants/session privileges。 |
 
+## CI 安全检查
+
+`Security` GitHub Actions workflow 会运行：
+
+- CodeQL，并启用 `security-extended` 和 `security-and-quality` 查询。
+- Semgrep `p/ci` 规则，作为阻断型 SAST gate。
+- `npm audit`，覆盖全部依赖和生产依赖。
+- OSV Scanner，扫描 `package-lock.json`。
+- `secretlint` 推荐规则集。
+- 仓库规范检查：GitHub Actions 必须 pin 到 commit SHA、workflow 权限必须显式声明、Docker 基础镜像必须 pin digest、npm 包内容必须受控。
+
+本地等价检查：
+
+```bash
+npm run security:gates
+npm run security:secrets
+npm run security:sca
+semgrep --config p/ci --error --exclude node_modules --exclude dist --exclude .git --exclude output --exclude tmp .
+```
+
 ## 来源 IP Allowlist
 
 支持精确 IP 和 CIDR：
@@ -85,6 +105,9 @@ OB_MCP_TRUST_PROXY=1
 npm test
 npm run mcp:smoke
 npm run http:smoke
+npm run security:gates
+npm run security:secrets
+npm run security:sca
 npm audit --omit=dev --audit-level=moderate
 ```
 

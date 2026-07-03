@@ -51,6 +51,9 @@
     "http:smoke": "npm run build && node scripts/http-smoke.mjs",
     "http:smoke:oracle": "npm run build && node scripts/http-smoke-oracle.mjs",
     "docs:check": "node scripts/check-doc-links.mjs README.md docs examples",
+    "security:gates": "node scripts/security-gates.mjs",
+    "security:secrets": "secretlint '**/*'",
+    "security:sca": "npm audit --audit-level=moderate --registry=https://registry.npmjs.org/ && npm audit --omit=dev --audit-level=moderate --registry=https://registry.npmjs.org/",
     "test": "npm run build && node --test test/*.test.mjs"
   },
   "dependencies": {
@@ -65,8 +68,10 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@secretlint/secretlint-rule-preset-recommend": "12.0.0",
     "@types/express": "^5.0.6",
     "@types/node": "^26.0.1",
+    "secretlint": "12.0.0",
     "typescript": "^6.0.3"
   },
   "engines": {
